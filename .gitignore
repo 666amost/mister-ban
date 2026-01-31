@@ -1,0 +1,27 @@
+node_modules
+.nuxt
+.output
+dist
+.cache
+
+.env
+.env.*
+.env.example
+.sql
+.md
+
+.DS_Store
+Thumbs.db
+
+*.log
+
+# Project data / scripts (do not commit)
+/masterdata/
+/scripts/
+db/migrations/0003_store_names_master_data.sql
+db/migrations/0002_supplier_payments_created_by.sql
+db/migrations/0001_init.sql
+master-data.md
+ban-erp-spec(1).md
+tmp_delete_test.txt
+README.md
