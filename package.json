@@ -3,10 +3,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node scripts/nuxt.mjs dev",
-    "build": "node scripts/nuxt.mjs build",
+    "dev": "nuxt dev",
+    "build": "nuxt build",
     "start": "node .output/server/index.mjs",
-    "typecheck": "node scripts/nuxt.mjs typecheck",
+    "typecheck": "nuxt typecheck",
     "lint": "eslint .",
     "format": "prettier -w .",
     "db:migrate": "node scripts/migrate.mjs",
