@@ -10,8 +10,22 @@ declare global {
 export function getPool() {
   if (globalThis.__mbPool) return globalThis.__mbPool;
 
-  const { databaseUrl } = useRuntimeConfig();
-  if (!databaseUrl) throw new Error("runtimeConfig.databaseUrl is required");
+  const runtimeConfig = useRuntimeConfig();
+  const databaseUrl =
+    runtimeConfig.databaseUrl ||
+    process.env.DATABASE_URL ||
+    process.env.NUXT_DATABASE_URL ||
+    "";
+  if (!databaseUrl)
+    throw new Error(
+      "Database URL is required. Set DATABASE_URL (recommended) or NUXT_DATABASE_URL.",
+    );
+
+  if (/^https?:\/\//i.test(databaseUrl)) {
+    throw new Error(
+      "DATABASE_URL must be a Postgres connection string (postgres:// or postgresql://), not an http(s) URL.",
+    );
+  }
 
   const pool = new Pool({ 
     connectionString: databaseUrl,

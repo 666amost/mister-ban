@@ -8,6 +8,7 @@
     "start": "node .output/server/index.mjs",
     "typecheck": "nuxt typecheck",
     "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "format": "prettier -w .",
     "db:migrate": "node scripts/migrate.mjs",
     "db:seed": "node scripts/seed.mjs",

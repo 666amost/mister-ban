@@ -10,10 +10,11 @@ export const loginBodySchema = z.object({
 });
 
 export async function login(email: string, password: string) {
+  const normalizedEmail = email.trim().toLowerCase();
   return await tx(async (client) => {
     const { rows } = await client.query(
-      "SELECT id, email, password_hash, role, store_id, is_active FROM users WHERE email = $1 LIMIT 1",
-      [email],
+      "SELECT id, email, password_hash, role, store_id, is_active FROM users WHERE lower(email) = lower($1) LIMIT 1",
+      [normalizedEmail],
     );
     const user = rows[0];
     if (!user || user.is_active !== true)
