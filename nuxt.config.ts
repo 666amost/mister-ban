@@ -12,6 +12,27 @@ export default defineNuxtConfig({
   devtools: { enabled: true },
   typescript: { strict: true },
   css: ["~/assets/css/theme.css"],
+  
+  app: {
+    pageTransition: { name: 'page', mode: 'out-in' },
+    layoutTransition: { name: 'layout', mode: 'out-in' },
+  },
+
+  experimental: {
+    payloadExtraction: false,
+    renderJsonPayloads: true,
+    viewTransition: true,
+  },
+
+  nitro: {
+    preset: 'vercel',
+    minify: true,
+    compressPublicAssets: {
+      gzip: true,
+      brotli: true,
+    },
+  },
+
   vite:
     process.env.NODE_ENV !== "production"
       ? {
@@ -21,7 +42,25 @@ export default defineNuxtConfig({
             },
           },
         }
-      : undefined,
+      : {
+          build: {
+            cssCodeSplit: true,
+            minify: 'esbuild',
+            rollupOptions: {
+              output: {
+                manualChunks: {
+                  'vendor': ['vue', '@vue/runtime-dom'],
+                },
+              },
+            },
+          },
+          resolve: {
+            alias: {
+              '#app-manifest': appManifestAliasPath,
+            },
+          },
+        },
+  
   runtimeConfig: {
     databaseUrl: process.env.DATABASE_URL ?? "",
   },

@@ -11,7 +11,8 @@ const schema = z.object({ store_id: z.string().uuid() });
 
 export default defineEventHandler(async (event) => {
   const user = await requireUser(event);
-  if (user.role !== "ADMIN") throw forbidden();
+  
+  if (user.role === "STAFF") throw forbidden();
 
   const body = await readBodyWithSchema(event, schema);
 

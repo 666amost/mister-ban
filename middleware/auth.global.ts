@@ -10,18 +10,23 @@ export default defineNuxtRouteMiddleware(async (to) => {
     }
   }
 
+  if (me.user.value?.role === "STAFF") {
+    return;
+  }
+
   if (to.path === "/select-store") return;
 
   const storeContext = useStoreContext();
-  if (!storeContext.store.value) {
-    try {
-      await storeContext.refresh();
-    } catch {
-      return navigateTo("/login");
-    }
+  if (storeContext.store.value) {
+    return;
   }
 
-  if (me.user.value?.role === "ADMIN" && !storeContext.store.value) {
+  try {
+    await storeContext.refresh();
+    if (!storeContext.store.value) {
+      return navigateTo("/select-store");
+    }
+  } catch {
     return navigateTo("/select-store");
   }
 });

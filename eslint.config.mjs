@@ -24,13 +24,14 @@ const nuxtGlobals = {
 
 const serverGlobals = {
   defineEventHandler: "readonly",
+  createError: "readonly",
   process: "readonly",
   Buffer: "readonly",
 };
 
 export default [
   {
-    ignores: [".nuxt/**", ".output/**", "node_modules/**"],
+    ignores: [".nuxt/**", ".output/**", ".vercel/**", "node_modules/**"],
   },
   js.configs.recommended,
   ...vue.configs["flat/recommended"],

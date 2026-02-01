@@ -3,6 +3,7 @@ import { resolveStoreId } from "../../modules/store/store-context";
 import { productListQuerySchema } from "../../modules/products/products.schemas";
 import { listProductsForStore } from "../../modules/products/products.service";
 import { getQueryWithSchema } from "../../utils/validate";
+import { optimizeResponse } from "../../utils/headers";
 
 export default defineEventHandler(async (event) => {
   const user = await requireUser(event);
@@ -15,6 +16,8 @@ export default defineEventHandler(async (event) => {
     limit: query.limit,
     offset: query.offset,
   });
+
+  optimizeResponse(event, 60);
 
   return { items, limit: query.limit ?? 50, offset: query.offset ?? 0 };
 });

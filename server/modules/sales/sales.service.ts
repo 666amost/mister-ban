@@ -26,7 +26,7 @@ async function getSellPrices(
       FROM store_products
       WHERE store_id = $1
         AND product_id = ANY($2::uuid[])
-        AND is_active = true
+        AND status = 'active'
     `,
     [storeId, productIds],
   );

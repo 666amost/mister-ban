@@ -81,9 +81,10 @@ export async function listInventory(
       LEFT JOIN store_products sp
         ON sp.store_id = ib.store_id
        AND sp.product_id = ib.product_id
-       AND sp.is_active = true
+       AND sp.status = 'active'
       WHERE ib.store_id = $1
-        AND p.is_active = true
+        AND p.status = 'active'
+        AND ib.qty_on_hand > 0
         AND (
           $2::text IS NULL
           OR p.sku ILIKE '%' || $2 || '%'

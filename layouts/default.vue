@@ -8,6 +8,9 @@ const route = useRoute()
 const role = computed(() => me.user.value?.role ?? null)
 const storeName = computed(() => storeContext.store.value?.name ?? null)
 
+const sidebarOpen = ref(false)
+const isNavigating = ref(false)
+
 type IconName =
   | "home"
   | "sales"
@@ -16,7 +19,6 @@ type IconName =
   | "suppliers"
   | "reports"
   | "users"
-  | "import"
 
 type NavItem = {
   to: string
@@ -52,7 +54,6 @@ const navGroups = computed<NavGroup[]>(() => {
           { to: "/products", label: "Products", icon: "products", keywords: ["produk", "master"] },
           { to: "/suppliers", label: "Suppliers", icon: "suppliers", keywords: ["supplier", "distributor"] },
           { to: "/suppliers/invoices", label: "Supplier Invoices", icon: "suppliers", keywords: ["supplier"] },
-          { to: "/admin/import", label: "Import", icon: "import", keywords: ["xlsx", "csv"] },
         ],
       },
       {
@@ -88,6 +89,8 @@ const navQuery = ref("")
 
 const navCollapsed = ref<Record<string, boolean>>({})
 
+let navCollapseTimer: ReturnType<typeof setTimeout> | null = null
+
 onMounted(() => {
   try {
     const raw = localStorage.getItem("mb_nav_collapsed_v1")
@@ -100,13 +103,27 @@ onMounted(() => {
 watch(
   navCollapsed,
   (v) => {
-    try {
-      localStorage.setItem("mb_nav_collapsed_v1", JSON.stringify(v))
-    } catch {
-      // ignore
-    }
+    if (navCollapseTimer) clearTimeout(navCollapseTimer)
+    navCollapseTimer = setTimeout(() => {
+      try {
+        localStorage.setItem("mb_nav_collapsed_v1", JSON.stringify(v))
+      } catch {
+        // ignore
+      }
+    }, 300)
   },
   { deep: true },
+)
+
+watch(
+  () => route.path,
+  () => {
+    isNavigating.value = true
+    setTimeout(() => {
+      isNavigating.value = false
+    }, 200)
+    sidebarOpen.value = false
+  },
 )
 
 function isGroupOpen(label: string) {
@@ -223,8 +240,10 @@ async function logout() {
         </div>
       </header>
 
-      <main class="mb-content">
-        <slot />
+      <main class="mb-content" :class="{ 'is-navigating': isNavigating }">
+        <Transition name="page-fade" mode="out-in">
+          <slot />
+        </Transition>
       </main>
 
       <nav class="mb-bottomnav" aria-label="Bottom navigation">

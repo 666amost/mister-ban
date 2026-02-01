@@ -21,7 +21,14 @@ async function onSubmit() {
       body: { email: email.value, password: password.value },
     });
     const user = await useMe().refresh();
-    await navigateTo(user.role === "ADMIN" ? "/select-store" : "/");
+    
+    if (user.role === "ADMIN") {
+      await navigateTo("/select-store");
+    } else {
+      const storeContext = useStoreContext();
+      await storeContext.refresh();
+      await navigateTo("/");
+    }
   } catch (error: unknown) {
     errorMessage.value = statusMessage(error) ?? "Login gagal";
   } finally {

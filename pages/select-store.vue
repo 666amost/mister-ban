@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { onMounted } from "vue";
+
 definePageMeta({ layout: "auth" })
 
 type Store = { id: string; name: string };
@@ -19,13 +21,6 @@ function statusMessage(error: unknown) {
   return typeof e.statusMessage === "string" ? e.statusMessage : null;
 }
 
-await me.refresh();
-if (me.user.value?.role === "STAFF") {
-  await navigateTo("/");
-}
-
-await storeContext.refresh();
-
 async function loadStores() {
   isLoading.value = true;
   errorMessage.value = null;
@@ -41,7 +36,16 @@ async function loadStores() {
   }
 }
 
-await loadStores();
+onMounted(async () => {
+  await me.refresh();
+  if (me.user.value?.role === "STAFF") {
+    await navigateTo("/");
+    return;
+  }
+  
+  await storeContext.refresh();
+  await loadStores();
+});
 
 const filteredStores = computed(() => {
   const q = search.value.trim().toLowerCase();
@@ -58,7 +62,6 @@ async function enterStore() {
     await navigateTo("/");
   } catch (error: unknown) {
     errorMessage.value = statusMessage(error) ?? "Gagal memilih toko";
-  } finally {
     isSelecting.value = false;
   }
 }

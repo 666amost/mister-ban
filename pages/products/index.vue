@@ -26,6 +26,16 @@ const isLoading = ref(false)
 const errorMessage = ref<string | null>(null)
 const q = ref("")
 
+const bulkMode = ref(false)
+const bulkType = ref<'price' | 'stock'>('price')
+const bulkSellPrice = ref(0)
+const bulkQtyDelta = ref(0)
+const bulkUnitCost = ref(0)
+const bulkNote = ref('')
+const bulkSelected = ref<Set<string>>(new Set())
+const bulkLoading = ref(false)
+const bulkError = ref<string | null>(null)
+
 const showAdd = ref(false)
 const addTab = ref<"new" | "master">("new")
 
@@ -111,14 +121,26 @@ async function load() {
   isLoading.value = true
   errorMessage.value = null
   try {
-    const res = await $fetch<{ items: ProductRow[] }>("/api/products", { query: { q: q.value, limit: 200 } })
+    const res = await $fetch<{ items: ProductRow[] }>("/api/products", { 
+      query: { q: q.value, limit: 200 },
+      headers: { Accept: 'application/json' },
+    })
     items.value = res.items
   } catch (error) {
     errorMessage.value = statusMessage(error) ?? "Gagal memuat products"
+    console.error('Products load error:', error)
   } finally {
     isLoading.value = false
   }
 }
+
+let debounceTimer: ReturnType<typeof setTimeout> | null = null
+watch(q, () => {
+  if (debounceTimer) clearTimeout(debounceTimer)
+  debounceTimer = setTimeout(() => {
+    load()
+  }, 300)
+})
 
 function resetCreateForm() {
   createForm.brand = ""
@@ -331,6 +353,83 @@ async function submitStock(productId: string) {
   }
 }
 
+function toggleBulkSelect(productId: string) {
+  if (bulkSelected.value.has(productId)) {
+    bulkSelected.value.delete(productId)
+  } else {
+    bulkSelected.value.add(productId)
+  }
+  bulkSelected.value = new Set(bulkSelected.value)
+}
+
+function toggleBulkSelectAll() {
+  if (bulkSelected.value.size === items.value.length) {
+    bulkSelected.value = new Set()
+  } else {
+    bulkSelected.value = new Set(items.value.map(i => i.product_id))
+  }
+}
+
+async function submitBulkPriceUpdate() {
+  if (bulkSelected.value.size === 0) return
+  if (bulkType.value === 'price' && bulkSellPrice.value <= 0) return
+  if (bulkType.value === 'stock' && bulkQtyDelta.value === 0) {
+    bulkError.value = "Qty Delta tidak boleh 0"
+    return
+  }
+  
+  bulkLoading.value = true
+  bulkError.value = null
+  try {
+    if (bulkType.value === 'price') {
+      for (const productId of bulkSelected.value) {
+        await $fetch(`/api/products/${productId}`, {
+          method: "PATCH",
+          body: { sell_price: bulkSellPrice.value }
+        })
+      }
+    } else {
+      for (const productId of bulkSelected.value) {
+        const body: Record<string, unknown> = {
+          product_id: productId,
+          qty_delta: bulkQtyDelta.value,
+        }
+        if (bulkQtyDelta.value > 0 && bulkUnitCost.value > 0) {
+          body.unit_cost = bulkUnitCost.value
+        }
+        if (bulkNote.value.trim().length) {
+          body.note = bulkNote.value.trim()
+        }
+        await $fetch("/api/inventory/adjust", {
+          method: "POST",
+          body,
+        })
+      }
+    }
+    bulkMode.value = false
+    bulkSelected.value = new Set()
+    bulkSellPrice.value = 0
+    bulkQtyDelta.value = 0
+    bulkUnitCost.value = 0
+    bulkNote.value = ''
+    await load()
+  } catch (error) {
+    bulkError.value = statusMessage(error) ?? (bulkType.value === 'price' ? "Gagal update harga massal" : "Gagal adjust stok massal")
+  } finally {
+    bulkLoading.value = false
+  }
+}
+
+function cancelBulk() {
+  bulkMode.value = false
+  bulkSelected.value = new Set()
+  bulkSellPrice.value = 0
+  bulkQtyDelta.value = 0
+  bulkUnitCost.value = 0
+  bulkNote.value = ''
+  bulkError.value = null
+}
+
 await load()
 </script>
 
@@ -344,6 +443,9 @@ await load()
         </label>
         <div class="rowActions">
           <button class="mb-btn" :disabled="isLoading" @click="load">{{ isLoading ? "Loading..." : "Search" }}</button>
+          <button :class="bulkMode ? 'mb-btnDanger' : 'mb-btn'" type="button" @click="bulkMode ? cancelBulk() : bulkMode = true">
+            {{ bulkMode ? "Cancel Bulk" : "Bulk Update" }}
+          </button>
           <button class="mb-btnPrimary" type="button" @click="showAdd = !showAdd">
             {{ showAdd ? "Tutup" : "Tambah Produk" }}
           </button>
@@ -455,21 +557,70 @@ await load()
       </div>
     </section>
 
+    <section v-if="bulkMode" class="mb-card">
+      <div class="bulkHeader">
+        <div>
+          <div class="bulkTitle">Bulk {{ bulkType === 'price' ? 'Update Harga' : 'Adjust Stock' }}</div>
+          <div class="bulkSub">{{ bulkSelected.size }} item dipilih</div>
+        </div>
+        <div class="bulkTabs">
+          <button class="bulkTab" :class="{ active: bulkType === 'price' }" @click="bulkType = 'price'">Harga</button>
+          <button class="bulkTab" :class="{ active: bulkType === 'stock' }" @click="bulkType = 'stock'">Stock</button>
+        </div>
+      </div>
+      
+      <div v-if="bulkType === 'price'" class="bulkForm">
+        <label class="field smallField">
+          <span>Sell Price Baru (Rp)</span>
+          <input v-model.number="bulkSellPrice" class="mb-input" type="number" min="1" step="1" />
+        </label>
+        <button class="mb-btnPrimary" type="button" :disabled="bulkLoading || bulkSelected.size === 0 || bulkSellPrice <= 0" @click="submitBulkPriceUpdate">
+          {{ bulkLoading ? "Processing..." : `Apply to ${bulkSelected.size} items` }}
+        </button>
+        <span v-if="bulkError" class="errorInline">{{ bulkError }}</span>
+      </div>
+
+      <div v-else class="bulkForm">
+        <label class="field smallField">
+          <span>Qty Delta</span>
+          <input v-model.number="bulkQtyDelta" class="mb-input" type="number" step="1" />
+        </label>
+        <label class="field smallField">
+          <span>Unit Cost (Rp)</span>
+          <input v-model.number="bulkUnitCost" class="mb-input" type="number" min="0" step="1" />
+        </label>
+        <label class="field bulkNoteField">
+          <span>Note</span>
+          <input v-model="bulkNote" class="mb-input" placeholder="Optional" />
+        </label>
+        <button class="mb-btnPrimary" type="button" :disabled="bulkLoading || bulkSelected.size === 0" @click="submitBulkPriceUpdate">
+          {{ bulkLoading ? "Processing..." : `Apply to ${bulkSelected.size} items` }}
+        </button>
+        <span v-if="bulkError" class="errorInline">{{ bulkError }}</span>
+      </div>
+    </section>
+
     <section class="mb-card">
       <div v-if="items.length" class="tableWrap">
         <table class="table">
           <thead>
             <tr>
+              <th v-if="bulkMode" style="width: 40px">
+                <input type="checkbox" :checked="bulkSelected.size === items.length" @change="toggleBulkSelectAll()" />
+              </th>
               <th>SKU</th>
               <th>Nama</th>
               <th style="text-align: right">Sell</th>
               <th style="text-align: right">Qty</th>
-              <th style="width: 1%"></th>
+              <th v-if="!bulkMode" style="width: 1%"></th>
             </tr>
           </thead>
           <tbody>
             <template v-for="i in items" :key="i.product_id">
               <tr>
+                <td v-if="bulkMode" style="text-align: center">
+                  <input type="checkbox" :checked="bulkSelected.has(i.product_id)" @change="toggleBulkSelect(i.product_id)" />
+                </td>
                 <td class="mono">{{ i.sku }}</td>
                 <td>
                   <div class="strong">{{ i.brand }} {{ i.name }}</div>
@@ -477,7 +628,7 @@ await load()
                 </td>
                 <td style="text-align: right">Rp {{ rupiah(i.sell_price) }}</td>
                 <td style="text-align: right">{{ i.qty_on_hand }}</td>
-                <td style="text-align: right">
+                <td v-if="!bulkMode" style="text-align: right">
                   <div class="btnGroup">
                     <button class="mb-btn" type="button" @click="startEdit(i)">Harga</button>
                     <button class="mb-btn" type="button" @click="startStock(i)">Stok</button>
@@ -748,5 +899,54 @@ th {
 .errorInline {
   font-size: 12px;
   color: var(--mb-danger);
+}
+.bulkHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--mb-border2);
+}
+.bulkTitle {
+  font-weight: 800;
+}
+.bulkSub {
+  font-size: 12px;
+  color: var(--mb-muted);
+  margin-top: 4px;
+}
+.bulkTabs {
+  display: flex;
+  gap: 8px;
+}
+.bulkTab {
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--mb-border2);
+  background: var(--mb-surface2);
+  color: var(--mb-text);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.bulkTab:hover {
+  border-color: var(--mb-success);
+}
+.bulkTab.active {
+  background: var(--mb-success);
+  border-color: var(--mb-success);
+  color: white;
+}
+.bulkForm {
+  display: flex;
+  gap: 12px;
+  align-items: end;
+  flex-wrap: wrap;
+}
+.bulkNoteField {
+  flex: 1;
+  min-width: 240px;
 }
 </style>

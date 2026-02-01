@@ -3,25 +3,22 @@ node_modules
 .output
 dist
 .cache
+.vercel
 
 .env
 .env.*
-.env.example
-.sql
-.md
+*.env.example
 
 .DS_Store
 Thumbs.db
-
 *.log
 
-# Project data / scripts (do not commit)
+# Exclude all .md and .sql files (except README.md)
+*.md
+*.README.md
+*.sql
+*.txt
+
+# Project data / scripts
 /masterdata/
 /scripts/
-db/migrations/0003_store_names_master_data.sql
-db/migrations/0002_supplier_payments_created_by.sql
-db/migrations/0001_init.sql
-master-data.md
-ban-erp-spec(1).md
-tmp_delete_test.txt
-README.md
