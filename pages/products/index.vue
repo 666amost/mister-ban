@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { onMounted } from "vue"
+
 definePageMeta({ middleware: "admin" })
 
 type ProductRow = {
@@ -430,7 +432,10 @@ function cancelBulk() {
   bulkError.value = null
 }
 
-await load()
+const route = useRoute()
+onMounted(async () => {
+  await load()
+})
 </script>
 
 <template>

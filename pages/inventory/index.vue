@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { onMounted } from "vue"
+
 type InventoryRow = {
   product_id: string
   sku: string
@@ -11,7 +13,6 @@ type InventoryRow = {
 }
 
 const me = useMe()
-await me.refresh()
 
 const items = ref<InventoryRow[]>([])
 const isLoading = ref(false)
@@ -166,7 +167,9 @@ function cancelBulk() {
   bulkError.value = null
 }
 
-await load()
+onMounted(async () => {
+  await load()
+})
 </script>
 
 <template>

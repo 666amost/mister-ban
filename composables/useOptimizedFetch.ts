@@ -1,12 +1,16 @@
+const fetchCache = new Map<string, { data: unknown; timestamp: number }>()
+
 export function useOptimizedFetch<T>(
   url: string,
   opts?: {
     lazy?: boolean
     immediate?: boolean
+    cache?: number
   },
 ) {
   const lazy = opts?.lazy ?? false
   const immediate = opts?.immediate ?? true
+  const cacheTime = opts?.cache ?? 5 * 60 * 1000
 
   const data = ref<T | null>(null)
   const pending = ref(false)
@@ -14,6 +18,13 @@ export function useOptimizedFetch<T>(
 
   const execute = async () => {
     if (pending.value) return
+
+    const now = Date.now()
+    const cached = fetchCache.get(url)
+    if (cached && now - cached.timestamp < cacheTime) {
+      data.value = cached.data as T
+      return
+    }
 
     pending.value = true
     error.value = null
@@ -25,6 +36,7 @@ export function useOptimizedFetch<T>(
         },
       })
       data.value = response
+      fetchCache.set(url, { data: response, timestamp: now })
     } catch (err) {
       error.value = err as Error
       console.error(`Fetch error for ${url}:`, err)
@@ -34,6 +46,10 @@ export function useOptimizedFetch<T>(
   }
 
   const refresh = () => execute()
+
+  const clearCache = () => {
+    fetchCache.delete(url)
+  }
 
   if (!lazy && immediate) {
     execute()
@@ -45,5 +61,6 @@ export function useOptimizedFetch<T>(
     error: computed(() => error.value),
     execute,
     refresh,
+    clearCache,
   }
 }
