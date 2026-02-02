@@ -27,6 +27,16 @@ const q = ref("")
 const isLoading = ref(false)
 const errorMessage = ref<string | null>(null)
 
+const showCreateForm = ref(false)
+const createForm = ref({
+  email: "",
+  password: "",
+  role: "STAFF" as "ADMIN" | "STAFF",
+  store_id: null as string | null,
+})
+const createLoading = ref(false)
+const createError = ref<string | null>(null)
+
 function statusMessage(error: unknown) {
   if (!error || typeof error !== "object") return null
   const e = error as Record<string, unknown>
@@ -69,6 +79,45 @@ function markRoleChanged(u: UiUser) {
   if (u.roleDraft === "ADMIN") u.storeIdDraft = null
 }
 
+function onCreateRoleChange() {
+  if (createForm.value.role === "ADMIN") {
+    createForm.value.store_id = null
+  }
+}
+
+function openCreateForm() {
+  showCreateForm.value = true
+  createForm.value = { email: "", password: "", role: "STAFF", store_id: null }
+  createError.value = null
+}
+
+function closeCreateForm() {
+  showCreateForm.value = false
+  createError.value = null
+}
+
+async function createUser() {
+  createLoading.value = true
+  createError.value = null
+  try {
+    await $fetch("/api/admin/users", {
+      method: "POST",
+      body: {
+        email: createForm.value.email.trim(),
+        password: createForm.value.password,
+        role: createForm.value.role,
+        store_id: createForm.value.role === "ADMIN" ? null : createForm.value.store_id,
+      },
+    })
+    closeCreateForm()
+    await load()
+  } catch (error) {
+    createError.value = statusMessage(error) ?? "Gagal membuat user"
+  } finally {
+    createLoading.value = false
+  }
+}
+
 async function save(u: UiUser) {
   u.saving = true
   u.error = null
@@ -103,10 +152,50 @@ async function save(u: UiUser) {
           <span>Cari user</span>
           <input v-model="q" class="mb-input" placeholder="email..." />
         </label>
-        <button class="mb-btn" :disabled="isLoading" @click="load">{{ isLoading ? "Loading..." : "Refresh" }}</button>
+        <div class="headerActions">
+          <button class="mb-btn" :disabled="isLoading" @click="load">{{ isLoading ? "Loading..." : "Refresh" }}</button>
+          <button class="mb-btnPrimary" @click="openCreateForm">+ Tambah User</button>
+        </div>
       </div>
       <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
     </section>
+
+    <Transition name="slide">
+      <section v-if="showCreateForm" class="mb-card createCard">
+        <h3 class="createTitle">Tambah User Baru</h3>
+        <div class="createForm">
+          <label class="field">
+            <span>Email</span>
+            <input v-model="createForm.email" class="mb-input" type="email" placeholder="user@example.com" />
+          </label>
+          <label class="field">
+            <span>Password</span>
+            <input v-model="createForm.password" class="mb-input" type="password" placeholder="min 6 karakter" />
+          </label>
+          <label class="field">
+            <span>Role</span>
+            <select v-model="createForm.role" class="select" @change="onCreateRoleChange">
+              <option value="ADMIN">ADMIN</option>
+              <option value="STAFF">STAFF</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Store</span>
+            <select v-model="createForm.store_id" class="select" :disabled="createForm.role === 'ADMIN'">
+              <option :value="null">- Pilih store -</option>
+              <option v-for="s in stores" :key="s.id" :value="s.id">{{ s.name }}</option>
+            </select>
+          </label>
+        </div>
+        <p v-if="createError" class="error">{{ createError }}</p>
+        <div class="createActions">
+          <button class="mb-btn" @click="closeCreateForm">Batal</button>
+          <button class="mb-btnPrimary" :disabled="createLoading" @click="createUser">
+            {{ createLoading ? "Menyimpan..." : "Simpan" }}
+          </button>
+        </div>
+      </section>
+    </Transition>
 
     <section class="mb-card">
       <div v-if="filtered.length" class="tableWrap">
@@ -169,12 +258,43 @@ async function save(u: UiUser) {
   justify-content: space-between;
   flex-wrap: wrap;
 }
+.headerActions {
+  display: flex;
+  gap: 8px;
+}
 .field {
   display: grid;
   gap: 6px;
   font-size: 12px;
   flex: 1;
   min-width: 240px;
+}
+.createCard {
+  border: 1px solid var(--mb-accent);
+}
+.createTitle {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+.createForm {
+  display: grid;
+  gap: 12px;
+}
+.createActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+}
+.slide-enter-active,
+.slide-leave-active {
+  transition: all 0.3s ease;
+}
+.slide-enter-from,
+.slide-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
 }
 .tableWrap {
   overflow: auto;

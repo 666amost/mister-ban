@@ -237,6 +237,10 @@ async function logout() {
         </div>
         <div class="mb-topActions">
           <slot name="top-actions" />
+          <button v-if="role === 'ADMIN'" class="mb-btnSwitch mb-mobileOnly" @click="navigateTo('/select-store')">
+            <MbIcon name="inventory" />
+            <span>Ganti Toko</span>
+          </button>
         </div>
       </header>
 

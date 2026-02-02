@@ -22,6 +22,9 @@ export default defineEventHandler(async (event) => {
       paymentType: body.payment_type,
       plateNo: body.plate_no,
       items: body.items,
+      customItems: body.custom_items,
+      discount: body.discount,
+      serviceFee: body.service_fee,
     });
   } catch (error: unknown) {
     const e = error as { code?: string; message?: string; statusCode?: number };
@@ -30,7 +33,6 @@ export default defineEventHandler(async (event) => {
     const msg = typeof e?.message === "string" ? e.message : "Unknown error";
     const code = typeof e?.code === "string" ? e.code : null;
 
-    // Common PostgreSQL codes we want to surface more clearly to the client.
     if (code === "22P02") throw createError({ statusCode: 400, statusMessage: `Invalid input (${code})` });
     if (code === "23503") throw createError({ statusCode: 400, statusMessage: `Invalid reference (${code})` });
     if (code === "23514") throw createError({ statusCode: 400, statusMessage: `Invalid data (${code})` });

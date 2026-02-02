@@ -1,23 +1,43 @@
 import type { DbConn } from "../../db/conn";
 
-export type StoreRow = { id: string; name: string };
+export type StoreListRow = { id: string; name: string };
 
-export async function listStores(db: DbConn): Promise<StoreRow[]> {
+export type StoreDetailRow = StoreListRow & {
+  code: string | null;
+  address: string | null;
+  city: string | null;
+  operating_hours: string | null;
+  status: "active" | "inactive" | null;
+};
+
+export async function listStores(db: DbConn): Promise<StoreListRow[]> {
   const { rows } = await db.query(
     "SELECT id, name FROM stores ORDER BY name ASC",
   );
-  return rows as StoreRow[];
+  return rows as StoreListRow[];
 }
 
 export async function getStoreById(
   db: DbConn,
   storeId: string,
-): Promise<StoreRow | null> {
+): Promise<StoreDetailRow | null> {
   const { rows } = await db.query(
-    "SELECT id, name FROM stores WHERE id = $1 LIMIT 1",
+    `
+      SELECT
+        id,
+        name,
+        code,
+        address,
+        city,
+        operating_hours,
+        status
+      FROM stores
+      WHERE id = $1
+      LIMIT 1
+    `,
     [storeId],
   );
-  return (rows[0] as StoreRow | undefined) ?? null;
+  return (rows[0] as StoreDetailRow | undefined) ?? null;
 }
 
 export async function storeExists(db: DbConn, storeId: string) {

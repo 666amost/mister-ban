@@ -4,6 +4,7 @@ import { getPool } from "../../../db/pool";
 import { requireUser } from "../../../modules/auth/session";
 import { resolveStoreId } from "../../../modules/store/store-context";
 import { getSaleDetail } from "../../../modules/sales/sales.service";
+import { getStoreById } from "../../../modules/stores/stores.repo";
 
 const paramsSchema = z.object({ id: z.string().uuid() });
 
@@ -25,6 +26,30 @@ function qty(value: number) {
   return Number.isInteger(value) ? String(value) : value.toLocaleString("id-ID");
 }
 
+function formatSaleDate(value: unknown) {
+  const formatter = new Intl.DateTimeFormat("id-ID", {
+    timeZone: "Asia/Jakarta",
+    weekday: "short",
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+  });
+
+  if (value instanceof Date && Number.isFinite(value.getTime())) {
+    return formatter.format(value);
+  }
+
+  if (typeof value === "string") {
+    const m = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+
+    const parsed = new Date(value);
+    if (Number.isFinite(parsed.getTime())) return formatter.format(parsed);
+  }
+
+  return String(value);
+}
+
 export default defineEventHandler(async (event) => {
   const user = await requireUser(event);
   const storeId = resolveStoreId(event, user);
@@ -40,6 +65,18 @@ export default defineEventHandler(async (event) => {
   if (!detail)
     throw createError({ statusCode: 404, statusMessage: "Sale not found" });
 
+  const store = await getStoreById(getPool(), storeId);
+  const storeName = store?.name?.trim() || "Mister Ban";
+  const storeLines = [store?.address?.trim(), store?.city?.trim()]
+    .filter((v): v is string => Boolean(v && v.length > 0))
+    .filter((v, i, arr) => arr.indexOf(v) === i);
+  const storeLinesHtml = storeLines.length
+    ? storeLines
+        .map((l) => `<div class="storeLine">${escapeHtml(l)}</div>`)
+        .join("")
+    : "";
+  const saleId = params.data.id;
+
   setHeader(event, "content-type", "text/html; charset=utf-8");
 
   type ReceiptItem = {
@@ -52,7 +89,17 @@ export default defineEventHandler(async (event) => {
     line_total: number;
   };
 
+  type CustomItem = {
+    item_name: string;
+    qty: number;
+    price: number;
+    line_total: number;
+  };
+
   const items = detail.items as ReceiptItem[];
+  const customItems = (detail.customItems ?? []) as CustomItem[];
+  const discount = (detail.sale.discount ?? 0) as number;
+
   const itemsHtml = items
     .map(
       (i) => `
@@ -69,6 +116,24 @@ export default defineEventHandler(async (event) => {
     )
     .join("");
 
+  const customItemsHtml = customItems
+    .map(
+      (ci) => `
+        <tr>
+          <td class="name">
+            <div class="sku">${escapeHtml(ci.item_name)}</div>
+            <div class="desc">Custom</div>
+          </td>
+          <td class="qty">${qty(ci.qty)}</td>
+          <td class="price">${rupiah(ci.price)}</td>
+          <td class="total">${rupiah(ci.line_total)}</td>
+        </tr>
+      `,
+    )
+    .join("");
+
+  const adjustmentsHtml = discount > 0 ? `<div class="adjustment discount"><span>Diskon</span><span>- ${rupiah(discount)}</span></div>` : "";
+
   return `
     <!doctype html>
     <html>
@@ -81,6 +146,8 @@ export default defineEventHandler(async (event) => {
           body { width: var(--w); margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-variant-numeric: tabular-nums; }
           .wrap { padding: 10px; }
           h1 { font-size: 16px; margin: 0 0 6px; text-align: center; }
+          .storeLine { font-size: 11px; text-align: center; line-height: 1.25; opacity: 0.85; }
+          .storeLine + .storeLine { margin-top: 2px; }
           .meta { font-size: 12px; margin-bottom: 8px; }
           table { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: fixed; }
           th, td { padding: 4px 0; vertical-align: top; }
@@ -95,16 +162,19 @@ export default defineEventHandler(async (event) => {
           .sku { font-weight: 700; }
           .desc { opacity: 0.85; }
           .sum { border-top: 1px dashed #000; margin-top: 6px; padding-top: 6px; display: flex; justify-content: space-between; font-size: 12px; }
+          .adjustment { display: flex; justify-content: space-between; font-size: 11px; margin-top: 4px; }
+          .adjustment.discount { color: #c00; }
           @media print { .no-print { display: none; } }
         </style>
       </head>
       <body>
         <div class="wrap">
-          <h1>Mister Ban</h1>
+          <h1>${escapeHtml(storeName)}</h1>
+          ${storeLinesHtml}
           <div class="meta">
-            <div>Tanggal: ${escapeHtml(String(detail.sale.sale_date))}</div>
+            <div>Tanggal: ${escapeHtml(formatSaleDate(detail.sale.sale_date))}</div>
             <div>Plat: ${escapeHtml(String(detail.sale.customer_plate_no))}</div>
-            <div>Payment: ${escapeHtml(String(detail.sale.payment_type))}</div>
+            <div>Pembayaran: ${escapeHtml(String(detail.sale.payment_type))}</div>
           </div>
           <table>
             <thead>
@@ -117,16 +187,26 @@ export default defineEventHandler(async (event) => {
             </thead>
             <tbody>
               ${itemsHtml}
+              ${customItemsHtml}
             </tbody>
           </table>
+          ${adjustmentsHtml}
           <div class="sum">
             <div>Total</div>
             <div>${rupiah(detail.sale.total)}</div>
           </div>
           <div class="no-print" style="margin-top:10px">
-            <button onclick="window.print()">Print</button>
+            <button onclick="mbPrint()">Cetak</button>
           </div>
         </div>
+        <script>
+          async function mbPrint() {
+            try {
+              await fetch(${JSON.stringify(`/api/sales/${saleId}/printed`)}, { method: "POST" });
+            } catch {}
+            window.print();
+          }
+        </script>
       </body>
     </html>
   `;

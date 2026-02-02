@@ -11,19 +11,55 @@ type ProductItem = {
   qty_on_hand: number
 }
 
+type SaleItemDetail = {
+  type: "product"
+  sku: string
+  brand: string
+  name: string
+  size: string
+  qty: number
+  price: number
+  line_total: number
+}
+
+type CustomItemDetail = {
+  type: "custom"
+  item_name: string
+  qty: number
+  price: number
+  line_total: number
+}
+
 type SaleRow = {
   id: string
   sale_date: string
   payment_type: string
   customer_plate_no: string
+  subtotal: number
+  discount: number
+  service_fee: number
   total: number
   created_at: string
+  printed_first_at?: string | null
+  items?: SaleItemDetail[]
+  custom_items?: CustomItemDetail[]
 }
+
+type CustomItem = { item_name: string; qty: number; price: number }
+
+type PaymentType = "CASH" | "TRANSFER" | "QRIS" | "DEBIT" | "CREDIT" | "TEMPO"
 
 const me = useMe()
 
 const plateNo = ref("")
-const paymentType = ref<"CASH" | "TRANSFER" | "QRIS" | "DEBIT" | "CREDIT" | "TEMPO">("CASH")
+const paymentType = ref<PaymentType>("CASH")
+const discount = ref(0)
+const customItems = ref<CustomItem[]>([])
+
+const newCustomName = ref("")
+const newCustomQty = ref(1)
+const newCustomPrice = ref(0)
+const showCustomForm = ref(false)
 
 const search = ref("")
 const searchLoading = ref(false)
@@ -34,6 +70,9 @@ const dropdownOpen = ref(false)
 
 const salesLoading = ref(false)
 const sales = ref<SaleRow[]>([])
+const historyQuery = ref("")
+const lastHistoryQuery = ref<string>("")
+const searchAllDates = ref(false)
 
 const submitLoading = ref(false)
 const errorMessage = ref<string | null>(null)
@@ -45,6 +84,18 @@ const showSuccessSheet = ref(false)
 
 const searchInputRef = ref<HTMLInputElement | null>(null)
 
+const isAdmin = computed(() => me.user.value?.role === "ADMIN")
+
+const editOpen = ref(false)
+const editSaleId = ref<string | null>(null)
+const editPlateNo = ref("")
+const editPaymentType = ref<PaymentType>("CASH")
+const editDiscount = ref(0)
+const editItems = ref<Array<{ product_id: string; sku: string; brand: string; name: string; size: string; qty: number; price: number }>>([])
+const editCustomItems = ref<CustomItem[]>([])
+const editSaving = ref(false)
+const editError = ref<string | null>(null)
+
 function rupiah(value: number) {
   return value.toLocaleString("id-ID")
 }
@@ -53,6 +104,43 @@ function statusMessage(error: unknown) {
   if (!error || typeof error !== "object") return null
   const e = error as Record<string, unknown>
   return typeof e.statusMessage === "string" ? e.statusMessage : null
+}
+
+function saleItemLabel(i: SaleItemDetail | CustomItemDetail) {
+  if (i.type === "custom") {
+    return `${i.item_name} x${i.qty}`
+  }
+  const base = `${i.brand} ${i.name} ${i.size}`.replace(/\s+/g, " ").trim()
+  return `${base} x${i.qty}`
+}
+
+function saleItemPreview(sale: SaleRow, maxLines = 2) {
+  const allItems: (SaleItemDetail | CustomItemDetail)[] = [
+    ...(sale.items ?? []),
+    ...(sale.custom_items ?? []),
+  ]
+  if (allItems.length === 0) return { lines: [] as string[], more: 0 }
+  const lines = allItems.slice(0, maxLines).map(saleItemLabel)
+  const more = Math.max(0, allItems.length - lines.length)
+  return { lines, more }
+}
+
+function hhmm(value: string) {
+  return new Date(value).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })
+}
+
+function formatDate(value: string) {
+  return new Date(value).toLocaleDateString("id-ID", { day: "numeric", month: "short" })
+}
+
+const salePreviewById = computed(() => {
+  const map = new Map<string, { lines: string[]; more: number }>()
+  for (const s of sales.value) map.set(s.id, saleItemPreview(s, 2))
+  return map
+})
+
+function salePreview(s: SaleRow) {
+  return salePreviewById.value.get(s.id) ?? { lines: [], more: 0 }
 }
 
 async function runSearch() {
@@ -120,12 +208,36 @@ function decrementQty(productId: string) {
   if (item && item.qty > 1) item.qty -= 1
 }
 
+function addCustomItem() {
+  if (!newCustomName.value.trim() || newCustomQty.value < 1 || newCustomPrice.value < 0) return
+  customItems.value.push({
+    item_name: newCustomName.value.trim(),
+    qty: newCustomQty.value,
+    price: newCustomPrice.value,
+  })
+  newCustomName.value = ""
+  newCustomQty.value = 1
+  newCustomPrice.value = 0
+  showCustomForm.value = false
+}
+
+function removeCustomItem(idx: number) {
+  customItems.value.splice(idx, 1)
+}
+
 async function loadSales() {
   salesLoading.value = true
   errorMessage.value = null
   try {
+    const query: Record<string, string | undefined> = {
+      limit: "50",
+      q: lastHistoryQuery.value || undefined,
+    }
+    if (isAdmin.value && searchAllDates.value) {
+      query.all_dates = "true"
+    }
     const res = await $fetch<{ items: SaleRow[] }>("/api/sales", { 
-      query: { limit: 50 },
+      query,
       headers: { Accept: 'application/json' },
     })
     sales.value = res.items
@@ -142,8 +254,23 @@ onMounted(async () => {
   await loadSales()
 })
 
-const totalPreview = computed(() => selected.value.reduce((sum, x) => sum + x.qty * x.product.sell_price, 0))
-const itemCount = computed(() => selected.value.reduce((sum, x) => sum + x.qty, 0))
+let historyDebounceTimer: ReturnType<typeof setTimeout> | null = null
+
+watch(historyQuery, (v) => {
+  if (activeTab.value !== "history") return
+  const term = v.trim()
+  if (historyDebounceTimer) clearTimeout(historyDebounceTimer)
+  historyDebounceTimer = setTimeout(() => {
+    lastHistoryQuery.value = term
+    loadSales()
+  }, 300)
+})
+
+const productSubtotal = computed(() => selected.value.reduce((sum, x) => sum + x.qty * x.product.sell_price, 0))
+const customSubtotal = computed(() => customItems.value.reduce((sum, x) => sum + x.qty * x.price, 0))
+const subtotalPreview = computed(() => productSubtotal.value + customSubtotal.value)
+const totalPreview = computed(() => subtotalPreview.value - discount.value)
+const itemCount = computed(() => selected.value.reduce((sum, x) => sum + x.qty, 0) + customItems.value.reduce((sum, x) => sum + x.qty, 0))
 
 async function submit() {
   errorMessage.value = null
@@ -152,8 +279,8 @@ async function submit() {
     errorMessage.value = "Plat nomor wajib diisi"
     return
   }
-  if (selected.value.length === 0) {
-    errorMessage.value = "Pilih minimal 1 item"
+  if (selected.value.length === 0 && customItems.value.length === 0) {
+    errorMessage.value = "Pilih minimal 1 item produk atau custom item"
     return
   }
 
@@ -164,13 +291,17 @@ async function submit() {
       body: {
         plate_no: plateNo.value.trim(),
         payment_type: paymentType.value,
-        items: selected.value.map((x) => ({ product_id: x.product.product_id, qty: x.qty }))
+        items: selected.value.map((x) => ({ product_id: x.product.product_id, qty: x.qty })),
+        custom_items: customItems.value,
+        discount: discount.value,
       }
     })
     lastSaleId.value = res.sale_id
     showSuccessSheet.value = true
     plateNo.value = ""
     selected.value = []
+    customItems.value = []
+    discount.value = 0
     await loadSales()
   } catch (error) {
     errorMessage.value = statusMessage(error) ?? "Gagal submit sales"
@@ -179,15 +310,110 @@ async function submit() {
   }
 }
 
+function openReceipt(saleId: string) {
+  window.open(`/api/sales/${saleId}/receipt`, "_blank")
+}
+
 function printReceipt() {
   if (lastSaleId.value) {
-    window.open(`/api/sales/${lastSaleId.value}/receipt`, '_blank')
+    openReceipt(lastSaleId.value)
   }
 }
 
 function closeSuccessSheet() {
   showSuccessSheet.value = false
   lastSaleId.value = null
+}
+
+function openEditSale(s: SaleRow) {
+  editSaleId.value = s.id
+  editPlateNo.value = s.customer_plate_no
+  editPaymentType.value = s.payment_type as PaymentType
+  editDiscount.value = s.discount ?? 0
+  editItems.value = (s.items ?? []).map((i) => ({
+    product_id: "",
+    sku: i.sku,
+    brand: i.brand,
+    name: i.name,
+    size: i.size,
+    qty: i.qty,
+    price: i.price,
+  }))
+  editCustomItems.value = (s.custom_items ?? []).map((c) => ({
+    item_name: c.item_name,
+    qty: c.qty,
+    price: c.price,
+  }))
+  editError.value = null
+  editOpen.value = true
+}
+
+function closeEditSale() {
+  editOpen.value = false
+  editSaleId.value = null
+  editSaving.value = false
+  editError.value = null
+  editItems.value = []
+  editCustomItems.value = []
+}
+
+function removeEditCustomItem(idx: number) {
+  editCustomItems.value.splice(idx, 1)
+}
+
+const editNewCustomName = ref("")
+const editNewCustomQty = ref(1)
+const editNewCustomPrice = ref(0)
+const showEditCustomForm = ref(false)
+
+function addEditCustomItem() {
+  if (!editNewCustomName.value.trim() || editNewCustomQty.value < 1 || editNewCustomPrice.value < 0) return
+  editCustomItems.value.push({
+    item_name: editNewCustomName.value.trim(),
+    qty: editNewCustomQty.value,
+    price: editNewCustomPrice.value,
+  })
+  editNewCustomName.value = ""
+  editNewCustomQty.value = 1
+  editNewCustomPrice.value = 0
+  showEditCustomForm.value = false
+}
+
+const editSubtotal = computed(() => {
+  const productTotal = editItems.value.reduce((sum, i) => sum + i.qty * i.price, 0)
+  const customTotal = editCustomItems.value.reduce((sum, i) => sum + i.qty * i.price, 0)
+  return productTotal + customTotal
+})
+
+const editTotal = computed(() => editSubtotal.value - editDiscount.value)
+
+async function saveEditSale() {
+  if (!editSaleId.value) return
+  const plate = editPlateNo.value.trim()
+  if (!plate) {
+    editError.value = "Plat nomor wajib diisi"
+    return
+  }
+
+  editSaving.value = true
+  editError.value = null
+  try {
+    await $fetch(`/api/sales/${editSaleId.value}`, {
+      method: "PATCH",
+      body: {
+        plate_no: plate,
+        payment_type: editPaymentType.value,
+        discount: editDiscount.value,
+        custom_items: editCustomItems.value,
+      },
+    })
+    closeEditSale()
+    await loadSales()
+  } catch (error) {
+    editError.value = statusMessage(error) ?? "Gagal update sales"
+  } finally {
+    editSaving.value = false
+  }
 }
 
 async function newTransaction() {
@@ -289,7 +515,7 @@ async function newTransaction() {
         </div>
       </div>
 
-      <div v-if="selected.length" class="cartSection">
+      <div v-if="selected.length || customItems.length" class="cartSection">
         <div class="cartHeader">
           <span class="cartTitle">Item Transaksi</span>
           <span class="cartBadge">{{ itemCount }} item</span>
@@ -320,6 +546,21 @@ async function newTransaction() {
             </div>
             <div class="cartItemTotal">Rp {{ rupiah(x.qty * x.product.sell_price) }}</div>
           </div>
+          <div v-for="(ci, idx) in customItems" :key="'ci-' + idx" class="cartItem customCartItem">
+            <button class="removeBtn" @click="removeCustomItem(idx)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M18 6L6 18M6 6l12 12" />
+              </svg>
+            </button>
+            <div class="cartItemInfo">
+              <div class="cartItemName">{{ ci.item_name }}</div>
+              <div class="cartItemMeta">Custom • Rp {{ rupiah(ci.price) }}</div>
+            </div>
+            <div class="qtyControl">
+              <span class="qtyValue">{{ ci.qty }}</span>
+            </div>
+            <div class="cartItemTotal">Rp {{ rupiah(ci.qty * ci.price) }}</div>
+          </div>
         </div>
       </div>
 
@@ -329,6 +570,29 @@ async function newTransaction() {
         </svg>
         <span>Belum ada item</span>
         <span class="emptyHint">Cari produk untuk ditambahkan ke transaksi</span>
+      </div>
+
+      <div class="customItemSection">
+        <button v-if="!showCustomForm" type="button" class="addCustomBtn" @click="showCustomForm = true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+          Tambah Item Custom (Jasa/Lain-lain)
+        </button>
+        <div v-else class="customForm">
+          <div class="customFormTitle">Item Custom</div>
+          <div class="customFormFields">
+            <input v-model="newCustomName" class="formInput" placeholder="Nama item (cth: Ongkos Pasang)" />
+            <div class="customFormRow">
+              <input v-model.number="newCustomQty" class="formInput formInputSmall" type="number" min="1" placeholder="Qty" />
+              <input v-model.number="newCustomPrice" class="formInput" type="number" min="0" placeholder="Harga" />
+            </div>
+          </div>
+          <div class="customFormActions">
+            <button type="button" class="mb-btn" @click="showCustomForm = false">Batal</button>
+            <button type="button" class="mb-btnPrimary" @click="addCustomItem">Tambah</button>
+          </div>
+        </div>
       </div>
 
       <div class="formSection">
@@ -355,6 +619,12 @@ async function newTransaction() {
             {{ pt }}
           </button>
         </div>
+        <div class="adjustmentRow">
+          <label class="formField formFieldSmall">
+            <span class="formLabel">Diskon</span>
+            <input v-model.number="discount" class="formInput" type="number" min="0" placeholder="0" />
+          </label>
+        </div>
       </div>
 
       <p v-if="errorMessage" class="errorMsg">{{ errorMessage }}</p>
@@ -362,60 +632,132 @@ async function newTransaction() {
 
     <div class="tabContent" :class="{ hidden: activeTab !== 'history' }">
       <div class="historyHeader">
-        <span class="historyTitle">Sales Hari Ini</span>
-        <button class="refreshBtn" :disabled="salesLoading" @click="loadSales">
-          <svg 
-            class="refreshIcon" 
-            :class="{ spinning: salesLoading }"
-            viewBox="0 0 24 24" 
-            fill="none" 
-            stroke="currentColor" 
-            stroke-width="2"
+        <span class="historyTitle">{{ searchAllDates ? 'Semua Sales' : 'Sales Hari Ini' }}</span>
+        <div class="historyHeaderActions">
+          <label v-if="isAdmin" class="allDatesToggle">
+            <input v-model="searchAllDates" type="checkbox" @change="loadSales()" />
+            <span>Semua tanggal</span>
+          </label>
+          <button
+            class="refreshBtn"
+            :disabled="salesLoading"
+            @click="lastHistoryQuery = historyQuery.trim(); loadSales()"
           >
-            <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-          </svg>
-        </button>
+            <svg 
+              class="refreshIcon" 
+              :class="{ spinning: salesLoading }"
+              viewBox="0 0 24 24" 
+              fill="none" 
+              stroke="currentColor" 
+              stroke-width="2"
+            >
+              <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </button>
+        </div>
       </div>
 
-      <div v-if="salesLoading && isInitialLoad" class="loadingState">
-        <MbSkeleton :count="5" height="72px" />
+      <div class="historySearchBar">
+        <div class="historySearchWrap">
+          <svg class="historySearchIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8" />
+            <path d="m21 21-4.35-4.35" />
+          </svg>
+          <input
+            v-model="historyQuery"
+            class="historySearchInput"
+            type="search"
+            inputmode="search"
+            placeholder="Cari plat nomor / item..."
+            @keydown.enter.prevent="lastHistoryQuery = historyQuery.trim(); loadSales()"
+          />
+          <button
+            v-if="historyQuery"
+            type="button"
+            class="historyClearBtn"
+            @click="historyQuery = ''; lastHistoryQuery = ''; loadSales()"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div v-if="salesLoading" class="loadingState">
+        <MbSkeleton :count="isInitialLoad ? 5 : 3" height="72px" />
       </div>
 
       <div v-else-if="sales.length" class="salesList">
-        <a 
+        <div
           v-for="s in sales" 
           :key="s.id" 
-          :href="`/api/sales/${s.id}/receipt`"
-          target="_blank"
-          rel="noreferrer"
           class="saleCard"
+          role="button"
+          tabindex="0"
+          @click="openReceipt(s.id)"
+          @keydown.enter.prevent="openReceipt(s.id)"
         >
           <div class="saleInfo">
-            <div class="salePlate">{{ s.customer_plate_no }}</div>
+            <div v-if="salePreview(s).lines.length" class="saleItemsTop">
+              <div v-for="(line, idx) in salePreview(s).lines" :key="idx" class="saleItemLineTop">
+                {{ line }}
+              </div>
+              <div v-if="salePreview(s).more" class="saleItemMoreTop">+{{ salePreview(s).more }} item</div>
+            </div>
+            <div v-else class="saleItemsTop">
+              <div class="saleItemLineTop">{{ s.customer_plate_no }}</div>
+            </div>
             <div class="saleMeta">
-              <span class="saleTime">
-                {{ new Date(s.created_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) }}
-              </span>
+              <span class="salePlateBadge">{{ s.customer_plate_no }}</span>
+              <span v-if="searchAllDates" class="saleDateBadge">{{ formatDate(s.sale_date) }}</span>
+              <span class="saleTime">{{ hhmm(s.created_at) }}</span>
               <span class="salePayment">{{ s.payment_type }}</span>
+              <span v-if="s.discount > 0" class="saleDiscount">-{{ rupiah(s.discount) }}</span>
             </div>
           </div>
           <div class="saleRight">
             <div class="saleTotal">Rp {{ rupiah(s.total) }}</div>
-            <div class="printLabel">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-              </svg>
-              Print
+            <div class="saleActions">
+              <a
+                class="printLabel"
+                :href="`/api/sales/${s.id}/receipt`"
+                target="_blank"
+                rel="noreferrer"
+                @click.stop
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                </svg>
+                Cetak
+              </a>
+              <button
+                v-if="isAdmin"
+                type="button"
+                class="editLabel"
+                @click.stop="openEditSale(s)"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path
+                    d="M12 20h9"
+                  />
+                  <path
+                    d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4 12.5-12.5z"
+                  />
+                </svg>
+                Edit
+              </button>
             </div>
           </div>
-        </a>
+        </div>
       </div>
 
       <div v-else class="emptyHistory">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
           <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
         </svg>
-        <span>Belum ada transaksi hari ini</span>
+        <span v-if="historyQuery.trim()">Tidak ada transaksi yang cocok</span>
+        <span v-else>Belum ada transaksi hari ini</span>
       </div>
     </div>
 
@@ -458,13 +800,121 @@ async function newTransaction() {
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
                 </svg>
-                Print Struk
+                Cetak Struk
               </button>
               <button class="newTxBtn" @click="newTransaction">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M12 5v14M5 12h14" />
                 </svg>
                 Transaksi Baru
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <Teleport to="body">
+      <Transition name="sheet">
+        <div v-if="editOpen" class="successOverlay" @click.self="closeEditSale">
+          <div class="editSheet">
+            <div class="editTitle">Edit Transaksi</div>
+            <div v-if="editSaleId" class="editSub">ID: {{ editSaleId.slice(0, 8) }}</div>
+
+            <div class="formSection editForm">
+              <div class="formRow">
+                <label class="formField">
+                  <span class="formLabel">Plat Nomor</span>
+                  <input
+                    v-model="editPlateNo"
+                    class="formInput"
+                    placeholder="B 1234 ABC"
+                    inputmode="text"
+                    autocapitalize="characters"
+                  />
+                </label>
+              </div>
+              <div class="paymentGrid">
+                <button
+                  v-for="pt in ['CASH', 'QRIS', 'TRANSFER', 'DEBIT', 'CREDIT', 'TEMPO'] as const"
+                  :key="pt"
+                  type="button"
+                  class="paymentBtn"
+                  :class="{ active: editPaymentType === pt }"
+                  @click="editPaymentType = pt"
+                >
+                  {{ pt }}
+                </button>
+              </div>
+              
+              <div v-if="editItems.length" class="editItemsList">
+                <div class="editItemsTitle">Item Produk</div>
+                <div v-for="(ei, idx) in editItems" :key="'ei-' + idx" class="editItemRow">
+                  <span class="editItemName">{{ ei.brand }} {{ ei.name }} {{ ei.size }}</span>
+                  <span class="editItemQty">x{{ ei.qty }}</span>
+                  <span class="editItemPrice">{{ rupiah(ei.qty * ei.price) }}</span>
+                </div>
+              </div>
+
+              <div v-if="editCustomItems.length" class="editItemsList">
+                <div class="editItemsTitle">Item Custom</div>
+                <div v-for="(ec, idx) in editCustomItems" :key="'ec-' + idx" class="editItemRow">
+                  <span class="editItemName">{{ ec.item_name }}</span>
+                  <span class="editItemQty">x{{ ec.qty }}</span>
+                  <span class="editItemPrice">{{ rupiah(ec.qty * ec.price) }}</span>
+                  <button type="button" class="editItemRemove" @click="removeEditCustomItem(idx)">×</button>
+                </div>
+              </div>
+
+              <div class="customItemSection editCustomSection">
+                <button v-if="!showEditCustomForm" type="button" class="addCustomBtn" @click="showEditCustomForm = true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 5v14M5 12h14" />
+                  </svg>
+                  Tambah Item Custom
+                </button>
+                <div v-else class="customForm">
+                  <div class="customFormFields">
+                    <input v-model="editNewCustomName" class="formInput" placeholder="Nama item" />
+                    <div class="customFormRow">
+                      <input v-model.number="editNewCustomQty" class="formInput formInputSmall" type="number" min="1" placeholder="Qty" />
+                      <input v-model.number="editNewCustomPrice" class="formInput" type="number" min="0" placeholder="Harga" />
+                    </div>
+                  </div>
+                  <div class="customFormActions">
+                    <button type="button" class="mb-btn" @click="showEditCustomForm = false">Batal</button>
+                    <button type="button" class="mb-btnPrimary" @click="addEditCustomItem">Tambah</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="adjustmentRow">
+                <label class="formField formFieldSmall">
+                  <span class="formLabel">Diskon</span>
+                  <input v-model.number="editDiscount" class="formInput" type="number" min="0" placeholder="0" />
+                </label>
+              </div>
+
+              <div class="editTotalRow">
+                <span>Total: </span>
+                <strong>Rp {{ rupiah(editTotal) }}</strong>
+              </div>
+            </div>
+
+            <p v-if="editError" class="errorMsg">{{ editError }}</p>
+
+            <div class="editActions">
+              <button type="button" class="newTxBtn" :disabled="editSaving" @click="closeEditSale">
+                Batal
+              </button>
+              <button type="button" class="printBtn" :disabled="editSaving" @click="saveEditSale">
+                <template v-if="editSaving">
+                  <div class="spinner light" />
+                  <span>Menyimpan...</span>
+                </template>
+                <template v-else>
+                  Simpan
+                </template>
               </button>
             </div>
           </div>
@@ -964,6 +1414,56 @@ async function newTransaction() {
   font-size: 18px;
 }
 
+.historySearchBar {
+  margin-bottom: 8px;
+}
+
+.historySearchWrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 48px;
+  padding: 0 14px;
+  border: 1px solid var(--mb-border2);
+  border-radius: 14px;
+  background: var(--mb-surface);
+}
+
+.historySearchIcon {
+  width: 18px;
+  height: 18px;
+  color: var(--mb-muted);
+  flex: none;
+}
+
+.historySearchInput {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--mb-text);
+  font-size: 15px;
+}
+
+.historyClearBtn {
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--mb-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.historyClearBtn svg {
+  width: 18px;
+  height: 18px;
+}
+
 .refreshBtn {
   width: 40px;
   height: 40px;
@@ -999,7 +1499,7 @@ async function newTransaction() {
 .saleCard {
   display: grid;
   grid-template-columns: 1fr auto;
-  align-items: center;
+  align-items: flex-start;
   gap: 12px;
   padding: 14px 16px;
   border: 1px solid var(--mb-border2);
@@ -1007,7 +1507,13 @@ async function newTransaction() {
   background: var(--mb-surface);
   text-decoration: none;
   color: inherit;
+  cursor: pointer;
   transition: all 0.15s ease;
+}
+
+.saleCard:focus-visible {
+  outline: 3px solid rgba(52, 199, 89, 0.25);
+  outline-offset: 2px;
 }
 
 .saleCard:active {
@@ -1019,24 +1525,57 @@ async function newTransaction() {
   min-width: 0;
 }
 
-.salePlate {
+.saleItemsTop {
+  display: grid;
+  gap: 2px;
+}
+
+.saleItemLineTop {
   font-weight: 800;
-  font-size: 16px;
+  font-size: 14px;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.saleItemMoreTop {
+  font-size: 12px;
+  color: var(--mb-muted);
 }
 
 .saleMeta {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 4px;
+  margin-top: 6px;
   font-size: 13px;
   color: var(--mb-muted);
+}
+
+.salePlateBadge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #111;
+  color: #fff;
+  font-weight: 800;
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: nowrap;
 }
 
 .salePayment {
   padding: 2px 8px;
   border-radius: 6px;
   background: var(--mb-surface2);
+  font-weight: 600;
+  font-size: 11px;
+}
+
+.salePrinted {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.05);
   font-weight: 600;
   font-size: 11px;
 }
@@ -1050,20 +1589,86 @@ async function newTransaction() {
   font-size: 16px;
 }
 
+.saleActions {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+  margin-top: 4px;
+}
+
 .printLabel {
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 4px;
-  margin-top: 4px;
   font-size: 12px;
   color: var(--mb-accent);
   font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
 }
 
 .printLabel svg {
   width: 14px;
   height: 14px;
+}
+
+.editLabel {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-size: 12px;
+  color: var(--mb-muted);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.editLabel svg {
+  width: 14px;
+  height: 14px;
+}
+
+.editLabel:hover {
+  color: var(--mb-text);
+}
+
+@media (max-width: 420px) {
+  .saleCard {
+    grid-template-columns: 1fr;
+  }
+
+  .saleMeta {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+
+  .salePlateBadge {
+    max-width: 52vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .saleRight {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 10px;
+  }
+
+  .saleTotal {
+    font-size: 15px;
+  }
+
+  .saleActions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 0;
+  }
 }
 
 .emptyHistory {
@@ -1168,6 +1773,39 @@ async function newTransaction() {
   text-align: center;
 }
 
+.editSheet {
+  width: 100%;
+  max-width: 420px;
+  padding: 24px 20px;
+  padding-bottom: max(24px, env(safe-area-inset-bottom));
+  background: var(--mb-surface);
+  border-radius: 24px 24px 0 0;
+}
+
+.editTitle {
+  text-align: center;
+  font-weight: 900;
+  font-size: 20px;
+}
+
+.editSub {
+  margin-top: 6px;
+  text-align: center;
+  color: var(--mb-muted);
+  font-size: 12px;
+}
+
+.editForm {
+  margin-top: 16px;
+}
+
+.editActions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 18px;
+}
+
 .successIcon {
   width: 64px;
   height: 64px;
@@ -1252,8 +1890,206 @@ async function newTransaction() {
 }
 
 .sheet-enter-from .successSheet,
-.sheet-leave-to .successSheet {
+.sheet-leave-to .successSheet,
+.sheet-enter-from .editSheet,
+.sheet-leave-to .editSheet {
   transform: translateY(100%);
+}
+
+.customItemSection {
+  margin-top: 12px;
+}
+
+.addCustomBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px dashed var(--mb-border2);
+  border-radius: 14px;
+  background: transparent;
+  color: var(--mb-muted);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.addCustomBtn:hover {
+  border-color: var(--mb-accent);
+  color: var(--mb-accent);
+}
+
+.addCustomBtn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.customForm {
+  padding: 16px;
+  border: 1px solid var(--mb-border2);
+  border-radius: 14px;
+  background: var(--mb-surface);
+}
+
+.customFormTitle {
+  font-weight: 700;
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+
+.customFormFields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.customFormRow {
+  display: flex;
+  gap: 10px;
+}
+
+.formInputSmall {
+  width: 80px;
+  flex-shrink: 0;
+}
+
+.customFormActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.customCartItem {
+  background: rgba(52, 199, 89, 0.04);
+}
+
+.adjustmentRow {
+  display: flex;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.formFieldSmall {
+  flex: 1;
+}
+
+.historyHeaderActions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.allDatesToggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--mb-muted);
+  cursor: pointer;
+}
+
+.allDatesToggle input {
+  accent-color: var(--mb-accent);
+}
+
+.saleDateBadge {
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(0, 122, 255, 0.1);
+  color: #007aff;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.saleDiscount {
+  color: #ff3b30;
+  font-size: 11px;
+}
+
+.saleService {
+  color: var(--mb-accent);
+  font-size: 11px;
+}
+
+.editItemsList {
+  margin-top: 16px;
+  padding: 12px;
+  background: var(--mb-surface2);
+  border-radius: 12px;
+}
+
+.editItemsTitle {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--mb-muted);
+  margin-bottom: 8px;
+}
+
+.editItemRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--mb-border2);
+  font-size: 13px;
+}
+
+.editItemRow:last-child {
+  border-bottom: none;
+}
+
+.editItemName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editItemQty {
+  color: var(--mb-muted);
+  font-size: 12px;
+}
+
+.editItemPrice {
+  font-weight: 600;
+}
+
+.editItemRemove {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 6px;
+  background: rgba(255, 59, 48, 0.1);
+  color: #ff3b30;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.editCustomSection {
+  margin-top: 16px;
+}
+
+.editTotalRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 0 0;
+  border-top: 1px solid var(--mb-border2);
+  margin-top: 16px;
+  font-size: 16px;
+}
+
+.editTotalRow strong {
+  font-size: 18px;
+  color: var(--mb-accent);
 }
 
 @media (min-width: 768px) {
@@ -1273,6 +2109,13 @@ async function newTransaction() {
   .successSheet {
     border-radius: 24px;
     margin-bottom: 20px;
+  }
+
+  .editSheet {
+    border-radius: 24px;
+    margin-bottom: 20px;
+    max-height: 90vh;
+    overflow-y: auto;
   }
 }
 
