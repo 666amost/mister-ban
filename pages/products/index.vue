@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted } from "vue"
+import { computed, onMounted } from "vue"
 
 definePageMeta({ middleware: "admin" })
 
@@ -9,6 +9,7 @@ type ProductRow = {
   name: string
   size: string
   brand: string
+  product_type: string
   sell_price: number
   qty_on_hand: number
   avg_unit_cost: number
@@ -25,8 +26,62 @@ type MasterProductRow = {
 
 const items = ref<ProductRow[]>([])
 const isLoading = ref(false)
+const isLoadingMore = ref(false)
 const errorMessage = ref<string | null>(null)
 const q = ref("")
+const pageLimit = ref(100)
+const pageOffset = ref(0)
+const currentPage = ref(1)
+const hasMore = ref(true)
+const expandedBrands = ref<Set<string>>(new Set())
+const expandedTypes = ref<Set<string>>(new Set())
+
+const groupedItems = computed(() => {
+  const brandMap = new Map<string, Map<string, ProductRow[]>>()
+  for (const row of items.value) {
+    const brandKey = row.brand?.trim() || "Lainnya"
+    const typeKey = row.product_type?.trim() || "Lainnya"
+    let typeMap = brandMap.get(brandKey)
+    if (!typeMap) {
+      typeMap = new Map()
+      brandMap.set(brandKey, typeMap)
+    }
+    const bucket = typeMap.get(typeKey)
+    if (bucket) {
+      bucket.push(row)
+    } else {
+      typeMap.set(typeKey, [row])
+    }
+  }
+  return Array.from(brandMap.entries()).map(([brand, typeMap]) => {
+    const types = Array.from(typeMap.entries()).map(([type, rows]) => ({
+      type,
+      rows,
+      total: rows.length,
+    }))
+    const total = types.reduce((acc, curr) => acc + curr.total, 0)
+    return { brand, types, total }
+  })
+})
+
+function toggleBrand(brand: string) {
+  if (expandedBrands.value.has(brand)) {
+    expandedBrands.value.delete(brand)
+  } else {
+    expandedBrands.value.add(brand)
+  }
+  expandedBrands.value = new Set(expandedBrands.value)
+}
+
+function toggleType(brand: string, type: string) {
+  const key = `${brand}||${type}`
+  if (expandedTypes.value.has(key)) {
+    expandedTypes.value.delete(key)
+  } else {
+    expandedTypes.value.add(key)
+  }
+  expandedTypes.value = new Set(expandedTypes.value)
+}
 
 const bulkMode = ref(false)
 const bulkType = ref<'price' | 'stock'>('price')
@@ -119,28 +174,65 @@ function statusMessage(error: unknown) {
   return typeof e.statusMessage === "string" ? e.statusMessage : null
 }
 
-async function load() {
-  isLoading.value = true
-  errorMessage.value = null
+async function load(options?: { reset?: boolean }) {
+  const reset = options?.reset ?? true
+  if (reset) {
+    isLoading.value = true
+    errorMessage.value = null
+    pageOffset.value = 0
+    currentPage.value = 1
+    hasMore.value = true
+  } else {
+    isLoadingMore.value = true
+  }
   try {
-    const res = await $fetch<{ items: ProductRow[] }>("/api/products", { 
-      query: { q: q.value, limit: 200 },
-      headers: { Accept: 'application/json' },
+    if (!reset) {
+      pageOffset.value = (currentPage.value - 1) * pageLimit.value
+    }
+    const res = await $fetch<{ items: ProductRow[] }>("/api/products", {
+      query: { q: q.value, limit: pageLimit.value, offset: pageOffset.value },
+      headers: { Accept: "application/json" },
     })
-    items.value = res.items
+    const nextItems = res.items
+    items.value = nextItems
+    pageOffset.value = (currentPage.value - 1) * pageLimit.value + nextItems.length
+    hasMore.value = nextItems.length === pageLimit.value
   } catch (error) {
     errorMessage.value = statusMessage(error) ?? "Gagal memuat products"
-    console.error('Products load error:', error)
+    console.error("Products load error:", error)
   } finally {
-    isLoading.value = false
+    if (reset) {
+      isLoading.value = false
+    } else {
+      isLoadingMore.value = false
+    }
   }
+}
+
+async function loadMore() {
+  if (isLoading.value || isLoadingMore.value || !hasMore.value) return
+  currentPage.value += 1
+  await load({ reset: false })
+}
+
+async function goPrevPage() {
+  if (isLoading.value || isLoadingMore.value || currentPage.value <= 1) return
+  currentPage.value -= 1
+  await load({ reset: false })
+}
+
+async function goToPage(page: number) {
+  if (isLoading.value || isLoadingMore.value) return
+  if (!Number.isFinite(page) || page < 1) return
+  currentPage.value = Math.trunc(page)
+  await load({ reset: false })
 }
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 watch(q, () => {
   if (debounceTimer) clearTimeout(debounceTimer)
   debounceTimer = setTimeout(() => {
-    load()
+    load({ reset: true })
   }, 300)
 })
 
@@ -179,7 +271,7 @@ async function createProduct() {
     })
     resetCreateForm()
     showAdd.value = false
-    await load()
+    await load({ reset: true })
   } catch (error) {
     createError.value = statusMessage(error) ?? "Gagal membuat produk"
   } finally {
@@ -235,7 +327,7 @@ async function attachSelected() {
         },
       })
     }
-    await load()
+    await load({ reset: true })
     selectedMaster.value = null
   } catch (error) {
     attachError.value = statusMessage(error) ?? "Gagal menambahkan produk ke toko"
@@ -262,7 +354,7 @@ async function saveEdit(productId: string) {
   try {
     await $fetch(`/api/products/${productId}`, { method: "PATCH", body: { sell_price: editSellPrice.value } })
     cancelEdit()
-    await load()
+    await load({ reset: true })
   } catch (error) {
     editError.value = statusMessage(error) ?? "Gagal update sell price"
   } finally {
@@ -293,7 +385,7 @@ async function saveEditMaster(productId: string) {
       body: { name: masterName.value, size: masterSize.value },
     })
     cancelEditMaster()
-    await load()
+    await load({ reset: true })
   } catch (error) {
     masterEditError.value = statusMessage(error) ?? "Gagal update master product"
   } finally {
@@ -309,7 +401,7 @@ async function removeFromStore(productId: string) {
     if (editingId.value === productId) cancelEdit()
     if (stockingId.value === productId) cancelStock()
     if (editingMasterId.value === productId) cancelEditMaster()
-    await load()
+    await load({ reset: true })
   } catch (error) {
     removeError.value = statusMessage(error) ?? "Gagal menghapus produk dari toko"
   } finally {
@@ -347,7 +439,7 @@ async function submitStock(productId: string) {
       },
     })
     cancelStock()
-    await load()
+    await load({ reset: true })
   } catch (error) {
     stockError.value = statusMessage(error) ?? "Gagal adjust stok"
   } finally {
@@ -414,7 +506,7 @@ async function submitBulkPriceUpdate() {
     bulkQtyDelta.value = 0
     bulkUnitCost.value = 0
     bulkNote.value = ''
-    await load()
+    await load({ reset: true })
   } catch (error) {
     bulkError.value = statusMessage(error) ?? (bulkType.value === 'price' ? "Gagal update harga massal" : "Gagal adjust stok massal")
   } finally {
@@ -433,7 +525,7 @@ function cancelBulk() {
 }
 
 onMounted(async () => {
-  await load()
+  await load({ reset: true })
 })
 </script>
 
@@ -443,10 +535,10 @@ onMounted(async () => {
       <div class="row">
         <label class="field">
           <span>Cari</span>
-          <input v-model="q" class="mb-input" placeholder="SKU / brand / nama..." @keydown.enter.prevent="load" />
+          <input v-model="q" class="mb-input" placeholder="SKU / brand / nama..." @keydown.enter.prevent="load({ reset: true })" />
         </label>
         <div class="rowActions">
-          <button class="mb-btn" :disabled="isLoading" @click="load">{{ isLoading ? "Loading..." : "Search" }}</button>
+          <button class="mb-btn" :disabled="isLoading" @click="load({ reset: true })">{{ isLoading ? "Loading..." : "Search" }}</button>
           <button :class="bulkMode ? 'mb-btnDanger' : 'mb-btn'" type="button" @click="bulkMode ? cancelBulk() : bulkMode = true">
             {{ bulkMode ? "Cancel Bulk" : "Bulk Update" }}
           </button>
@@ -620,102 +712,148 @@ onMounted(async () => {
             </tr>
           </thead>
           <tbody>
-            <template v-for="i in items" :key="i.product_id">
-              <tr>
-                <td v-if="bulkMode" style="text-align: center">
-                  <input type="checkbox" :checked="bulkSelected.has(i.product_id)" @change="toggleBulkSelect(i.product_id)" />
-                </td>
-                <td class="mono">{{ i.sku }}</td>
-                <td>
-                  <div class="strong">{{ i.brand }} {{ i.name }}</div>
-                  <div class="muted">{{ i.size }}</div>
-                </td>
-                <td style="text-align: right">Rp {{ rupiah(i.sell_price) }}</td>
-                <td style="text-align: right">{{ i.qty_on_hand }}</td>
-                <td v-if="!bulkMode" style="text-align: right">
-                  <div class="btnGroup">
-                    <button class="mb-btn" type="button" @click="startEdit(i)">Harga</button>
-                    <button class="mb-btn" type="button" @click="startStock(i)">Stok</button>
-                    <button class="mb-btn" type="button" @click="startEditMaster(i)">Nama</button>
-                    <button class="mb-btn" type="button" :disabled="removingId === i.product_id" @click="removeFromStore(i.product_id)">
-                      {{ removingId === i.product_id ? "..." : "Hapus" }}
-                    </button>
-                  </div>
+            <template v-for="group in groupedItems" :key="group.brand">
+              <tr class="groupRow">
+                <td :colspan="bulkMode ? 6 : 5">
+                  <button class="groupToggle" type="button" @click="toggleBrand(group.brand)">
+                    <span class="chevron">{{ expandedBrands.has(group.brand) ? "▾" : "▸" }}</span>
+                    {{ group.brand }} ({{ group.total }})
+                  </button>
                 </td>
               </tr>
-              <tr v-if="editingId === i.product_id">
-                <td colspan="5">
-                  <div class="editRow">
-                    <label class="field smallField">
-                      <span>Sell Price (Rp)</span>
-                      <input v-model.number="editSellPrice" class="mb-input" type="number" min="0" />
-                    </label>
-                    <button class="mb-btnPrimary" type="button" :disabled="editLoading" @click="saveEdit(i.product_id)">
-                      {{ editLoading ? "Saving..." : "Save" }}
-                    </button>
-                    <button class="mb-btn" type="button" :disabled="editLoading" @click="cancelEdit">Cancel</button>
-                    <span v-if="editError" class="errorInline">{{ editError }}</span>
-                  </div>
-                </td>
-              </tr>
-              <tr v-if="editingMasterId === i.product_id">
-                <td colspan="5">
-                  <div class="editRow">
-                    <label class="field smallField">
-                      <span>Nama</span>
-                      <input v-model="masterName" class="mb-input" />
-                    </label>
-                    <label class="field smallField">
-                      <span>Size</span>
-                      <input v-model="masterSize" class="mb-input" />
-                    </label>
-                    <button
-                      class="mb-btnPrimary"
-                      type="button"
-                      :disabled="masterEditLoading"
-                      @click="saveEditMaster(i.product_id)"
-                    >
-                      {{ masterEditLoading ? "Saving..." : "Save" }}
-                    </button>
-                    <button class="mb-btn" type="button" :disabled="masterEditLoading" @click="cancelEditMaster">
-                      Cancel
-                    </button>
-                    <span v-if="masterEditError" class="errorInline">{{ masterEditError }}</span>
-                  </div>
-                </td>
-              </tr>
-              <tr v-if="stockingId === i.product_id">
-                <td colspan="5">
-                  <div class="editRow">
-                    <label class="field smallField">
-                      <span>Qty Delta</span>
-                      <input v-model.number="stockQtyDelta" class="mb-input" type="number" step="1" />
-                    </label>
-                    <label class="field smallField">
-                      <span>Unit Cost (Rp)</span>
-                      <input v-model.number="stockUnitCost" class="mb-input" type="number" min="0" step="1" />
-                    </label>
-                    <label class="field noteField">
-                      <span>Note</span>
-                      <input v-model="stockNote" class="mb-input" placeholder="Optional" />
-                    </label>
-                    <button class="mb-btnPrimary" type="button" :disabled="stockLoading" @click="submitStock(i.product_id)">
-                      {{ stockLoading ? "Saving..." : "Save" }}
-                    </button>
-                    <button class="mb-btn" type="button" :disabled="stockLoading" @click="cancelStock">Cancel</button>
-                    <span v-if="stockError" class="errorInline">{{ stockError }}</span>
-                  </div>
-                  <div class="hint">
-                    Tips: Qty Delta <strong>+10</strong> untuk tambah stok. Untuk tambah stok, isi Unit Cost supaya avg cost ter-update.
-                  </div>
-                </td>
-              </tr>
+              <template v-if="expandedBrands.has(group.brand)">
+                <template v-for="typeGroup in group.types" :key="`${group.brand}::${typeGroup.type}`">
+                  <tr class="typeRow">
+                    <td :colspan="bulkMode ? 6 : 5">
+                      <button class="typeToggle" type="button" @click="toggleType(group.brand, typeGroup.type)">
+                        <span class="chevron">{{ expandedTypes.has(`${group.brand}||${typeGroup.type}`) ? "▾" : "▸" }}</span>
+                        {{ typeGroup.type }} ({{ typeGroup.total }})
+                      </button>
+                    </td>
+                  </tr>
+                  <template v-if="expandedTypes.has(`${group.brand}||${typeGroup.type}`)">
+                    <template v-for="i in typeGroup.rows" :key="i.product_id">
+                      <tr>
+                        <td v-if="bulkMode" style="text-align: center">
+                          <input type="checkbox" :checked="bulkSelected.has(i.product_id)" @change="toggleBulkSelect(i.product_id)" />
+                        </td>
+                        <td class="mono">{{ i.sku }}</td>
+                        <td>
+                          <div class="strong">{{ i.name }}</div>
+                          <div class="muted">{{ i.size }}</div>
+                        </td>
+                        <td style="text-align: right">Rp {{ rupiah(i.sell_price) }}</td>
+                        <td style="text-align: right">{{ i.qty_on_hand }}</td>
+                        <td v-if="!bulkMode" style="text-align: right">
+                          <div class="btnGroup">
+                            <button class="mb-btn" type="button" @click="startEdit(i)">Harga</button>
+                            <button class="mb-btn" type="button" @click="startStock(i)">Stok</button>
+                            <button class="mb-btn" type="button" @click="startEditMaster(i)">Nama</button>
+                            <button class="mb-btn" type="button" :disabled="removingId === i.product_id" @click="removeFromStore(i.product_id)">
+                              {{ removingId === i.product_id ? "..." : "Hapus" }}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                      <tr v-if="editingId === i.product_id">
+                        <td :colspan="bulkMode ? 6 : 5">
+                          <div class="editRow">
+                            <label class="field smallField">
+                              <span>Sell Price (Rp)</span>
+                              <input v-model.number="editSellPrice" class="mb-input" type="number" min="0" />
+                            </label>
+                            <button class="mb-btnPrimary" type="button" :disabled="editLoading" @click="saveEdit(i.product_id)">
+                              {{ editLoading ? "Saving..." : "Save" }}
+                            </button>
+                            <button class="mb-btn" type="button" :disabled="editLoading" @click="cancelEdit">Cancel</button>
+                            <span v-if="editError" class="errorInline">{{ editError }}</span>
+                          </div>
+                        </td>
+                      </tr>
+                      <tr v-if="editingMasterId === i.product_id">
+                        <td :colspan="bulkMode ? 6 : 5">
+                          <div class="editRow">
+                            <label class="field smallField">
+                              <span>Nama</span>
+                              <input v-model="masterName" class="mb-input" />
+                            </label>
+                            <label class="field smallField">
+                              <span>Size</span>
+                              <input v-model="masterSize" class="mb-input" />
+                            </label>
+                            <button
+                              class="mb-btnPrimary"
+                              type="button"
+                              :disabled="masterEditLoading"
+                              @click="saveEditMaster(i.product_id)"
+                            >
+                              {{ masterEditLoading ? "Saving..." : "Save" }}
+                            </button>
+                            <button class="mb-btn" type="button" :disabled="masterEditLoading" @click="cancelEditMaster">
+                              Cancel
+                            </button>
+                            <span v-if="masterEditError" class="errorInline">{{ masterEditError }}</span>
+                          </div>
+                        </td>
+                      </tr>
+                      <tr v-if="stockingId === i.product_id">
+                        <td :colspan="bulkMode ? 6 : 5">
+                          <div class="editRow">
+                            <label class="field smallField">
+                              <span>Qty Delta</span>
+                              <input v-model.number="stockQtyDelta" class="mb-input" type="number" step="1" />
+                            </label>
+                            <label class="field smallField">
+                              <span>Unit Cost (Rp)</span>
+                              <input v-model.number="stockUnitCost" class="mb-input" type="number" min="0" step="1" />
+                            </label>
+                            <label class="field noteField">
+                              <span>Note</span>
+                              <input v-model="stockNote" class="mb-input" placeholder="Optional" />
+                            </label>
+                            <button class="mb-btnPrimary" type="button" :disabled="stockLoading" @click="submitStock(i.product_id)">
+                              {{ stockLoading ? "Saving..." : "Save" }}
+                            </button>
+                            <button class="mb-btn" type="button" :disabled="stockLoading" @click="cancelStock">Cancel</button>
+                            <span v-if="stockError" class="errorInline">{{ stockError }}</span>
+                          </div>
+                          <div class="hint">
+                            Tips: Qty Delta <strong>+10</strong> untuk tambah stok. Untuk tambah stok, isi Unit Cost supaya avg cost ter-update.
+                          </div>
+                        </td>
+                      </tr>
+                    </template>
+                  </template>
+                </template>
+              </template>
             </template>
           </tbody>
         </table>
       </div>
 
-      <div v-else class="empty">Tidak ada data.</div>
+      <div v-else-if="!isLoading" class="empty">Tidak ada data.</div>
+      <div v-if="items.length" class="paginationBar">
+        <div class="muted">Halaman {{ currentPage }} • {{ items.length }} item</div>
+        <div class="pager">
+          <button class="mb-btn" type="button" :disabled="isLoading || isLoadingMore || currentPage <= 1" @click="goPrevPage">
+            Prev
+          </button>
+          <label class="pageInput">
+            <span>Page</span>
+            <input
+              :value="currentPage"
+              class="mb-input"
+              type="number"
+              min="1"
+              step="1"
+              @change="goToPage(Number(($event.target as HTMLInputElement).value))"
+            />
+          </label>
+          <button class="mb-btn" type="button" :disabled="isLoading || isLoadingMore || !hasMore" @click="loadMore">
+            {{ isLoadingMore ? "Loading..." : "Next" }}
+          </button>
+        </div>
+      </div>
       <p v-if="removeError" class="error">{{ removeError }}</p>
     </section>
   </div>
@@ -835,10 +973,80 @@ onMounted(async () => {
   margin-top: 12px;
   overflow: auto;
 }
+.paginationBar {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.pager {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.pageInput {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--mb-muted);
+}
+.pageInput .mb-input {
+  width: 90px;
+}
 .table {
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
+}
+.groupRow td {
+  background: rgba(52, 199, 89, 0.08);
+  border-bottom: 1px solid rgba(52, 199, 89, 0.25);
+}
+.groupToggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  background: transparent;
+  padding: 6px 4px;
+  font-weight: 800;
+  font-size: 12px;
+  color: var(--mb-text);
+  cursor: pointer;
+  text-align: left;
+}
+.typeRow td {
+  background: rgba(52, 199, 89, 0.04);
+  border-bottom: 1px solid rgba(52, 199, 89, 0.18);
+}
+.typeToggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  background: transparent;
+  padding: 6px 16px;
+  font-weight: 700;
+  font-size: 12px;
+  color: var(--mb-text);
+  cursor: pointer;
+  text-align: left;
+}
+.chevron {
+  width: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.groupTitle {
+  font-weight: 800;
+  font-size: 12px;
+  color: var(--mb-text);
 }
 th,
 td {

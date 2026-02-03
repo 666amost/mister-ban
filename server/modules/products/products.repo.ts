@@ -6,6 +6,7 @@ export type StoreProductRow = {
   name: string;
   size: string;
   brand: string;
+  product_type: string;
   sell_price: number;
   qty_on_hand: number;
   avg_unit_cost: number;
@@ -43,15 +44,16 @@ export async function listStoreProducts(
         p.name,
         p.size,
         b.name AS brand,
+        p.product_type,
         sp.sell_price,
         COALESCE(ib.qty_on_hand, 0) AS qty_on_hand,
         COALESCE(ib.avg_unit_cost, 0) AS avg_unit_cost
       FROM store_products sp
-      INNER JOIN products p ON p.id = sp.product_id AND p.status = 'active'
+      INNER JOIN products p ON p.id = sp.product_id AND p.is_active = true
       INNER JOIN brands b ON b.id = p.brand_id
       LEFT JOIN inventory_balances ib ON ib.store_id = sp.store_id AND ib.product_id = sp.product_id
       WHERE sp.store_id = $1
-        AND sp.status = 'active'
+        AND sp.is_active = true
         AND (
           $2::text IS NULL
           OR p.sku ILIKE '%' || $2 || '%'
@@ -92,10 +94,10 @@ export async function listMasterProducts(
         p.size,
         b.name AS brand,
         p.product_type,
-        p.status = 'active' AS is_active
+        p.is_active
       FROM products p
       INNER JOIN brands b ON b.id = p.brand_id
-      WHERE p.status = 'active'
+      WHERE p.is_active = true
         AND (
           $1::text IS NULL
           OR p.sku ILIKE '%' || $1 || '%'
@@ -145,14 +147,13 @@ export async function createProduct(
     isActive: boolean;
   },
 ) {
-  const status = isActive ? 'active' : 'inactive';
   const { rows } = await db.query<{ id: string }>(
     `
-      INSERT INTO products (brand_id, product_type, name, size, sku, status)
+      INSERT INTO products (brand_id, product_type, name, size, sku, is_active)
       VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING id
     `,
-    [brandId, productType, name, size, sku, status],
+    [brandId, productType, name, size, sku, isActive],
   );
   return rows[0]?.id as string;
 }
@@ -171,15 +172,14 @@ export async function attachProductToStore(
     isActive: boolean;
   },
 ) {
-  const status = isActive ? 'active' : 'inactive';
   await db.query(
     `
-      INSERT INTO store_products (store_id, product_id, sell_price, status)
+      INSERT INTO store_products (store_id, product_id, sell_price, is_active)
       VALUES ($1, $2, $3, $4)
       ON CONFLICT (store_id, product_id)
-      DO UPDATE SET sell_price = EXCLUDED.sell_price, status = EXCLUDED.status
+      DO UPDATE SET sell_price = EXCLUDED.sell_price, is_active = EXCLUDED.is_active
     `,
-    [storeId, productId, sellPrice, status],
+    [storeId, productId, sellPrice, isActive],
   );
 }
 
@@ -197,18 +197,17 @@ export async function updateStoreProduct(
     isActive?: boolean;
   },
 ) {
-  const status = isActive !== undefined ? (isActive ? 'active' : 'inactive') : null;
   const { rows } = await db.query(
     `
       UPDATE store_products
       SET
         sell_price = $3,
-        status = COALESCE($4, status)
+        is_active = COALESCE($4::boolean, is_active)
       WHERE store_id = $1
         AND product_id = $2
-      RETURNING store_id, product_id, sell_price, status
+      RETURNING store_id, product_id, sell_price, is_active
     `,
-    [storeId, productId, sellPrice, status],
+    [storeId, productId, sellPrice, isActive !== undefined ? isActive : null],
   );
   return rows[0] ?? null;
 }
@@ -225,16 +224,15 @@ export async function setStoreProductActive(
     isActive: boolean;
   },
 ) {
-  const status = isActive ? 'active' : 'inactive';
   const { rows } = await db.query(
     `
       UPDATE store_products
-      SET status = $3
+      SET is_active = $3
       WHERE store_id = $1
         AND product_id = $2
-      RETURNING store_id, product_id, sell_price, status
+      RETURNING store_id, product_id, sell_price, is_active
     `,
-    [storeId, productId, status],
+    [storeId, productId, isActive],
   );
   return rows[0] ?? null;
 }
@@ -255,7 +253,6 @@ export async function updateMasterProduct(
     isActive?: boolean;
   },
 ) {
-  const status = isActive !== undefined ? (isActive ? 'active' : 'inactive') : null;
   const { rows } = await db.query(
     `
       UPDATE products
@@ -263,11 +260,11 @@ export async function updateMasterProduct(
         name = COALESCE($2, name),
         size = COALESCE($3, size),
         product_type = COALESCE($4, product_type),
-        status = COALESCE($5, status)
+        is_active = COALESCE($5::boolean, is_active)
       WHERE id = $1
-      RETURNING id AS product_id, name, size, product_type, status
+      RETURNING id AS product_id, name, size, product_type, is_active
     `,
-    [productId, name ?? null, size ?? null, productType ?? null, status],
+    [productId, name ?? null, size ?? null, productType ?? null, isActive !== undefined ? isActive : null],
   );
   return rows[0] ?? null;
 }
