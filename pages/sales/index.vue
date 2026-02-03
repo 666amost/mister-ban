@@ -13,6 +13,7 @@ type ProductItem = {
 
 type SaleItemDetail = {
   type: "product"
+  product_id: string
   sku: string
   brand: string
   name: string
@@ -92,9 +93,16 @@ const editPlateNo = ref("")
 const editPaymentType = ref<PaymentType>("CASH")
 const editDiscount = ref(0)
 const editItems = ref<Array<{ product_id: string; sku: string; brand: string; name: string; size: string; qty: number; price: number }>>([])
+const editOriginalItems = ref<Array<{ product_id: string; qty: number }>>([])
 const editCustomItems = ref<CustomItem[]>([])
 const editSaving = ref(false)
 const editError = ref<string | null>(null)
+
+const editSearch = ref("")
+const editSearchLoading = ref(false)
+const editSearchRan = ref(false)
+const editProducts = ref<ProductItem[]>([])
+const editDropdownOpen = ref(false)
 
 function rupiah(value: number) {
   return value.toLocaleString("id-ID")
@@ -331,7 +339,7 @@ function openEditSale(s: SaleRow) {
   editPaymentType.value = s.payment_type as PaymentType
   editDiscount.value = s.discount ?? 0
   editItems.value = (s.items ?? []).map((i) => ({
-    product_id: "",
+    product_id: i.product_id,
     sku: i.sku,
     brand: i.brand,
     name: i.name,
@@ -339,12 +347,17 @@ function openEditSale(s: SaleRow) {
     qty: i.qty,
     price: i.price,
   }))
+  editOriginalItems.value = editItems.value.map((i) => ({ product_id: i.product_id, qty: i.qty }))
   editCustomItems.value = (s.custom_items ?? []).map((c) => ({
     item_name: c.item_name,
     qty: c.qty,
     price: c.price,
   }))
   editError.value = null
+  editSearch.value = ""
+  editProducts.value = []
+  editDropdownOpen.value = false
+  editSearchRan.value = false
   editOpen.value = true
 }
 
@@ -354,7 +367,97 @@ function closeEditSale() {
   editSaving.value = false
   editError.value = null
   editItems.value = []
+  editOriginalItems.value = []
   editCustomItems.value = []
+  editSearch.value = ""
+  editProducts.value = []
+  editDropdownOpen.value = false
+  editSearchRan.value = false
+}
+
+async function runEditSearch() {
+  editSearchLoading.value = true
+  editError.value = null
+  try {
+    const res = await $fetch<{ items: ProductItem[] }>("/api/products", {
+      query: { q: editSearch.value, limit: 20 },
+      headers: { Accept: "application/json" },
+    })
+    editProducts.value = res.items
+  } catch (error) {
+    editError.value = statusMessage(error) ?? "Gagal mencari produk"
+    console.error("Edit product search error:", error)
+  } finally {
+    editSearchLoading.value = false
+    editSearchRan.value = true
+  }
+}
+
+let editSearchDebounceTimer: ReturnType<typeof setTimeout> | null = null
+
+watch(editSearch, (v) => {
+  if (!editOpen.value) return
+  const term = v.trim()
+  editDropdownOpen.value = term.length > 0
+  editSearchRan.value = false
+  if (term.length < 2) {
+    editProducts.value = []
+    return
+  }
+
+  if (editSearchDebounceTimer) clearTimeout(editSearchDebounceTimer)
+  editSearchDebounceTimer = setTimeout(() => {
+    runEditSearch()
+  }, 300)
+})
+
+function addEditProduct(p: ProductItem) {
+  if (p.qty_on_hand <= 0) return
+  const existing = editItems.value.find((x) => x.product_id === p.product_id)
+  if (existing) {
+    existing.qty += 1
+    editSearch.value = ""
+    editProducts.value = []
+    editDropdownOpen.value = false
+    return
+  }
+  editItems.value.push({
+    product_id: p.product_id,
+    sku: p.sku,
+    brand: p.brand,
+    name: p.name,
+    size: p.size,
+    qty: 1,
+    price: p.sell_price,
+  })
+  editSearch.value = ""
+  editProducts.value = []
+  editDropdownOpen.value = false
+}
+
+function removeEditProduct(productId: string) {
+  editItems.value = editItems.value.filter((x) => x.product_id !== productId)
+}
+
+function incrementEditQty(productId: string) {
+  const item = editItems.value.find((x) => x.product_id === productId)
+  if (item) item.qty += 1
+}
+
+function decrementEditQty(productId: string) {
+  const item = editItems.value.find((x) => x.product_id === productId)
+  if (item && item.qty > 1) item.qty -= 1
+}
+
+function sameItems(a: Array<{ product_id: string; qty: number }>, b: Array<{ product_id: string; qty: number }>) {
+  if (a.length !== b.length) return false
+  const sa = [...a].sort((x, y) => x.product_id.localeCompare(y.product_id))
+  const sb = [...b].sort((x, y) => x.product_id.localeCompare(y.product_id))
+  for (let i = 0; i < sa.length; i += 1) {
+    if (sa[i]?.product_id !== sb[i]?.product_id) return false
+    if (sa[i]?.qty !== sb[i]?.qty) return false
+  }
+  return true
 }
 
 function removeEditCustomItem(idx: number) {
@@ -395,6 +498,9 @@ async function saveEditSale() {
     return
   }
 
+  const currentItems = editItems.value.map((i) => ({ product_id: i.product_id, qty: i.qty }))
+  const includeItems = !sameItems(editOriginalItems.value, currentItems)
+
   editSaving.value = true
   editError.value = null
   try {
@@ -404,6 +510,7 @@ async function saveEditSale() {
         plate_no: plate,
         payment_type: editPaymentType.value,
         discount: editDiscount.value,
+        items: includeItems ? currentItems : undefined,
         custom_items: editCustomItems.value,
       },
     })
@@ -822,6 +929,65 @@ async function newTransaction() {
             <div v-if="editSaleId" class="editSub">ID: {{ editSaleId.slice(0, 8) }}</div>
 
             <div class="formSection editForm">
+              <div class="searchSection editSearchSection">
+                <div class="searchWrapper">
+                  <svg class="searchIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8" />
+                    <path d="m21 21-4.35-4.35" />
+                  </svg>
+                  <input
+                    v-model="editSearch"
+                    class="searchInput"
+                    type="search"
+                    inputmode="search"
+                    placeholder="Tambah produk (SKU / brand / nama)..."
+                    @keydown.enter.prevent="runEditSearch"
+                    @keydown.esc.prevent="editDropdownOpen = false"
+                    @focus="editDropdownOpen = true"
+                  />
+                  <button v-if="editSearch" class="clearBtn" @click="editSearch = ''; editProducts = []">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M18 6L6 18M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+
+                <div v-if="editDropdownOpen && (editProducts.length || editSearchLoading || editSearchRan)" class="searchResults">
+                  <div v-if="editSearchLoading" class="searchLoading">
+                    <div class="spinner" />
+                    <span>Mencari...</span>
+                  </div>
+                  <template v-else-if="editProducts.length">
+                    <button
+                      v-for="p in editProducts"
+                      :key="p.product_id"
+                      type="button"
+                      class="productCard"
+                      :disabled="p.qty_on_hand <= 0"
+                      @click="addEditProduct(p)"
+                    >
+                      <div class="productInfo">
+                        <div class="productName">{{ p.brand }} {{ p.name }}</div>
+                        <div class="productMeta">{{ p.size }} • {{ p.sku }}</div>
+                      </div>
+                      <div class="productRight">
+                        <div class="productPrice">Rp {{ rupiah(p.sell_price) }}</div>
+                        <div class="productStock" :class="{ low: p.qty_on_hand <= 5 }">Stok: {{ p.qty_on_hand }}</div>
+                      </div>
+                      <svg class="addIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <path d="M12 5v14M5 12h14" />
+                      </svg>
+                    </button>
+                  </template>
+                  <div v-else-if="editSearchRan" class="noResults">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                      <path d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span>Produk tidak ditemukan</span>
+                  </div>
+                </div>
+              </div>
+
               <div class="formRow">
                 <label class="formField">
                   <span class="formLabel">Plat Nomor</span>
@@ -851,8 +1017,13 @@ async function newTransaction() {
                 <div class="editItemsTitle">Item Produk</div>
                 <div v-for="(ei, idx) in editItems" :key="'ei-' + idx" class="editItemRow">
                   <span class="editItemName">{{ ei.brand }} {{ ei.name }} {{ ei.size }}</span>
-                  <span class="editItemQty">x{{ ei.qty }}</span>
+                  <div class="editQtyControls">
+                    <button type="button" class="qtyBtn" @click="decrementEditQty(ei.product_id)">-</button>
+                    <span class="qtyValue">{{ ei.qty }}</span>
+                    <button type="button" class="qtyBtn" @click="incrementEditQty(ei.product_id)">+</button>
+                  </div>
                   <span class="editItemPrice">{{ rupiah(ei.qty * ei.price) }}</span>
+                  <button type="button" class="editItemRemove" @click="removeEditProduct(ei.product_id)">×</button>
                 </div>
               </div>
 

@@ -432,7 +432,6 @@ function cancelBulk() {
   bulkError.value = null
 }
 
-const route = useRoute()
 onMounted(async () => {
   await load()
 })

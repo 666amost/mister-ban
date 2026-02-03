@@ -248,8 +248,28 @@ export async function listSales({
   const hasPrinted = await hasPrintedFirstAtColumn(db);
   const search = q?.trim() || null;
 
-  const dateFilter = allDates ? "" : "AND s.sale_date = $2::date";
-  
+  const params: Array<string | number | null> = [storeId];
+  let nextParam = 2;
+
+  let dateFilter = "";
+  if (!allDates) {
+    dateFilter = `AND s.sale_date = $${nextParam}::date`;
+    params.push(date);
+    nextParam += 1;
+  }
+
+  const searchParam = nextParam;
+  params.push(search);
+  nextParam += 1;
+
+  const limitParam = nextParam;
+  params.push(limit);
+  nextParam += 1;
+
+  const offsetParam = nextParam;
+  params.push(offset);
+  nextParam += 1;
+
   const sql = `
     SELECT
       s.id,
@@ -267,6 +287,7 @@ export async function listSales({
           SELECT json_agg(
             json_build_object(
               'type', 'product',
+              'product_id', si.product_id,
               'sku', p.sku,
               'brand', b.name,
               'name', p.name,
@@ -305,8 +326,8 @@ export async function listSales({
     WHERE s.store_id = $1
       ${dateFilter}
       AND (
-        $5::text IS NULL
-        OR s.customer_plate_no ILIKE '%' || $5 || '%'
+        $${searchParam}::text IS NULL
+        OR s.customer_plate_no ILIKE '%' || $${searchParam} || '%'
         OR EXISTS (
           SELECT 1
           FROM sales_items si2
@@ -314,24 +335,24 @@ export async function listSales({
           JOIN brands b2 ON b2.id = p2.brand_id
           WHERE si2.sale_id = s.id
             AND (
-              p2.sku ILIKE '%' || $5 || '%'
-              OR p2.name ILIKE '%' || $5 || '%'
-              OR p2.size ILIKE '%' || $5 || '%'
-              OR b2.name ILIKE '%' || $5 || '%'
+              p2.sku ILIKE '%' || $${searchParam} || '%'
+              OR p2.name ILIKE '%' || $${searchParam} || '%'
+              OR p2.size ILIKE '%' || $${searchParam} || '%'
+              OR b2.name ILIKE '%' || $${searchParam} || '%'
             )
         )
         OR EXISTS (
           SELECT 1
           FROM sales_custom_items sci2
           WHERE sci2.sale_id = s.id
-            AND sci2.item_name ILIKE '%' || $5 || '%'
+            AND sci2.item_name ILIKE '%' || $${searchParam} || '%'
         )
       )
     ORDER BY s.created_at DESC
-    LIMIT $3 OFFSET $4
+    LIMIT $${limitParam} OFFSET $${offsetParam}
   `;
 
-  const { rows } = await db.query(sql, [storeId, date, limit, offset, search]);
+  const { rows } = await db.query(sql, params);
   return rows;
 }
 
