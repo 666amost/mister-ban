@@ -18,6 +18,11 @@ const items = ref<InventoryRow[]>([])
 const isLoading = ref(false)
 const errorMessage = ref<string | null>(null)
 const q = ref("")
+const pageLimit = ref(50)
+const pageOffset = ref(0)
+const currentPage = ref(1)
+const hasMore = ref(true)
+const pageInput = ref(1)
 
 const bulkMode = ref(false)
 const bulkQtyDelta = ref(0)
@@ -44,17 +49,66 @@ function statusMessage(error: unknown) {
   return typeof e.statusMessage === "string" ? e.statusMessage : null
 }
 
-async function load() {
+function resetPaging() {
+  pageOffset.value = 0
+  currentPage.value = 1
+  pageInput.value = 1
+  hasMore.value = true
+}
+
+async function load(options?: { reset?: boolean }) {
+  const reset = options?.reset ?? false
+  if (reset) resetPaging()
   isLoading.value = true
   errorMessage.value = null
   try {
-    const res = await $fetch<{ items: InventoryRow[] }>("/api/inventory", { query: { q: q.value, limit: 200 } })
+    const res = await $fetch<{ items: InventoryRow[] }>("/api/inventory", {
+      query: {
+        q: q.value,
+        limit: pageLimit.value,
+        offset: pageOffset.value,
+      },
+    })
     items.value = res.items
+    hasMore.value = res.items.length === pageLimit.value
+
+    // selections are per-page to avoid accidental bulk adjust on hidden items
+    if (bulkMode.value) bulkSelected.value = new Set()
+    if (adjustingId.value && !res.items.some((i) => i.product_id === adjustingId.value)) cancelAdjust()
   } catch (error) {
     errorMessage.value = statusMessage(error) ?? "Gagal memuat inventory"
   } finally {
     isLoading.value = false
   }
+}
+
+async function nextPage() {
+  if (isLoading.value || !hasMore.value) return
+  pageOffset.value += pageLimit.value
+  currentPage.value += 1
+  pageInput.value = currentPage.value
+  await load()
+}
+
+async function prevPage() {
+  if (isLoading.value || currentPage.value <= 1) return
+  pageOffset.value = Math.max(0, pageOffset.value - pageLimit.value)
+  currentPage.value = Math.max(1, currentPage.value - 1)
+  pageInput.value = currentPage.value
+  await load()
+}
+
+async function jumpToPage() {
+  if (isLoading.value) return
+  const target = Math.max(1, Math.floor(pageInput.value || 1))
+  currentPage.value = target
+  pageOffset.value = (target - 1) * pageLimit.value
+  await load()
+}
+
+function clearSearch() {
+  q.value = ""
+  load({ reset: true })
 }
 
 function startAdjust(row: InventoryRow) {
@@ -168,7 +222,7 @@ function cancelBulk() {
 }
 
 onMounted(async () => {
-  await load()
+  await load({ reset: true })
 })
 </script>
 
@@ -178,9 +232,10 @@ onMounted(async () => {
       <div class="row">
         <label class="field">
           <span>Cari</span>
-          <input v-model="q" class="mb-input" placeholder="SKU / brand / nama..." @keydown.enter.prevent="load" />
+          <input v-model="q" class="mb-input" placeholder="SKU / brand / nama..." @keydown.enter.prevent="load({ reset: true })" />
         </label>
-        <button class="mb-btn" :disabled="isLoading" @click="load">{{ isLoading ? "Loading..." : "Search" }}</button>
+        <button class="mb-btn" :disabled="isLoading" @click="load({ reset: true })">{{ isLoading ? "Loading..." : "Search" }}</button>
+        <button v-if="q.trim().length" class="mb-btn" :disabled="isLoading" @click="clearSearch">Clear</button>
         <button v-if="me.user.value?.role === 'ADMIN'" :class="bulkMode ? 'mb-btnDanger' : 'mb-btn'" @click="bulkMode ? cancelBulk() : bulkMode = true">
           {{ bulkMode ? "Cancel Bulk" : "Bulk Adjust" }}
         </button>
@@ -283,6 +338,18 @@ onMounted(async () => {
 
       <div v-else class="empty">Tidak ada data.</div>
       <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
+
+      <div class="paginationBar">
+        <div class="pager">
+          <button class="mb-btn" :disabled="isLoading || currentPage <= 1" @click="prevPage">Prev</button>
+          <button class="mb-btn" :disabled="isLoading || !hasMore" @click="nextPage">Next</button>
+        </div>
+        <div class="pageInput">
+          <span>Page</span>
+          <input v-model.number="pageInput" class="mb-input" type="number" min="1" step="1" @keydown.enter.prevent="jumpToPage" />
+          <button class="mb-btn" :disabled="isLoading || pageInput === currentPage" @click="jumpToPage">Go</button>
+        </div>
+      </div>
     </section>
   </div>
 </template>
@@ -329,6 +396,30 @@ onMounted(async () => {
 .tableWrap {
   margin-top: 12px;
   overflow: auto;
+}
+.paginationBar {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.pager {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.pageInput {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--mb-muted);
+}
+.pageInput .mb-input {
+  width: 90px;
 }
 .table {
   width: 100%;

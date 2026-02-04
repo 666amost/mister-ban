@@ -72,19 +72,19 @@ export async function listInventory(
         p.name,
         p.size,
         b.name AS brand,
-        ib.qty_on_hand,
-        ib.avg_unit_cost,
+        COALESCE(ib.qty_on_hand, 0) AS qty_on_hand,
+        COALESCE(ib.avg_unit_cost, 0) AS avg_unit_cost,
         sp.sell_price
-      FROM inventory_balances ib
-      JOIN products p ON p.id = ib.product_id
+      FROM store_products sp
+      JOIN products p ON p.id = sp.product_id
       JOIN brands b ON b.id = p.brand_id
-      LEFT JOIN store_products sp
-        ON sp.store_id = ib.store_id
-       AND sp.product_id = ib.product_id
-       AND sp.status = 'active'
-      WHERE ib.store_id = $1
+      LEFT JOIN inventory_balances ib
+        ON ib.store_id = sp.store_id
+       AND ib.product_id = sp.product_id
+      WHERE sp.store_id = $1
+        AND sp.status = 'active'
         AND p.status = 'active'
-        AND ib.qty_on_hand > 0
+        AND sp.sell_price > 0
         AND (
           $2::text IS NULL
           OR p.sku ILIKE '%' || $2 || '%'

@@ -36,45 +36,69 @@ const hasMore = ref(true)
 const expandedBrands = ref<Set<string>>(new Set())
 const expandedTypes = ref<Set<string>>(new Set())
 
+function canonicalBrandLabel(raw: string) {
+  const brand = raw.trim()
+  if (!brand) return "Lainnya"
+
+  const lower = brand.toLowerCase()
+  if (lower.startsWith("maxxis")) return "Maxxis"
+  if (lower === "victra" || lower.startsWith("victra ")) return "Maxxis"
+
+  return brand
+}
+
 const groupedItems = computed(() => {
-  const brandMap = new Map<string, Map<string, ProductRow[]>>()
+  const brandMap = new Map<string, { key: string; label: string; typeMap: Map<string, ProductRow[]> }>()
   for (const row of items.value) {
-    const brandKey = row.brand?.trim() || "Lainnya"
+    const brandLabel = canonicalBrandLabel(row.brand?.trim() || "Lainnya")
+    const brandKey = brandLabel.toLowerCase()
     const typeKey = row.product_type?.trim() || "Lainnya"
-    let typeMap = brandMap.get(brandKey)
-    if (!typeMap) {
-      typeMap = new Map()
-      brandMap.set(brandKey, typeMap)
+    let group = brandMap.get(brandKey)
+    if (!group) {
+      group = { key: brandKey, label: brandLabel, typeMap: new Map() }
+      brandMap.set(brandKey, group)
     }
-    const bucket = typeMap.get(typeKey)
+    const bucket = group.typeMap.get(typeKey)
     if (bucket) {
       bucket.push(row)
     } else {
-      typeMap.set(typeKey, [row])
+      group.typeMap.set(typeKey, [row])
     }
   }
-  return Array.from(brandMap.entries()).map(([brand, typeMap]) => {
-    const types = Array.from(typeMap.entries()).map(([type, rows]) => ({
-      type,
-      rows,
-      total: rows.length,
-    }))
+
+  const groups = Array.from(brandMap.values()).map((g) => {
+    const types = Array.from(g.typeMap.entries())
+      .map(([type, rows]) => ({
+        type,
+        rows: rows.slice().sort((a, b) => {
+          const byName = a.name.localeCompare(b.name, "id-ID", { sensitivity: "base" })
+          if (byName) return byName
+          const bySize = a.size.localeCompare(b.size, "id-ID", { sensitivity: "base" })
+          if (bySize) return bySize
+          return a.sku.localeCompare(b.sku, "id-ID", { sensitivity: "base" })
+        }),
+        total: rows.length,
+      }))
+      .sort((a, b) => a.type.localeCompare(b.type, "id-ID", { sensitivity: "base" }))
+
     const total = types.reduce((acc, curr) => acc + curr.total, 0)
-    return { brand, types, total }
+    return { key: g.key, label: g.label, types, total }
   })
+
+  return groups.sort((a, b) => a.label.localeCompare(b.label, "id-ID", { sensitivity: "base" }))
 })
 
-function toggleBrand(brand: string) {
-  if (expandedBrands.value.has(brand)) {
-    expandedBrands.value.delete(brand)
+function toggleBrand(brandKey: string) {
+  if (expandedBrands.value.has(brandKey)) {
+    expandedBrands.value.delete(brandKey)
   } else {
-    expandedBrands.value.add(brand)
+    expandedBrands.value.add(brandKey)
   }
   expandedBrands.value = new Set(expandedBrands.value)
 }
 
-function toggleType(brand: string, type: string) {
-  const key = `${brand}||${type}`
+function toggleType(brandKey: string, type: string) {
+  const key = `${brandKey}||${type}`
   if (expandedTypes.value.has(key)) {
     expandedTypes.value.delete(key)
   } else {
@@ -712,26 +736,26 @@ onMounted(async () => {
             </tr>
           </thead>
           <tbody>
-            <template v-for="group in groupedItems" :key="group.brand">
+            <template v-for="group in groupedItems" :key="group.key">
               <tr class="groupRow">
                 <td :colspan="bulkMode ? 6 : 5">
-                  <button class="groupToggle" type="button" @click="toggleBrand(group.brand)">
-                    <span class="chevron">{{ expandedBrands.has(group.brand) ? "▾" : "▸" }}</span>
-                    {{ group.brand }} ({{ group.total }})
+                  <button class="groupToggle" type="button" @click="toggleBrand(group.key)">
+                    <span class="chevron">{{ expandedBrands.has(group.key) ? "▾" : "▸" }}</span>
+                    {{ group.label }} ({{ group.total }})
                   </button>
                 </td>
               </tr>
-              <template v-if="expandedBrands.has(group.brand)">
-                <template v-for="typeGroup in group.types" :key="`${group.brand}::${typeGroup.type}`">
+              <template v-if="expandedBrands.has(group.key)">
+                <template v-for="typeGroup in group.types" :key="`${group.key}::${typeGroup.type}`">
                   <tr class="typeRow">
                     <td :colspan="bulkMode ? 6 : 5">
-                      <button class="typeToggle" type="button" @click="toggleType(group.brand, typeGroup.type)">
-                        <span class="chevron">{{ expandedTypes.has(`${group.brand}||${typeGroup.type}`) ? "▾" : "▸" }}</span>
+                      <button class="typeToggle" type="button" @click="toggleType(group.key, typeGroup.type)">
+                        <span class="chevron">{{ expandedTypes.has(`${group.key}||${typeGroup.type}`) ? "▾" : "▸" }}</span>
                         {{ typeGroup.type }} ({{ typeGroup.total }})
                       </button>
                     </td>
                   </tr>
-                  <template v-if="expandedTypes.has(`${group.brand}||${typeGroup.type}`)">
+                  <template v-if="expandedTypes.has(`${group.key}||${typeGroup.type}`)">
                     <template v-for="i in typeGroup.rows" :key="i.product_id">
                       <tr>
                         <td v-if="bulkMode" style="text-align: center">
