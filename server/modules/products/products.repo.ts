@@ -49,11 +49,11 @@ export async function listStoreProducts(
         COALESCE(ib.qty_on_hand, 0) AS qty_on_hand,
         COALESCE(ib.avg_unit_cost, 0) AS avg_unit_cost
       FROM store_products sp
-      INNER JOIN products p ON p.id = sp.product_id AND p.is_active = true
+      INNER JOIN products p ON p.id = sp.product_id AND p.status = 'active'
       INNER JOIN brands b ON b.id = p.brand_id
       LEFT JOIN inventory_balances ib ON ib.store_id = sp.store_id AND ib.product_id = sp.product_id
       WHERE sp.store_id = $1
-        AND sp.is_active = true
+        AND sp.status = 'active'
         AND (
           $2::text IS NULL
           OR p.sku ILIKE '%' || $2 || '%'
@@ -94,10 +94,10 @@ export async function listMasterProducts(
         p.size,
         b.name AS brand,
         p.product_type,
-        p.is_active
+        (p.status = 'active') AS is_active
       FROM products p
       INNER JOIN brands b ON b.id = p.brand_id
-      WHERE p.is_active = true
+      WHERE p.status = 'active'
         AND (
           $1::text IS NULL
           OR p.sku ILIKE '%' || $1 || '%'
@@ -149,11 +149,11 @@ export async function createProduct(
 ) {
   const { rows } = await db.query<{ id: string }>(
     `
-      INSERT INTO products (brand_id, product_type, name, size, sku, is_active)
+      INSERT INTO products (brand_id, product_type, name, size, sku, status)
       VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING id
     `,
-    [brandId, productType, name, size, sku, isActive],
+    [brandId, productType, name, size, sku, isActive ? "active" : "inactive"],
   );
   return rows[0]?.id as string;
 }
@@ -174,12 +174,12 @@ export async function attachProductToStore(
 ) {
   await db.query(
     `
-      INSERT INTO store_products (store_id, product_id, sell_price, is_active)
+      INSERT INTO store_products (store_id, product_id, sell_price, status)
       VALUES ($1, $2, $3, $4)
       ON CONFLICT (store_id, product_id)
-      DO UPDATE SET sell_price = EXCLUDED.sell_price, is_active = EXCLUDED.is_active
+      DO UPDATE SET sell_price = EXCLUDED.sell_price, status = EXCLUDED.status
     `,
-    [storeId, productId, sellPrice, isActive],
+    [storeId, productId, sellPrice, isActive ? "active" : "inactive"],
   );
 }
 
@@ -197,17 +197,19 @@ export async function updateStoreProduct(
     isActive?: boolean;
   },
 ) {
+  const nextStatus =
+    isActive === undefined ? null : isActive ? "active" : "inactive";
   const { rows } = await db.query(
     `
       UPDATE store_products
       SET
         sell_price = $3,
-        is_active = COALESCE($4::boolean, is_active)
+        status = COALESCE($4::text, status)
       WHERE store_id = $1
         AND product_id = $2
-      RETURNING store_id, product_id, sell_price, is_active
+      RETURNING store_id, product_id, sell_price, (status = 'active') AS is_active
     `,
-    [storeId, productId, sellPrice, isActive !== undefined ? isActive : null],
+    [storeId, productId, sellPrice, nextStatus],
   );
   return rows[0] ?? null;
 }
@@ -227,12 +229,12 @@ export async function setStoreProductActive(
   const { rows } = await db.query(
     `
       UPDATE store_products
-      SET is_active = $3
+      SET status = $3
       WHERE store_id = $1
         AND product_id = $2
-      RETURNING store_id, product_id, sell_price, is_active
+      RETURNING store_id, product_id, sell_price, (status = 'active') AS is_active
     `,
-    [storeId, productId, isActive],
+    [storeId, productId, isActive ? "active" : "inactive"],
   );
   return rows[0] ?? null;
 }
@@ -253,6 +255,8 @@ export async function updateMasterProduct(
     isActive?: boolean;
   },
 ) {
+  const nextStatus =
+    isActive === undefined ? null : isActive ? "active" : "inactive";
   const { rows } = await db.query(
     `
       UPDATE products
@@ -260,11 +264,11 @@ export async function updateMasterProduct(
         name = COALESCE($2, name),
         size = COALESCE($3, size),
         product_type = COALESCE($4, product_type),
-        is_active = COALESCE($5::boolean, is_active)
+        status = COALESCE($5::text, status)
       WHERE id = $1
-      RETURNING id AS product_id, name, size, product_type, is_active
+      RETURNING id AS product_id, name, size, product_type, (status = 'active') AS is_active
     `,
-    [productId, name ?? null, size ?? null, productType ?? null, isActive !== undefined ? isActive : null],
+    [productId, name ?? null, size ?? null, productType ?? null, nextStatus],
   );
   return rows[0] ?? null;
 }

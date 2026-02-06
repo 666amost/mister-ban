@@ -6,6 +6,8 @@ import { buildValuesPlaceholders } from "../../utils/sql";
 
 type SaleItemInput = { product_id: string; qty: number };
 type CustomItemInput = { item_name: string; qty: number; price: number };
+type SalePaymentInput = { payment_type: string; amount: number };
+type SaleExpenseInput = { item_name: string; amount: number };
 
 let printedFirstAtColumnSupported: boolean | null = null;
 
@@ -52,26 +54,71 @@ async function getSellPrices(
   return rows;
 }
 
+function normalizeSalePayments({
+  paymentType,
+  payments,
+  total,
+}: {
+  paymentType?: string;
+  payments?: SalePaymentInput[];
+  total: number;
+}) {
+  const trimmedPayments = payments?.filter((p) => p && p.amount && p.amount > 0) ?? [];
+
+  if (trimmedPayments.length > 0) {
+    const seen = new Set<string>();
+    for (const p of trimmedPayments) {
+      if (seen.has(p.payment_type)) throw badRequest("Duplicate payment_type");
+      seen.add(p.payment_type);
+    }
+
+    if (trimmedPayments.length === 1) {
+      const single = trimmedPayments[0];
+      if (!single) throw badRequest("Pembayaran tidak valid");
+      return {
+        paymentTypeSummary: single.payment_type,
+        paymentRows: [{ payment_type: single.payment_type, amount: total }],
+      };
+    }
+
+    const sum = trimmedPayments.reduce((acc, p) => acc + p.amount, 0);
+    if (sum !== total) {
+      throw badRequest("Total pembayaran harus sama dengan total transaksi");
+    }
+    return { paymentTypeSummary: "MIXED", paymentRows: trimmedPayments };
+  }
+
+  if (!paymentType) throw badRequest("Metode pembayaran wajib diisi");
+  return {
+    paymentTypeSummary: paymentType,
+    paymentRows: [{ payment_type: paymentType, amount: total }],
+  };
+}
+
 export async function createSale({
   storeId,
   userId,
   saleDate,
   paymentType,
+  payments,
   plateNo,
   items,
   customItems,
   discount,
   serviceFee,
+  expenses,
 }: {
   storeId: string;
   userId: string;
   saleDate: string;
-  paymentType: string;
+  paymentType?: string;
+  payments?: SalePaymentInput[];
   plateNo: string;
   items: SaleItemInput[];
   customItems: CustomItemInput[];
   discount: number;
   serviceFee: number;
+  expenses?: SaleExpenseInput[];
 }) {
   return await tx(async (client) => {
     const productIds = items.map((i) => i.product_id);
@@ -116,16 +163,56 @@ export async function createSale({
     const subtotal = productSubtotal + customSubtotal;
     const total = subtotal - discount + serviceFee;
 
+    const normalizedPayments = normalizeSalePayments({
+      paymentType,
+      payments,
+      total,
+    });
+
     const saleRes = await client.query<{ id: string; created_at: string }>(
       `
         INSERT INTO sales (store_id, sale_date, payment_type, customer_plate_no, subtotal, total, discount, service_fee, created_by)
         VALUES ($1, $2::date, $3, $4, $5, $6, $7, $8, $9)
         RETURNING id, created_at
       `,
-      [storeId, saleDate, paymentType, plateNo, subtotal, total, discount, serviceFee, userId],
+      [storeId, saleDate, normalizedPayments.paymentTypeSummary, plateNo, subtotal, total, discount, serviceFee, userId],
     );
     const saleId = saleRes.rows[0]?.id;
     if (!saleId) throw badRequest("Gagal membuat sales");
+
+    if (normalizedPayments.paymentRows.length > 0) {
+      const paymentRows = normalizedPayments.paymentRows.map((p) => [
+        saleId,
+        p.payment_type,
+        p.amount,
+        userId,
+      ]);
+      const pay = buildValuesPlaceholders(paymentRows);
+      await client.query(
+        `
+          INSERT INTO sales_payments (sale_id, payment_type, amount, created_by)
+          VALUES ${pay.placeholders}
+        `,
+        pay.values,
+      );
+    }
+
+    if ((expenses ?? []).length > 0) {
+      const expenseRows = (expenses ?? []).map((e) => [
+        saleId,
+        e.item_name,
+        e.amount,
+        userId,
+      ]);
+      const exp = buildValuesPlaceholders(expenseRows);
+      await client.query(
+        `
+          INSERT INTO sales_expenses (sale_id, item_name, amount, created_by)
+          VALUES ${exp.placeholders}
+        `,
+        exp.values,
+      );
+    }
 
     if (priced.length > 0) {
       const salesItemRows = priced.map((i) => [
@@ -286,6 +373,42 @@ export async function listSales({
         (
           SELECT json_agg(
             json_build_object(
+              'payment_type', sp.payment_type,
+              'amount', sp.amount
+            )
+            ORDER BY sp.created_at, sp.id
+          )
+          FROM sales_payments sp
+          WHERE sp.sale_id = s.id
+        ),
+        '[]'::json
+      ) AS payments,
+      COALESCE(
+        (
+          SELECT json_agg(
+            json_build_object(
+              'item_name', se.item_name,
+              'amount', se.amount
+            )
+            ORDER BY se.item_name, se.id
+          )
+          FROM sales_expenses se
+          WHERE se.sale_id = s.id
+        ),
+        '[]'::json
+      ) AS expenses,
+      COALESCE(
+        (
+          SELECT SUM(se.amount)
+          FROM sales_expenses se
+          WHERE se.sale_id = s.id
+        ),
+        0
+      )::int AS expense_total,
+      COALESCE(
+        (
+          SELECT json_agg(
+            json_build_object(
               'type', 'product',
               'product_id', si.product_id,
               'sku', p.sku,
@@ -359,21 +482,27 @@ export async function listSales({
 export async function updateSaleFields({
   storeId,
   saleId,
+  userId,
   paymentType,
+  payments,
   plateNo,
   discount,
   serviceFee,
   items,
   customItems,
+  expenses,
 }: {
   storeId: string;
   saleId: string;
+  userId: string;
   paymentType?: string;
+  payments?: SalePaymentInput[];
   plateNo?: string;
   discount?: number;
   serviceFee?: number;
   items?: SaleItemInput[];
   customItems?: CustomItemInput[];
+  expenses?: SaleExpenseInput[];
 }) {
   return await tx(async (client) => {
     if (plateNo) {
@@ -389,10 +518,14 @@ export async function updateSaleFields({
 
     const currentSale = await client.query<{
       id: string;
+      payment_type: string;
       subtotal: number;
       discount: number;
       service_fee: number;
-    }>("SELECT id, subtotal, discount, service_fee FROM sales WHERE id = $1 AND store_id = $2 FOR UPDATE", [saleId, storeId]);
+    }>(
+      "SELECT id, payment_type, subtotal, discount, service_fee FROM sales WHERE id = $1 AND store_id = $2 FOR UPDATE",
+      [saleId, storeId],
+    );
     
     if (!currentSale.rows[0]) throw badRequest("Sale tidak ditemukan");
 
@@ -508,6 +641,73 @@ export async function updateSaleFields({
 
     const newTotal = newSubtotal - newDiscount + newServiceFee;
 
+    let paymentTypeSummary = currentSale.rows[0].payment_type;
+    let paymentRows: SalePaymentInput[] | null = null;
+
+    if ((payments?.length ?? 0) > 0 || paymentType) {
+      const normalized = normalizeSalePayments({
+        paymentType,
+        payments,
+        total: newTotal,
+      });
+      paymentTypeSummary = normalized.paymentTypeSummary;
+      paymentRows = normalized.paymentRows;
+    } else {
+      const existingPayments = await client.query<SalePaymentInput>(
+        "SELECT payment_type, amount FROM sales_payments WHERE sale_id = $1 ORDER BY created_at, id FOR UPDATE",
+        [saleId],
+      );
+      if (existingPayments.rows.length === 0) {
+        paymentRows = [{ payment_type: paymentTypeSummary, amount: newTotal }];
+      } else if (existingPayments.rows.length === 1) {
+        const only = existingPayments.rows[0];
+        if (!only) throw badRequest("Pembayaran tidak ditemukan");
+        paymentRows = [{ payment_type: only.payment_type, amount: newTotal }];
+        paymentTypeSummary = only.payment_type;
+      } else {
+        const sum = existingPayments.rows.reduce((acc, p) => acc + p.amount, 0);
+        const diff = newTotal - sum;
+        const next = existingPayments.rows.map((p) => ({ ...p }));
+        if (diff !== 0) {
+          let maxIdx = 0;
+          for (let i = 1; i < next.length; i += 1) {
+            if ((next[i]?.amount ?? 0) > (next[maxIdx]?.amount ?? 0)) maxIdx = i;
+          }
+          const updatedAmount = (next[maxIdx]?.amount ?? 0) + diff;
+          if (updatedAmount <= 0) {
+            throw badRequest("Total berubah. Mohon update pembayaran (split payment)");
+          }
+          const current = next[maxIdx];
+          if (!current) throw badRequest("Pembayaran tidak ditemukan");
+          next[maxIdx] = { payment_type: current.payment_type, amount: updatedAmount };
+        }
+        paymentRows = next;
+        paymentTypeSummary = "MIXED";
+      }
+    }
+
+    if (paymentRows) {
+      await client.query("DELETE FROM sales_payments WHERE sale_id = $1", [saleId]);
+      const rows = paymentRows.map((p) => [saleId, p.payment_type, p.amount, userId]);
+      const pay = buildValuesPlaceholders(rows);
+      await client.query(
+        `INSERT INTO sales_payments (sale_id, payment_type, amount, created_by) VALUES ${pay.placeholders}`,
+        pay.values,
+      );
+    }
+
+    if (expenses !== undefined) {
+      await client.query("DELETE FROM sales_expenses WHERE sale_id = $1", [saleId]);
+      if (expenses.length > 0) {
+        const expenseRows = expenses.map((e) => [saleId, e.item_name, e.amount, userId]);
+        const exp = buildValuesPlaceholders(expenseRows);
+        await client.query(
+          `INSERT INTO sales_expenses (sale_id, item_name, amount, created_by) VALUES ${exp.placeholders}`,
+          exp.values,
+        );
+      }
+    }
+
     const updated = await client.query<{
       id: string;
       sale_date: string;
@@ -522,7 +722,7 @@ export async function updateSaleFields({
     }>(
       `
         UPDATE sales
-        SET payment_type = COALESCE($3, payment_type),
+        SET payment_type = $3,
             customer_plate_no = COALESCE($4, customer_plate_no),
             discount = $5,
             service_fee = $6,
@@ -532,7 +732,7 @@ export async function updateSaleFields({
           AND store_id = $2
         RETURNING id, sale_date, payment_type, customer_plate_no, subtotal, discount, service_fee, total, created_at
       `,
-      [saleId, storeId, paymentType ?? null, plateNo ?? null, newDiscount, newServiceFee, newSubtotal, newTotal],
+      [saleId, storeId, paymentTypeSummary, plateNo ?? null, newDiscount, newServiceFee, newSubtotal, newTotal],
     );
 
     const row = updated.rows[0];
@@ -618,6 +818,16 @@ export async function getSaleDetail({
     line_total: number;
   };
 
+  type PaymentRow = {
+    payment_type: string;
+    amount: number;
+  };
+
+  type ExpenseRow = {
+    item_name: string;
+    amount: number;
+  };
+
   const saleRes = await db.query<SaleRow>(
     `
       SELECT id, sale_date, payment_type, customer_plate_no, subtotal, total, discount, service_fee, created_by, created_at
@@ -664,5 +874,31 @@ export async function getSaleDetail({
     [saleId],
   );
 
-  return { sale, items: itemsRes.rows, customItems: customItemsRes.rows };
+  const paymentsRes = await db.query<PaymentRow>(
+    `
+      SELECT payment_type, amount
+      FROM sales_payments
+      WHERE sale_id = $1
+      ORDER BY created_at, id
+    `,
+    [saleId],
+  );
+
+  const expensesRes = await db.query<ExpenseRow>(
+    `
+      SELECT item_name, amount
+      FROM sales_expenses
+      WHERE sale_id = $1
+      ORDER BY item_name, id
+    `,
+    [saleId],
+  );
+
+  return {
+    sale,
+    items: itemsRes.rows,
+    customItems: customItemsRes.rows,
+    payments: paymentsRes.rows,
+    expenses: expensesRes.rows,
+  };
 }

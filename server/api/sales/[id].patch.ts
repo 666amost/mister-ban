@@ -23,14 +23,16 @@ export default defineEventHandler(async (event) => {
   const updated = await updateSaleFields({
     storeId,
     saleId: params.data.id,
+    userId: user.id,
     paymentType: body.payment_type,
+    payments: body.payments,
     plateNo: body.plate_no,
     discount: body.discount,
     serviceFee: body.service_fee,
     items: body.items,
     customItems: body.custom_items,
+    expenses: body.expenses,
   });
 
   return { item: updated };
 });
-

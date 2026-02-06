@@ -20,11 +20,13 @@ export default defineEventHandler(async (event) => {
       userId: user.id,
       saleDate: body.sale_date ?? todayIsoDate(),
       paymentType: body.payment_type,
+      payments: body.payments,
       plateNo: body.plate_no,
       items: body.items,
       customItems: body.custom_items,
       discount: body.discount,
       serviceFee: body.service_fee,
+      expenses: body.expenses,
     });
   } catch (error: unknown) {
     const e = error as { code?: string; message?: string; statusCode?: number };

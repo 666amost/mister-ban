@@ -246,7 +246,9 @@ async function logout() {
 
       <main class="mb-content" :class="{ 'is-navigating': isNavigating }">
         <Transition name="page-fade" mode="out-in">
-          <slot />
+          <div :key="route.fullPath">
+            <slot />
+          </div>
         </Transition>
       </main>
 

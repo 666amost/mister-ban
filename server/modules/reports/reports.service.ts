@@ -21,9 +21,26 @@ export async function getDailyReport({
 
   const profitRes = await db.query<{ profit: number }>(
     `
-      SELECT COALESCE(SUM(si.profit), 0)::int AS profit
-      FROM sales_items si
-      JOIN sales s ON s.id = si.sale_id
+      SELECT
+        COALESCE(
+          SUM(
+            s.total
+            - COALESCE(c.cogs, 0)
+            - COALESCE(e.expenses, 0)
+          ),
+          0
+        )::int AS profit
+      FROM sales s
+      LEFT JOIN (
+        SELECT sale_id, COALESCE(SUM(qty * unit_cost), 0)::int AS cogs
+        FROM sales_items
+        GROUP BY sale_id
+      ) c ON c.sale_id = s.id
+      LEFT JOIN (
+        SELECT sale_id, COALESCE(SUM(amount), 0)::int AS expenses
+        FROM sales_expenses
+        GROUP BY sale_id
+      ) e ON e.sale_id = s.id
       WHERE s.store_id = $1
         AND s.sale_date = $2::date
     `,
@@ -87,9 +104,26 @@ export async function getMonthlyReport({
 
   const profitRes = await db.query<{ profit: number }>(
     `
-      SELECT COALESCE(SUM(si.profit), 0)::int AS profit
-      FROM sales_items si
-      JOIN sales s ON s.id = si.sale_id
+      SELECT
+        COALESCE(
+          SUM(
+            s.total
+            - COALESCE(c.cogs, 0)
+            - COALESCE(e.expenses, 0)
+          ),
+          0
+        )::int AS profit
+      FROM sales s
+      LEFT JOIN (
+        SELECT sale_id, COALESCE(SUM(qty * unit_cost), 0)::int AS cogs
+        FROM sales_items
+        GROUP BY sale_id
+      ) c ON c.sale_id = s.id
+      LEFT JOIN (
+        SELECT sale_id, COALESCE(SUM(amount), 0)::int AS expenses
+        FROM sales_expenses
+        GROUP BY sale_id
+      ) e ON e.sale_id = s.id
       WHERE s.store_id = $1
         AND s.sale_date >= $2::date
         AND s.sale_date < $3::date
@@ -116,9 +150,27 @@ export async function getMonthlyReport({
 
   const dailyProfitRes = await db.query<{ sale_date: string; profit: number }>(
     `
-      SELECT s.sale_date, COALESCE(SUM(si.profit), 0)::int AS profit
-      FROM sales_items si
-      JOIN sales s ON s.id = si.sale_id
+      SELECT
+        s.sale_date,
+        COALESCE(
+          SUM(
+            s.total
+            - COALESCE(c.cogs, 0)
+            - COALESCE(e.expenses, 0)
+          ),
+          0
+        )::int AS profit
+      FROM sales s
+      LEFT JOIN (
+        SELECT sale_id, COALESCE(SUM(qty * unit_cost), 0)::int AS cogs
+        FROM sales_items
+        GROUP BY sale_id
+      ) c ON c.sale_id = s.id
+      LEFT JOIN (
+        SELECT sale_id, COALESCE(SUM(amount), 0)::int AS expenses
+        FROM sales_expenses
+        GROUP BY sale_id
+      ) e ON e.sale_id = s.id
       WHERE s.store_id = $1
         AND s.sale_date >= $2::date
         AND s.sale_date < $3::date

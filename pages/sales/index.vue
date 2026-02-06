@@ -31,6 +31,16 @@ type CustomItemDetail = {
   line_total: number
 }
 
+type SalePaymentDetail = {
+  payment_type: string
+  amount: number
+}
+
+type SaleExpenseDetail = {
+  item_name: string
+  amount: number
+}
+
 type SaleRow = {
   id: string
   sale_date: string
@@ -44,23 +54,35 @@ type SaleRow = {
   printed_first_at?: string | null
   items?: SaleItemDetail[]
   custom_items?: CustomItemDetail[]
+  payments?: SalePaymentDetail[]
+  expenses?: SaleExpenseDetail[]
+  expense_total?: number
 }
 
 type CustomItem = { item_name: string; qty: number; price: number }
 
 type PaymentType = "CASH" | "TRANSFER" | "QRIS" | "DEBIT" | "CREDIT" | "TEMPO"
+type ExpenseItem = { item_name: string; amount: number }
+type PaymentItem = { payment_type: PaymentType; amount: number }
 
 const me = useMe()
 
 const plateNo = ref("")
 const paymentType = ref<PaymentType>("CASH")
+const isSplitPayment = ref(false)
+const payments = ref<PaymentItem[]>([])
 const discount = ref(0)
 const customItems = ref<CustomItem[]>([])
+const expenses = ref<ExpenseItem[]>([])
 
 const newCustomName = ref("")
 const newCustomQty = ref(1)
 const newCustomPrice = ref(0)
 const showCustomForm = ref(false)
+
+const newExpenseName = ref("")
+const newExpenseAmount = ref(0)
+const showExpenseForm = ref(false)
 
 const search = ref("")
 const searchLoading = ref(false)
@@ -91,10 +113,13 @@ const editOpen = ref(false)
 const editSaleId = ref<string | null>(null)
 const editPlateNo = ref("")
 const editPaymentType = ref<PaymentType>("CASH")
+const editIsSplitPayment = ref(false)
+const editPayments = ref<PaymentItem[]>([])
 const editDiscount = ref(0)
 const editItems = ref<Array<{ product_id: string; sku: string; brand: string; name: string; size: string; qty: number; price: number }>>([])
 const editOriginalItems = ref<Array<{ product_id: string; qty: number }>>([])
 const editCustomItems = ref<CustomItem[]>([])
+const editExpenses = ref<ExpenseItem[]>([])
 const editSaving = ref(false)
 const editError = ref<string | null>(null)
 
@@ -131,6 +156,12 @@ function saleItemPreview(sale: SaleRow, maxLines = 2) {
   const lines = allItems.slice(0, maxLines).map(saleItemLabel)
   const more = Math.max(0, allItems.length - lines.length)
   return { lines, more }
+}
+
+function paymentLabel(sale: SaleRow) {
+  const ps = sale.payments ?? []
+  if (ps.length > 1) return ps.map((p) => p.payment_type).join(" + ")
+  return String(ps[0]?.payment_type ?? sale.payment_type)
 }
 
 function hhmm(value: string) {
@@ -280,6 +311,68 @@ const subtotalPreview = computed(() => productSubtotal.value + customSubtotal.va
 const totalPreview = computed(() => subtotalPreview.value - discount.value)
 const itemCount = computed(() => selected.value.reduce((sum, x) => sum + x.qty, 0) + customItems.value.reduce((sum, x) => sum + x.qty, 0))
 
+const paymentTotal = computed(() => payments.value.reduce((sum, p) => sum + (p.amount || 0), 0))
+const paymentDiff = computed(() => totalPreview.value - paymentTotal.value)
+
+const expenseTotal = computed(() => expenses.value.reduce((sum, e) => sum + (e.amount || 0), 0))
+
+function enableSplitPayment() {
+  isSplitPayment.value = true
+  if (payments.value.length === 0) {
+    payments.value = [{ payment_type: paymentType.value, amount: totalPreview.value }]
+  }
+}
+
+function disableSplitPayment() {
+  isSplitPayment.value = false
+  payments.value = []
+}
+
+function onSplitPaymentToggle(e: Event) {
+  const checked = (e.target as HTMLInputElement | null)?.checked ?? false
+  if (checked) enableSplitPayment()
+  else disableSplitPayment()
+}
+
+function addPaymentRow() {
+  if (payments.value.length >= 6) return
+  const used = new Set(payments.value.map((p) => p.payment_type))
+  const options: PaymentType[] = ["CASH", "QRIS", "TRANSFER", "DEBIT", "CREDIT", "TEMPO"]
+  const next = options.find((o) => !used.has(o)) ?? "CASH"
+  payments.value.push({ payment_type: next, amount: 0 })
+}
+
+function removePaymentRow(idx: number) {
+  payments.value.splice(idx, 1)
+  if (payments.value.length === 0) {
+    payments.value = [{ payment_type: paymentType.value, amount: totalPreview.value }]
+  }
+}
+
+function fillPaymentRemaining() {
+  if (payments.value.length === 0) return
+  const idx = payments.value.length - 1
+  const last = payments.value[idx]
+  if (!last) return
+  const otherSum = payments.value.slice(0, idx).reduce((sum, p) => sum + (p.amount || 0), 0)
+  const remaining = totalPreview.value - otherSum
+  payments.value[idx] = { payment_type: last.payment_type, amount: Math.max(0, remaining) }
+}
+
+function addExpense() {
+  const name = newExpenseName.value.trim()
+  if (!name) return
+  if (newExpenseAmount.value <= 0) return
+  expenses.value.push({ item_name: name, amount: newExpenseAmount.value })
+  newExpenseName.value = ""
+  newExpenseAmount.value = 0
+  showExpenseForm.value = false
+}
+
+function removeExpense(idx: number) {
+  expenses.value.splice(idx, 1)
+}
+
 async function submit() {
   errorMessage.value = null
   lastSaleId.value = null
@@ -291,6 +384,28 @@ async function submit() {
     errorMessage.value = "Pilih minimal 1 item produk atau custom item"
     return
   }
+  if (isSplitPayment.value) {
+    const used = new Set<string>()
+    for (const p of payments.value) {
+      if (!p.payment_type) {
+        errorMessage.value = "Metode pembayaran wajib diisi"
+        return
+      }
+      if (used.has(p.payment_type)) {
+        errorMessage.value = "Metode pembayaran tidak boleh duplikat"
+        return
+      }
+      used.add(p.payment_type)
+      if (p.amount <= 0) {
+        errorMessage.value = "Nominal pembayaran harus > 0"
+        return
+      }
+    }
+    if (paymentDiff.value !== 0) {
+      errorMessage.value = "Total pembayaran harus sama dengan total transaksi"
+      return
+    }
+  }
 
   submitLoading.value = true
   try {
@@ -298,10 +413,11 @@ async function submit() {
       method: "POST",
       body: {
         plate_no: plateNo.value.trim(),
-        payment_type: paymentType.value,
+        ...(isSplitPayment.value ? { payments: payments.value } : { payment_type: paymentType.value }),
         items: selected.value.map((x) => ({ product_id: x.product.product_id, qty: x.qty })),
         custom_items: customItems.value,
         discount: discount.value,
+        expenses: expenses.value,
       }
     })
     lastSaleId.value = res.sale_id
@@ -310,6 +426,15 @@ async function submit() {
     selected.value = []
     customItems.value = []
     discount.value = 0
+    expenses.value = []
+    showCustomForm.value = false
+    newCustomName.value = ""
+    newCustomQty.value = 1
+    newCustomPrice.value = 0
+    showExpenseForm.value = false
+    newExpenseName.value = ""
+    newExpenseAmount.value = 0
+    disableSplitPayment()
     await loadSales()
   } catch (error) {
     errorMessage.value = statusMessage(error) ?? "Gagal submit sales"
@@ -336,7 +461,16 @@ function closeSuccessSheet() {
 function openEditSale(s: SaleRow) {
   editSaleId.value = s.id
   editPlateNo.value = s.customer_plate_no
-  editPaymentType.value = s.payment_type as PaymentType
+  const ps = (s.payments ?? []) as SalePaymentDetail[]
+  if (ps.length > 1) {
+    editIsSplitPayment.value = true
+    editPayments.value = ps.map((p) => ({ payment_type: p.payment_type as PaymentType, amount: p.amount }))
+    editPaymentType.value = (editPayments.value[0]?.payment_type ?? "CASH") as PaymentType
+  } else {
+    editIsSplitPayment.value = false
+    editPayments.value = []
+    editPaymentType.value = ((ps[0]?.payment_type ?? s.payment_type) as PaymentType) ?? "CASH"
+  }
   editDiscount.value = s.discount ?? 0
   editItems.value = (s.items ?? []).map((i) => ({
     product_id: i.product_id,
@@ -353,6 +487,14 @@ function openEditSale(s: SaleRow) {
     qty: c.qty,
     price: c.price,
   }))
+  editExpenses.value = (s.expenses ?? []).map((e) => ({ item_name: e.item_name, amount: e.amount }))
+  showEditCustomForm.value = false
+  editNewCustomName.value = ""
+  editNewCustomQty.value = 1
+  editNewCustomPrice.value = 0
+  showEditExpenseForm.value = false
+  editNewExpenseName.value = ""
+  editNewExpenseAmount.value = 0
   editError.value = null
   editSearch.value = ""
   editProducts.value = []
@@ -369,6 +511,16 @@ function closeEditSale() {
   editItems.value = []
   editOriginalItems.value = []
   editCustomItems.value = []
+  editExpenses.value = []
+  editIsSplitPayment.value = false
+  editPayments.value = []
+  showEditCustomForm.value = false
+  editNewCustomName.value = ""
+  editNewCustomQty.value = 1
+  editNewCustomPrice.value = 0
+  showEditExpenseForm.value = false
+  editNewExpenseName.value = ""
+  editNewExpenseAmount.value = 0
   editSearch.value = ""
   editProducts.value = []
   editDropdownOpen.value = false
@@ -490,12 +642,100 @@ const editSubtotal = computed(() => {
 
 const editTotal = computed(() => editSubtotal.value - editDiscount.value)
 
+const editPaymentTotal = computed(() => editPayments.value.reduce((sum, p) => sum + (p.amount || 0), 0))
+const editPaymentDiff = computed(() => editTotal.value - editPaymentTotal.value)
+
+const editExpenseTotal = computed(() => editExpenses.value.reduce((sum, e) => sum + (e.amount || 0), 0))
+
+const editNewExpenseName = ref("")
+const editNewExpenseAmount = ref(0)
+const showEditExpenseForm = ref(false)
+
+function enableEditSplitPayment() {
+  editIsSplitPayment.value = true
+  if (editPayments.value.length === 0) {
+    editPayments.value = [{ payment_type: editPaymentType.value, amount: editTotal.value }]
+  }
+}
+
+function disableEditSplitPayment() {
+  editIsSplitPayment.value = false
+  editPayments.value = []
+}
+
+function onEditSplitPaymentToggle(e: Event) {
+  const checked = (e.target as HTMLInputElement | null)?.checked ?? false
+  if (checked) enableEditSplitPayment()
+  else disableEditSplitPayment()
+}
+
+function addEditPaymentRow() {
+  if (editPayments.value.length >= 6) return
+  const used = new Set(editPayments.value.map((p) => p.payment_type))
+  const options: PaymentType[] = ["CASH", "QRIS", "TRANSFER", "DEBIT", "CREDIT", "TEMPO"]
+  const next = options.find((o) => !used.has(o)) ?? "CASH"
+  editPayments.value.push({ payment_type: next, amount: 0 })
+}
+
+function removeEditPaymentRow(idx: number) {
+  editPayments.value.splice(idx, 1)
+  if (editPayments.value.length === 0) {
+    editPayments.value = [{ payment_type: editPaymentType.value, amount: editTotal.value }]
+  }
+}
+
+function fillEditPaymentRemaining() {
+  if (editPayments.value.length === 0) return
+  const idx = editPayments.value.length - 1
+  const last = editPayments.value[idx]
+  if (!last) return
+  const otherSum = editPayments.value.slice(0, idx).reduce((sum, p) => sum + (p.amount || 0), 0)
+  const remaining = editTotal.value - otherSum
+  editPayments.value[idx] = { payment_type: last.payment_type, amount: Math.max(0, remaining) }
+}
+
+function addEditExpense() {
+  const name = editNewExpenseName.value.trim()
+  if (!name) return
+  if (editNewExpenseAmount.value <= 0) return
+  editExpenses.value.push({ item_name: name, amount: editNewExpenseAmount.value })
+  editNewExpenseName.value = ""
+  editNewExpenseAmount.value = 0
+  showEditExpenseForm.value = false
+}
+
+function removeEditExpense(idx: number) {
+  editExpenses.value.splice(idx, 1)
+}
+
 async function saveEditSale() {
   if (!editSaleId.value) return
   const plate = editPlateNo.value.trim()
   if (!plate) {
     editError.value = "Plat nomor wajib diisi"
     return
+  }
+  if (editIsSplitPayment.value) {
+    const used = new Set<string>()
+    for (const p of editPayments.value) {
+      if (!p.payment_type) {
+        editError.value = "Metode pembayaran wajib diisi"
+        return
+      }
+      if (used.has(p.payment_type)) {
+        editError.value = "Metode pembayaran tidak boleh duplikat"
+        return
+      }
+      used.add(p.payment_type)
+      if (p.amount <= 0) {
+        editError.value = "Nominal pembayaran harus > 0"
+        return
+      }
+    }
+    if (editPaymentDiff.value !== 0) {
+      editError.value = "Total pembayaran harus sama dengan total transaksi"
+      return
+    }
   }
 
   const currentItems = editItems.value.map((i) => ({ product_id: i.product_id, qty: i.qty }))
@@ -508,10 +748,11 @@ async function saveEditSale() {
       method: "PATCH",
       body: {
         plate_no: plate,
-        payment_type: editPaymentType.value,
+        ...(editIsSplitPayment.value ? { payments: editPayments.value } : { payment_type: editPaymentType.value }),
         discount: editDiscount.value,
         items: includeItems ? currentItems : undefined,
         custom_items: editCustomItems.value,
+        expenses: editExpenses.value,
       },
     })
     closeEditSale()
@@ -715,7 +956,18 @@ async function newTransaction() {
             />
           </label>
         </div>
-        <div class="paymentGrid">
+        <div class="paymentHeader">
+          <span class="formLabel">Pembayaran</span>
+          <label class="splitToggle">
+            <input
+              type="checkbox"
+              :checked="isSplitPayment"
+              @change="onSplitPaymentToggle"
+            />
+            <span>Split</span>
+          </label>
+        </div>
+        <div v-if="!isSplitPayment" class="paymentGrid">
           <button
             v-for="pt in ['CASH', 'QRIS', 'TRANSFER', 'DEBIT', 'CREDIT', 'TEMPO'] as const"
             :key="pt"
@@ -726,11 +978,63 @@ async function newTransaction() {
             {{ pt }}
           </button>
         </div>
+        <div v-else class="splitPaymentBox">
+          <div v-for="(p, idx) in payments" :key="'pay-' + idx" class="splitPaymentRow">
+            <select v-model="p.payment_type" class="formInput splitSelect">
+              <option v-for="pt in ['CASH', 'QRIS', 'TRANSFER', 'DEBIT', 'CREDIT', 'TEMPO'] as const" :key="pt" :value="pt">
+                {{ pt }}
+              </option>
+            </select>
+            <input v-model.number="p.amount" class="formInput splitAmount" type="number" min="0" placeholder="0" />
+            <button v-if="payments.length > 1" type="button" class="splitRemove" @click="removePaymentRow(idx)">×</button>
+          </div>
+          <div class="splitPaymentActions">
+            <button type="button" class="mb-btn" @click="addPaymentRow">Tambah metode</button>
+            <button type="button" class="mb-btn" @click="fillPaymentRemaining">Isi sisa</button>
+          </div>
+          <div class="splitPaymentSummary" :class="{ bad: paymentDiff !== 0 }">
+            <span>Total bayar: Rp {{ rupiah(paymentTotal) }}</span>
+            <span v-if="paymentDiff === 0">Pas</span>
+            <span v-else>{{ paymentDiff > 0 ? 'Kurang' : 'Lebih' }} Rp {{ rupiah(Math.abs(paymentDiff)) }}</span>
+          </div>
+        </div>
         <div class="adjustmentRow">
           <label class="formField formFieldSmall">
             <span class="formLabel">Diskon</span>
             <input v-model.number="discount" class="formInput" type="number" min="0" placeholder="0" />
           </label>
+        </div>
+
+        <div class="expenseSection">
+          <div class="expenseHeader">
+            <span class="formLabel">Pengeluaran</span>
+            <span v-if="expenseTotal > 0" class="expenseTotal">Rp {{ rupiah(expenseTotal) }}</span>
+          </div>
+          <div v-if="expenses.length" class="expenseList">
+            <div v-for="(e, idx) in expenses" :key="'exp-' + idx" class="expenseRow">
+              <span class="expenseName">{{ e.item_name }}</span>
+              <span class="expenseAmount">Rp {{ rupiah(e.amount) }}</span>
+              <button type="button" class="expenseRemove" @click="removeExpense(idx)">×</button>
+            </div>
+          </div>
+
+          <button v-if="!showExpenseForm" type="button" class="addCustomBtn" @click="showExpenseForm = true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            Tambah Biaya Pengeluaran
+          </button>
+          <div v-else class="customForm">
+            <div class="customFormTitle">Biaya Pengeluaran</div>
+            <div class="customFormFields">
+              <input v-model="newExpenseName" class="formInput" placeholder="Nama biaya (cth: air galon)" />
+              <input v-model.number="newExpenseAmount" class="formInput" type="number" min="0" placeholder="Nominal" />
+            </div>
+            <div class="customFormActions">
+              <button type="button" class="mb-btn" @click="showExpenseForm = false">Batal</button>
+              <button type="button" class="mb-btnPrimary" @click="addExpense">Tambah</button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -819,7 +1123,7 @@ async function newTransaction() {
               <span class="salePlateBadge">{{ s.customer_plate_no }}</span>
               <span v-if="searchAllDates" class="saleDateBadge">{{ formatDate(s.sale_date) }}</span>
               <span class="saleTime">{{ hhmm(s.created_at) }}</span>
-              <span class="salePayment">{{ s.payment_type }}</span>
+              <span class="salePayment">{{ paymentLabel(s) }}</span>
               <span v-if="s.discount > 0" class="saleDiscount">-{{ rupiah(s.discount) }}</span>
             </div>
           </div>
@@ -875,7 +1179,7 @@ async function newTransaction() {
       </div>
       <button 
         class="submitBtn" 
-        :disabled="submitLoading || selected.length === 0 || !plateNo.trim()"
+        :disabled="submitLoading || !plateNo.trim() || (selected.length === 0 && customItems.length === 0) || (isSplitPayment && paymentDiff !== 0)"
         @click="submit"
       >
         <template v-if="submitLoading">
@@ -1000,7 +1304,18 @@ async function newTransaction() {
                   />
                 </label>
               </div>
-              <div class="paymentGrid">
+              <div class="paymentHeader">
+                <span class="formLabel">Pembayaran</span>
+                <label class="splitToggle">
+                  <input
+                    type="checkbox"
+                    :checked="editIsSplitPayment"
+                    @change="onEditSplitPaymentToggle"
+                  />
+                  <span>Split</span>
+                </label>
+              </div>
+              <div v-if="!editIsSplitPayment" class="paymentGrid">
                 <button
                   v-for="pt in ['CASH', 'QRIS', 'TRANSFER', 'DEBIT', 'CREDIT', 'TEMPO'] as const"
                   :key="pt"
@@ -1012,7 +1327,27 @@ async function newTransaction() {
                   {{ pt }}
                 </button>
               </div>
-              
+              <div v-else class="splitPaymentBox">
+                <div v-for="(p, idx) in editPayments" :key="'edit-pay-' + idx" class="splitPaymentRow">
+                  <select v-model="p.payment_type" class="formInput splitSelect">
+                    <option v-for="pt in ['CASH', 'QRIS', 'TRANSFER', 'DEBIT', 'CREDIT', 'TEMPO'] as const" :key="pt" :value="pt">
+                      {{ pt }}
+                    </option>
+                  </select>
+                  <input v-model.number="p.amount" class="formInput splitAmount" type="number" min="0" placeholder="0" />
+                  <button v-if="editPayments.length > 1" type="button" class="splitRemove" @click="removeEditPaymentRow(idx)">×</button>
+                </div>
+                <div class="splitPaymentActions">
+                  <button type="button" class="mb-btn" @click="addEditPaymentRow">Tambah metode</button>
+                  <button type="button" class="mb-btn" @click="fillEditPaymentRemaining">Isi sisa</button>
+                </div>
+                <div class="splitPaymentSummary" :class="{ bad: editPaymentDiff !== 0 }">
+                  <span>Total bayar: Rp {{ rupiah(editPaymentTotal) }}</span>
+                  <span v-if="editPaymentDiff === 0">Pas</span>
+                  <span v-else>{{ editPaymentDiff > 0 ? 'Kurang' : 'Lebih' }} Rp {{ rupiah(Math.abs(editPaymentDiff)) }}</span>
+                </div>
+              </div>
+               
               <div v-if="editItems.length" class="editItemsList">
                 <div class="editItemsTitle">Item Produk</div>
                 <div v-for="(ei, idx) in editItems" :key="'ei-' + idx" class="editItemRow">
@@ -1055,6 +1390,38 @@ async function newTransaction() {
                   <div class="customFormActions">
                     <button type="button" class="mb-btn" @click="showEditCustomForm = false">Batal</button>
                     <button type="button" class="mb-btnPrimary" @click="addEditCustomItem">Tambah</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="expenseSection">
+                <div class="expenseHeader">
+                  <span class="formLabel">Pengeluaran</span>
+                  <span v-if="editExpenseTotal > 0" class="expenseTotal">Rp {{ rupiah(editExpenseTotal) }}</span>
+                </div>
+                <div v-if="editExpenses.length" class="expenseList">
+                  <div v-for="(e, idx) in editExpenses" :key="'edit-exp-' + idx" class="expenseRow">
+                    <span class="expenseName">{{ e.item_name }}</span>
+                    <span class="expenseAmount">Rp {{ rupiah(e.amount) }}</span>
+                    <button type="button" class="expenseRemove" @click="removeEditExpense(idx)">×</button>
+                  </div>
+                </div>
+
+                <button v-if="!showEditExpenseForm" type="button" class="addCustomBtn" @click="showEditExpenseForm = true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 5v14M5 12h14" />
+                  </svg>
+                  Tambah Biaya Pengeluaran
+                </button>
+                <div v-else class="customForm">
+                  <div class="customFormTitle">Biaya Pengeluaran</div>
+                  <div class="customFormFields">
+                    <input v-model="editNewExpenseName" class="formInput" placeholder="Nama biaya" />
+                    <input v-model.number="editNewExpenseAmount" class="formInput" type="number" min="0" placeholder="Nominal" />
+                  </div>
+                  <div class="customFormActions">
+                    <button type="button" class="mb-btn" @click="showEditExpenseForm = false">Batal</button>
+                    <button type="button" class="mb-btnPrimary" @click="addEditExpense">Tambah</button>
                   </div>
                 </div>
               </div>
@@ -1561,6 +1928,146 @@ async function newTransaction() {
 
 .paymentBtn:active {
   transform: scale(0.97);
+}
+
+.paymentHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.splitToggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--mb-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.splitToggle input {
+  accent-color: var(--mb-accent);
+}
+
+.splitPaymentBox {
+  padding: 12px;
+  border: 1px solid var(--mb-border2);
+  border-radius: 14px;
+  background: var(--mb-surface2);
+  display: grid;
+  gap: 10px;
+}
+
+.splitPaymentRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.splitSelect {
+  flex: 1;
+}
+
+.splitAmount {
+  width: 140px;
+}
+
+.splitRemove {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 8px;
+  background: rgba(255, 59, 48, 0.1);
+  color: #ff3b30;
+  cursor: pointer;
+}
+
+.splitPaymentActions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.splitPaymentSummary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--mb-muted);
+}
+
+.splitPaymentSummary.bad {
+  color: var(--mb-danger);
+}
+
+.expenseSection {
+  display: grid;
+  gap: 10px;
+}
+
+.expenseHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.expenseTotal {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--mb-muted);
+}
+
+.expenseList {
+  display: grid;
+  gap: 8px;
+}
+
+.expenseRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--mb-border2);
+  border-radius: 12px;
+  background: var(--mb-surface2);
+}
+
+.expenseName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.expenseAmount {
+  font-weight: 700;
+  font-size: 13px;
+  white-space: nowrap;
+  color: var(--mb-muted);
+}
+
+.expenseRemove {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 8px;
+  background: rgba(255, 59, 48, 0.1);
+  color: #ff3b30;
+  font-size: 16px;
+  cursor: pointer;
 }
 
 .errorMsg {

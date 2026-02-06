@@ -96,9 +96,15 @@ export default defineEventHandler(async (event) => {
     line_total: number;
   };
 
+  type PaymentRow = {
+    payment_type: string;
+    amount: number;
+  };
+
   const items = detail.items as ReceiptItem[];
   const customItems = (detail.customItems ?? []) as CustomItem[];
   const discount = (detail.sale.discount ?? 0) as number;
+  const payments = (detail.payments ?? []) as PaymentRow[];
 
   const itemsHtml = items
     .map(
@@ -133,6 +139,15 @@ export default defineEventHandler(async (event) => {
     .join("");
 
   const adjustmentsHtml = discount > 0 ? `<div class="adjustment discount"><span>Diskon</span><span>- ${rupiah(discount)}</span></div>` : "";
+  const paymentsHtml =
+    payments.length > 1
+      ? `<div>Pembayaran:</div>${payments
+          .map(
+            (p) =>
+              `<div>${escapeHtml(String(p.payment_type))}: ${rupiah(p.amount)}</div>`,
+          )
+          .join("")}`
+      : `<div>Pembayaran: ${escapeHtml(String(payments[0]?.payment_type ?? detail.sale.payment_type))}</div>`;
 
   return `
     <!doctype html>
@@ -174,7 +189,7 @@ export default defineEventHandler(async (event) => {
           <div class="meta">
             <div>Tanggal: ${escapeHtml(formatSaleDate(detail.sale.sale_date))}</div>
             <div>Plat: ${escapeHtml(String(detail.sale.customer_plate_no))}</div>
-            <div>Pembayaran: ${escapeHtml(String(detail.sale.payment_type))}</div>
+            ${paymentsHtml}
           </div>
           <table>
             <thead>
