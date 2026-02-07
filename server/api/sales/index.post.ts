@@ -13,20 +13,22 @@ export default defineEventHandler(async (event) => {
   const user = await requireUser(event);
   const storeId = resolveStoreId(event, user);
   const body = await readBodyWithSchema(event, createSaleBodySchema);
+  const expenseOnly = body.expense_only === true;
 
   try {
     return await createSale({
       storeId,
       userId: user.id,
       saleDate: body.sale_date ?? todayIsoDate(),
-      paymentType: body.payment_type,
-      payments: body.payments,
-      plateNo: body.plate_no,
-      items: body.items,
-      customItems: body.custom_items,
-      discount: body.discount,
-      serviceFee: body.service_fee,
+      paymentType: expenseOnly ? "CASH" : body.payment_type,
+      payments: expenseOnly ? undefined : body.payments,
+      plateNo: expenseOnly ? "PENGELUARAN" : (body.plate_no ?? ""),
+      items: expenseOnly ? [] : body.items,
+      customItems: expenseOnly ? [] : body.custom_items,
+      discount: expenseOnly ? 0 : body.discount,
+      serviceFee: expenseOnly ? 0 : body.service_fee,
       expenses: body.expenses,
+      expenseOnly,
     });
   } catch (error: unknown) {
     const e = error as { code?: string; message?: string; statusCode?: number };

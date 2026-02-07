@@ -13,14 +13,16 @@ export default defineEventHandler(async (event) => {
   const user = await requireUser(event);
   const storeId = resolveStoreId(event, user);
   const query = getQueryWithSchema(event, salesListQuerySchema);
+  const isAdmin = user.role === "ADMIN";
 
-  const allDates = query.all_dates === "true" && user.role === "ADMIN";
+  const allDates = query.all_dates === "true" && isAdmin;
 
   const items = await listSales({
     db: getPool(),
     storeId,
     date: query.date ?? todayIsoDate(),
     allDates,
+    hideExpenseOnly: !isAdmin,
     q: query.q,
     limit: query.limit ?? 50,
     offset: query.offset ?? 0,
@@ -30,6 +32,7 @@ export default defineEventHandler(async (event) => {
     items,
     date: query.date ?? todayIsoDate(),
     all_dates: allDates,
+    can_expense_only: true,
     limit: query.limit ?? 50,
     offset: query.offset ?? 0,
   };

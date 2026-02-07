@@ -108,6 +108,8 @@ const showSuccessSheet = ref(false)
 const searchInputRef = ref<HTMLInputElement | null>(null)
 
 const isAdmin = computed(() => me.user.value?.role === "ADMIN")
+const expenseOnlyMode = ref(false)
+const isExpenseOnly = computed(() => expenseOnlyMode.value)
 
 const editOpen = ref(false)
 const editSaleId = ref<string | null>(null)
@@ -162,6 +164,13 @@ function paymentLabel(sale: SaleRow) {
   const ps = sale.payments ?? []
   if (ps.length > 1) return ps.map((p) => p.payment_type).join(" + ")
   return String(ps[0]?.payment_type ?? sale.payment_type)
+}
+
+function isExpenseOnlySale(sale: SaleRow) {
+  const hasProduct = (sale.items?.length ?? 0) > 0
+  const hasCustom = (sale.custom_items?.length ?? 0) > 0
+  const hasExpense = (sale.expense_total ?? 0) > 0 || (sale.expenses?.length ?? 0) > 0
+  return !hasProduct && !hasCustom && hasExpense
 }
 
 function hhmm(value: string) {
@@ -315,6 +324,15 @@ const paymentTotal = computed(() => payments.value.reduce((sum, p) => sum + (p.a
 const paymentDiff = computed(() => totalPreview.value - paymentTotal.value)
 
 const expenseTotal = computed(() => expenses.value.reduce((sum, e) => sum + (e.amount || 0), 0))
+const bottomTotal = computed(() => (isExpenseOnly.value ? expenseTotal.value : totalPreview.value))
+const submitDisabled = computed(() => {
+  if (submitLoading.value) return true
+  if (isExpenseOnly.value) return expenses.value.length === 0
+  if (!plateNo.value.trim()) return true
+  if (selected.value.length === 0 && customItems.value.length === 0) return true
+  if (isSplitPayment.value && paymentDiff.value !== 0) return true
+  return false
+})
 
 function enableSplitPayment() {
   isSplitPayment.value = true
@@ -332,6 +350,23 @@ function onSplitPaymentToggle(e: Event) {
   const checked = (e.target as HTMLInputElement | null)?.checked ?? false
   if (checked) enableSplitPayment()
   else disableSplitPayment()
+}
+
+function onExpenseOnlyToggle(e: Event) {
+  const checked = (e.target as HTMLInputElement | null)?.checked ?? false
+  expenseOnlyMode.value = checked
+  errorMessage.value = null
+
+  if (checked) {
+    search.value = ""
+    products.value = []
+    dropdownOpen.value = false
+    selected.value = []
+    customItems.value = []
+    discount.value = 0
+    showCustomForm.value = false
+    disableSplitPayment()
+  }
 }
 
 function addPaymentRow() {
@@ -376,34 +411,43 @@ function removeExpense(idx: number) {
 async function submit() {
   errorMessage.value = null
   lastSaleId.value = null
-  if (!plateNo.value.trim()) {
-    errorMessage.value = "Plat nomor wajib diisi"
-    return
-  }
-  if (selected.value.length === 0 && customItems.value.length === 0) {
-    errorMessage.value = "Pilih minimal 1 item produk atau custom item"
-    return
-  }
-  if (isSplitPayment.value) {
-    const used = new Set<string>()
-    for (const p of payments.value) {
-      if (!p.payment_type) {
-        errorMessage.value = "Metode pembayaran wajib diisi"
-        return
-      }
-      if (used.has(p.payment_type)) {
-        errorMessage.value = "Metode pembayaran tidak boleh duplikat"
-        return
-      }
-      used.add(p.payment_type)
-      if (p.amount <= 0) {
-        errorMessage.value = "Nominal pembayaran harus > 0"
-        return
-      }
-    }
-    if (paymentDiff.value !== 0) {
-      errorMessage.value = "Total pembayaran harus sama dengan total transaksi"
+  const expenseOnly = isExpenseOnly.value
+
+  if (expenseOnly) {
+    if (expenses.value.length === 0) {
+      errorMessage.value = "Minimal 1 item pengeluaran"
       return
+    }
+  } else {
+    if (!plateNo.value.trim()) {
+      errorMessage.value = "Plat nomor wajib diisi"
+      return
+    }
+    if (selected.value.length === 0 && customItems.value.length === 0) {
+      errorMessage.value = "Pilih minimal 1 item produk atau custom item"
+      return
+    }
+    if (isSplitPayment.value) {
+      const used = new Set<string>()
+      for (const p of payments.value) {
+        if (!p.payment_type) {
+          errorMessage.value = "Metode pembayaran wajib diisi"
+          return
+        }
+        if (used.has(p.payment_type)) {
+          errorMessage.value = "Metode pembayaran tidak boleh duplikat"
+          return
+        }
+        used.add(p.payment_type)
+        if (p.amount <= 0) {
+          errorMessage.value = "Nominal pembayaran harus > 0"
+          return
+        }
+      }
+      if (paymentDiff.value !== 0) {
+        errorMessage.value = "Total pembayaran harus sama dengan total transaksi"
+        return
+      }
     }
   }
 
@@ -411,14 +455,19 @@ async function submit() {
   try {
     const res = await $fetch<{ sale_id: string }>("/api/sales", {
       method: "POST",
-      body: {
-        plate_no: plateNo.value.trim(),
-        ...(isSplitPayment.value ? { payments: payments.value } : { payment_type: paymentType.value }),
-        items: selected.value.map((x) => ({ product_id: x.product.product_id, qty: x.qty })),
-        custom_items: customItems.value,
-        discount: discount.value,
-        expenses: expenses.value,
-      }
+      body: expenseOnly
+        ? {
+            expense_only: true,
+            expenses: expenses.value,
+          }
+        : {
+            plate_no: plateNo.value.trim(),
+            ...(isSplitPayment.value ? { payments: payments.value } : { payment_type: paymentType.value }),
+            items: selected.value.map((x) => ({ product_id: x.product.product_id, qty: x.qty })),
+            custom_items: customItems.value,
+            discount: discount.value,
+            expenses: expenses.value,
+          },
     })
     lastSaleId.value = res.sale_id
     showSuccessSheet.value = true
@@ -798,7 +847,19 @@ async function newTransaction() {
     </div>
 
     <div class="tabContent" :class="{ hidden: activeTab !== 'input' }">
-      <div class="searchSection">
+      <div class="modeSection">
+        <label class="splitToggle">
+          <input
+            type="checkbox"
+            :checked="expenseOnlyMode"
+            @change="onExpenseOnlyToggle"
+          />
+          <span>Input pengeluaran saja</span>
+        </label>
+        <span v-if="isExpenseOnly" class="modeHint">Mode ini tanpa SKU, plat nomor, dan pembayaran.</span>
+      </div>
+
+      <div v-if="!isExpenseOnly" class="searchSection">
         <div class="searchWrapper">
           <svg class="searchIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="11" cy="11" r="8" />
@@ -863,7 +924,7 @@ async function newTransaction() {
         </div>
       </div>
 
-      <div v-if="selected.length || customItems.length" class="cartSection">
+      <div v-if="!isExpenseOnly && (selected.length || customItems.length)" class="cartSection">
         <div class="cartHeader">
           <span class="cartTitle">Item Transaksi</span>
           <span class="cartBadge">{{ itemCount }} item</span>
@@ -912,7 +973,7 @@ async function newTransaction() {
         </div>
       </div>
 
-      <div v-else class="emptyState">
+      <div v-else-if="!isExpenseOnly" class="emptyState">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
           <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
         </svg>
@@ -920,7 +981,7 @@ async function newTransaction() {
         <span class="emptyHint">Cari produk untuk ditambahkan ke transaksi</span>
       </div>
 
-      <div class="customItemSection">
+      <div v-if="!isExpenseOnly" class="customItemSection">
         <button v-if="!showCustomForm" type="button" class="addCustomBtn" @click="showCustomForm = true">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M12 5v14M5 12h14" />
@@ -944,6 +1005,7 @@ async function newTransaction() {
       </div>
 
       <div class="formSection">
+        <template v-if="!isExpenseOnly">
         <div class="formRow">
           <label class="formField">
             <span class="formLabel">Plat Nomor</span>
@@ -1004,6 +1066,7 @@ async function newTransaction() {
             <input v-model.number="discount" class="formInput" type="number" min="0" placeholder="0" />
           </label>
         </div>
+        </template>
 
         <div class="expenseSection">
           <div class="expenseHeader">
@@ -1027,7 +1090,7 @@ async function newTransaction() {
           <div v-else class="customForm">
             <div class="customFormTitle">Biaya Pengeluaran</div>
             <div class="customFormFields">
-              <input v-model="newExpenseName" class="formInput" placeholder="Nama biaya (cth: air galon)" />
+              <input v-model="newExpenseName" class="formInput" placeholder="Nama biaya (cth: Bonus, Kopi, Air)" />
               <input v-model.number="newExpenseAmount" class="formInput" type="number" min="0" placeholder="Nominal" />
             </div>
             <div class="customFormActions">
@@ -1117,13 +1180,14 @@ async function newTransaction() {
               <div v-if="salePreview(s).more" class="saleItemMoreTop">+{{ salePreview(s).more }} item</div>
             </div>
             <div v-else class="saleItemsTop">
-              <div class="saleItemLineTop">{{ s.customer_plate_no }}</div>
+              <div class="saleItemLineTop">{{ isExpenseOnlySale(s) ? "Pengeluaran Saja" : s.customer_plate_no }}</div>
             </div>
             <div class="saleMeta">
               <span class="salePlateBadge">{{ s.customer_plate_no }}</span>
               <span v-if="searchAllDates" class="saleDateBadge">{{ formatDate(s.sale_date) }}</span>
               <span class="saleTime">{{ hhmm(s.created_at) }}</span>
               <span class="salePayment">{{ paymentLabel(s) }}</span>
+              <span v-if="isExpenseOnlySale(s)" class="saleExpenseOnly">Pengeluaran</span>
               <span v-if="s.discount > 0" class="saleDiscount">-{{ rupiah(s.discount) }}</span>
             </div>
           </div>
@@ -1174,12 +1238,12 @@ async function newTransaction() {
 
     <div v-if="activeTab === 'input'" class="bottomBar">
       <div class="totalSection">
-        <span class="totalLabel">Total</span>
-        <span class="totalValue">Rp {{ rupiah(totalPreview) }}</span>
+        <span class="totalLabel">{{ isExpenseOnly ? "Total Pengeluaran" : "Total" }}</span>
+        <span class="totalValue">Rp {{ rupiah(bottomTotal) }}</span>
       </div>
       <button 
         class="submitBtn" 
-        :disabled="submitLoading || !plateNo.trim() || (selected.length === 0 && customItems.length === 0) || (isSplitPayment && paymentDiff !== 0)"
+        :disabled="submitDisabled"
         @click="submit"
       >
         <template v-if="submitLoading">
@@ -1190,7 +1254,7 @@ async function newTransaction() {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
             <path d="M5 13l4 4L19 7" />
           </svg>
-          <span>Simpan</span>
+          <span>{{ isExpenseOnly ? "Simpan Pengeluaran" : "Simpan" }}</span>
         </template>
       </button>
     </div>
@@ -1951,6 +2015,21 @@ async function newTransaction() {
   accent-color: var(--mb-accent);
 }
 
+.modeSection {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--mb-border2);
+  border-radius: 12px;
+  background: var(--mb-surface2);
+}
+
+.modeHint {
+  font-size: 12px;
+  color: var(--mb-muted);
+}
+
 .splitPaymentBox {
   padding: 12px;
   border: 1px solid var(--mb-border2);
@@ -2247,6 +2326,15 @@ async function newTransaction() {
   border-radius: 6px;
   background: var(--mb-surface2);
   font-weight: 600;
+  font-size: 11px;
+}
+
+.saleExpenseOnly {
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(255, 149, 0, 0.14);
+  color: #9b5a00;
+  font-weight: 700;
   font-size: 11px;
 }
 

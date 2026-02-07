@@ -64,10 +64,113 @@ export async function getDailyReport({
         AND s.sale_date = $2::date
       GROUP BY p.id, p.sku, p.name, p.size, b.name
       ORDER BY qty DESC, revenue DESC
-      LIMIT 10
     `,
     [storeId, date],
   );
+
+  const customRes = await db.query<{ item_name: string; qty: number; revenue: number }>(
+    `
+      SELECT
+        sci.item_name,
+        COALESCE(SUM(sci.qty), 0)::int AS qty,
+        COALESCE(SUM(sci.line_total), 0)::int AS revenue
+      FROM sales_custom_items sci
+      JOIN sales s ON s.id = sci.sale_id
+      WHERE s.store_id = $1
+        AND s.sale_date = $2::date
+      GROUP BY sci.item_name
+      ORDER BY qty DESC, revenue DESC, sci.item_name
+    `,
+    [storeId, date],
+  );
+
+  const expenseRes = await db.query<{ item_name: string; amount: number; entries: number }>(
+    `
+      SELECT
+        se.item_name,
+        COALESCE(SUM(se.amount), 0)::int AS amount,
+        COUNT(*)::int AS entries
+      FROM sales_expenses se
+      JOIN sales s ON s.id = se.sale_id
+      WHERE s.store_id = $1
+        AND s.sale_date = $2::date
+      GROUP BY se.item_name
+      ORDER BY amount DESC, se.item_name
+    `,
+    [storeId, date],
+  );
+
+  const inputsRes = await db.query<{
+    sale_id: string;
+    created_at: string;
+    customer_plate_no: string;
+    input_type: "product" | "custom" | "expense";
+    sku: string | null;
+    item_name: string;
+    qty: number;
+    unit_price: number;
+    line_total: number;
+  }>(
+    `
+      SELECT *
+      FROM (
+        SELECT
+          s.id AS sale_id,
+          s.created_at,
+          s.customer_plate_no,
+          'product'::text AS input_type,
+          p.sku,
+          CONCAT_WS(' ', b.name, p.name, p.size) AS item_name,
+          si.qty::int AS qty,
+          si.sell_price::int AS unit_price,
+          si.line_total::int AS line_total
+        FROM sales_items si
+        JOIN sales s ON s.id = si.sale_id
+        JOIN products p ON p.id = si.product_id
+        JOIN brands b ON b.id = p.brand_id
+        WHERE s.store_id = $1
+          AND s.sale_date = $2::date
+
+        UNION ALL
+
+        SELECT
+          s.id AS sale_id,
+          s.created_at,
+          s.customer_plate_no,
+          'custom'::text AS input_type,
+          NULL::text AS sku,
+          sci.item_name,
+          sci.qty::int AS qty,
+          sci.price::int AS unit_price,
+          sci.line_total::int AS line_total
+        FROM sales_custom_items sci
+        JOIN sales s ON s.id = sci.sale_id
+        WHERE s.store_id = $1
+          AND s.sale_date = $2::date
+
+        UNION ALL
+
+        SELECT
+          s.id AS sale_id,
+          s.created_at,
+          s.customer_plate_no,
+          'expense'::text AS input_type,
+          NULL::text AS sku,
+          se.item_name,
+          1::int AS qty,
+          se.amount::int AS unit_price,
+          se.amount::int AS line_total
+        FROM sales_expenses se
+        JOIN sales s ON s.id = se.sale_id
+        WHERE s.store_id = $1
+          AND s.sale_date = $2::date
+      ) entries
+      ORDER BY created_at DESC, sale_id, input_type, item_name
+    `,
+    [storeId, date],
+  );
+
+  const expenseTotal = expenseRes.rows.reduce((sum, row) => sum + row.amount, 0);
 
   return {
     date,
@@ -75,6 +178,10 @@ export async function getDailyReport({
     profit: profitRes.rows[0]?.profit ?? 0,
     transactions: totalsRes.rows[0]?.transactions ?? 0,
     top_skus: topRes.rows,
+    custom_items: customRes.rows,
+    expenses: expenseRes.rows,
+    expense_total: expenseTotal,
+    inputs: inputsRes.rows,
   };
 }
 

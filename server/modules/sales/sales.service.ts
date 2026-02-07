@@ -107,6 +107,7 @@ export async function createSale({
   discount,
   serviceFee,
   expenses,
+  expenseOnly,
 }: {
   storeId: string;
   userId: string;
@@ -119,6 +120,7 @@ export async function createSale({
   discount: number;
   serviceFee: number;
   expenses?: SaleExpenseInput[];
+  expenseOnly?: boolean;
 }) {
   return await tx(async (client) => {
     const productIds = items.map((i) => i.product_id);
@@ -153,21 +155,28 @@ export async function createSale({
       };
     });
 
-    await client.query(
-      "INSERT INTO customers (store_id, plate_no) VALUES ($1, $2) ON CONFLICT (store_id, plate_no) DO NOTHING",
-      [storeId, plateNo],
-    );
+    if (!expenseOnly) {
+      await client.query(
+        "INSERT INTO customers (store_id, plate_no) VALUES ($1, $2) ON CONFLICT (store_id, plate_no) DO NOTHING",
+        [storeId, plateNo],
+      );
+    }
 
     const productSubtotal = priced.reduce((sum, i) => sum + i.line_total, 0);
     const customSubtotal = customItems.reduce((sum, i) => sum + i.qty * i.price, 0);
     const subtotal = productSubtotal + customSubtotal;
     const total = subtotal - discount + serviceFee;
 
-    const normalizedPayments = normalizeSalePayments({
-      paymentType,
-      payments,
-      total,
-    });
+    const normalizedPayments = expenseOnly
+      ? {
+          paymentTypeSummary: "CASH",
+          paymentRows: [],
+        }
+      : normalizeSalePayments({
+          paymentType,
+          payments,
+          total,
+        });
 
     const saleRes = await client.query<{ id: string; created_at: string }>(
       `
@@ -320,6 +329,7 @@ export async function listSales({
   storeId,
   date,
   allDates,
+  hideExpenseOnly,
   q,
   limit,
   offset,
@@ -328,6 +338,7 @@ export async function listSales({
   storeId: string;
   date: string;
   allDates?: boolean;
+  hideExpenseOnly?: boolean;
   q?: string;
   limit: number;
   offset: number;
@@ -335,7 +346,7 @@ export async function listSales({
   const hasPrinted = await hasPrintedFirstAtColumn(db);
   const search = q?.trim() || null;
 
-  const params: Array<string | number | null> = [storeId];
+  const params: Array<string | number | boolean | null> = [storeId];
   let nextParam = 2;
 
   let dateFilter = "";
@@ -347,6 +358,10 @@ export async function listSales({
 
   const searchParam = nextParam;
   params.push(search);
+  nextParam += 1;
+
+  const hideExpenseOnlyParam = nextParam;
+  params.push(hideExpenseOnly === true);
   nextParam += 1;
 
   const limitParam = nextParam;
@@ -469,6 +484,24 @@ export async function listSales({
           FROM sales_custom_items sci2
           WHERE sci2.sale_id = s.id
             AND sci2.item_name ILIKE '%' || $${searchParam} || '%'
+        )
+      )
+      AND (
+        NOT $${hideExpenseOnlyParam}::boolean
+        OR EXISTS (
+          SELECT 1
+          FROM sales_items si3
+          WHERE si3.sale_id = s.id
+        )
+        OR EXISTS (
+          SELECT 1
+          FROM sales_custom_items sci3
+          WHERE sci3.sale_id = s.id
+        )
+        OR NOT EXISTS (
+          SELECT 1
+          FROM sales_expenses se3
+          WHERE se3.sale_id = s.id
         )
       )
     ORDER BY s.created_at DESC

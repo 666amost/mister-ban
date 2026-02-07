@@ -34,10 +34,11 @@ const saleExpenseSchema = z.object({
 
 export const createSaleBodySchema = z
   .object({
+    expense_only: z.boolean().optional().default(false),
     sale_date: dateSchema.optional(),
     payment_type: paymentTypeSchema.optional(),
     payments: z.array(salePaymentSchema).max(6).optional(),
-    plate_no: z.string().trim().min(1).max(20),
+    plate_no: z.string().trim().min(1).max(20).optional(),
     items: z.array(saleItemSchema).default([]),
     custom_items: z.array(customItemSchema).default([]),
     discount: z.coerce.number().int().min(0).default(0),
@@ -45,6 +46,35 @@ export const createSaleBodySchema = z
     expenses: z.array(saleExpenseSchema).default([]),
   })
   .superRefine((data, ctx) => {
+    if (data.expense_only) {
+      if (data.expenses.length === 0) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["expenses"],
+          message: "Minimal 1 item pengeluaran",
+        });
+        return;
+      }
+      if (data.items.length > 0 || data.custom_items.length > 0) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["items"],
+          message: "Mode pengeluaran saja tidak boleh berisi item produk/custom",
+        });
+        return;
+      }
+      return;
+    }
+
+    if (!data.plate_no) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["plate_no"],
+        message: "Plat nomor wajib diisi",
+      });
+      return;
+    }
+
     if (!data.payment_type && (!data.payments || data.payments.length === 0)) {
       ctx.addIssue({
         code: "custom",
