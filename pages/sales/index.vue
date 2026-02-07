@@ -173,6 +173,12 @@ function isExpenseOnlySale(sale: SaleRow) {
   return !hasProduct && !hasCustom && hasExpense
 }
 
+function saleDisplayTotal(sale: SaleRow) {
+  if (!isExpenseOnlySale(sale)) return sale.total
+  if (typeof sale.expense_total === "number") return sale.expense_total
+  return (sale.expenses ?? []).reduce((sum, e) => sum + (e.amount || 0), 0)
+}
+
 function hhmm(value: string) {
   return new Date(value).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })
 }
@@ -1192,7 +1198,7 @@ async function newTransaction() {
             </div>
           </div>
           <div class="saleRight">
-            <div class="saleTotal">Rp {{ rupiah(s.total) }}</div>
+            <div class="saleTotal">Rp {{ rupiah(saleDisplayTotal(s)) }}</div>
             <div class="saleActions">
               <a
                 class="printLabel"
