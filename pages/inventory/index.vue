@@ -7,14 +7,26 @@ type InventoryRow = {
   name: string
   size: string
   brand: string
+  product_type: string
   qty_on_hand: number
   avg_unit_cost: number
   sell_price: number | null
 }
 
+type InventorySummary = {
+  ban_qty: number
+  sparepart_qty: number
+  oli_qty: number
+}
+
 const me = useMe()
 
 const items = ref<InventoryRow[]>([])
+const summary = ref<InventorySummary>({
+  ban_qty: 0,
+  sparepart_qty: 0,
+  oli_qty: 0,
+})
 const isLoading = ref(false)
 const errorMessage = ref<string | null>(null)
 const q = ref("")
@@ -43,6 +55,10 @@ function rupiah(value: number) {
   return value.toLocaleString("id-ID")
 }
 
+function formatNumber(value: number) {
+  return value.toLocaleString("id-ID")
+}
+
 function statusMessage(error: unknown) {
   if (!error || typeof error !== "object") return null
   const e = error as Record<string, unknown>
@@ -62,7 +78,7 @@ async function load(options?: { reset?: boolean }) {
   isLoading.value = true
   errorMessage.value = null
   try {
-    const res = await $fetch<{ items: InventoryRow[] }>("/api/inventory", {
+    const res = await $fetch<{ items: InventoryRow[]; summary: InventorySummary }>("/api/inventory", {
       query: {
         q: q.value,
         limit: pageLimit.value,
@@ -70,6 +86,7 @@ async function load(options?: { reset?: boolean }) {
       },
     })
     items.value = res.items
+    summary.value = res.summary
     hasMore.value = res.items.length === pageLimit.value
 
     // selections are per-page to avoid accidental bulk adjust on hidden items
@@ -77,6 +94,11 @@ async function load(options?: { reset?: boolean }) {
     if (adjustingId.value && !res.items.some((i) => i.product_id === adjustingId.value)) cancelAdjust()
   } catch (error) {
     errorMessage.value = statusMessage(error) ?? "Gagal memuat inventory"
+    summary.value = {
+      ban_qty: 0,
+      sparepart_qty: 0,
+      oli_qty: 0,
+    }
   } finally {
     isLoading.value = false
   }
@@ -239,6 +261,23 @@ onMounted(async () => {
         <button v-if="me.user.value?.role === 'ADMIN'" :class="bulkMode ? 'mb-btnDanger' : 'mb-btn'" @click="bulkMode ? cancelBulk() : bulkMode = true">
           {{ bulkMode ? "Cancel Bulk" : "Bulk Adjust" }}
         </button>
+      </div>
+    </section>
+
+    <section class="mb-card">
+      <div class="summaryGrid">
+        <div class="summaryItem highlight">
+          <div class="summaryLabel">Total Qty Ban</div>
+          <div class="summaryValue">{{ formatNumber(summary.ban_qty) }}</div>
+        </div>
+        <div class="summaryItem">
+          <div class="summaryLabel">Total Qty Sparepart</div>
+          <div class="summaryValue">{{ formatNumber(summary.sparepart_qty) }}</div>
+        </div>
+        <div class="summaryItem">
+          <div class="summaryLabel">Total Qty Oli</div>
+          <div class="summaryValue">{{ formatNumber(summary.oli_qty) }}</div>
+        </div>
       </div>
     </section>
 
@@ -491,5 +530,30 @@ th {
 .bulkNoteField {
   flex: 1;
   min-width: 240px;
+}
+.summaryGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+.summaryItem {
+  border: 1px solid var(--mb-border2);
+  border-radius: 12px;
+  padding: 12px;
+  background: var(--mb-surface);
+}
+.summaryItem.highlight {
+  border-color: rgba(52, 199, 89, 0.35);
+  background: rgba(52, 199, 89, 0.08);
+}
+.summaryLabel {
+  font-size: 12px;
+  color: var(--mb-muted);
+}
+.summaryValue {
+  margin-top: 6px;
+  font-size: 24px;
+  line-height: 1.1;
+  font-weight: 900;
 }
 </style>

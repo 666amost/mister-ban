@@ -19,6 +19,39 @@ export async function getDailyReport({
     [storeId, date],
   );
 
+  const paymentSummaryRes = await db.query<{
+    cash: number;
+    non_cash: number;
+    qris: number;
+    debit: number;
+    transfer: number;
+    credit: number;
+  }>(
+    `
+      SELECT
+        COALESCE(SUM(CASE WHEN p.payment_type = 'CASH' THEN p.amount ELSE 0 END), 0)::int AS cash,
+        COALESCE(SUM(CASE WHEN p.payment_type <> 'CASH' THEN p.amount ELSE 0 END), 0)::int AS non_cash,
+        COALESCE(SUM(CASE WHEN p.payment_type = 'QRIS' THEN p.amount ELSE 0 END), 0)::int AS qris,
+        COALESCE(SUM(CASE WHEN p.payment_type = 'DEBIT' THEN p.amount ELSE 0 END), 0)::int AS debit,
+        COALESCE(SUM(CASE WHEN p.payment_type = 'TRANSFER' THEN p.amount ELSE 0 END), 0)::int AS transfer,
+        COALESCE(SUM(CASE WHEN p.payment_type = 'CREDIT' THEN p.amount ELSE 0 END), 0)::int AS credit
+      FROM (
+        SELECT
+          UPPER(COALESCE(sp.payment_type, s.payment_type, '')) AS payment_type,
+          COALESCE(sp.amount, s.total, 0)::int AS amount
+        FROM sales s
+        LEFT JOIN LATERAL (
+          SELECT payment_type, amount
+          FROM sales_payments sp
+          WHERE sp.sale_id = s.id
+        ) sp ON true
+        WHERE s.store_id = $1
+          AND s.sale_date = $2::date
+      ) p
+    `,
+    [storeId, date],
+  );
+
   const profitRes = await db.query<{ profit: number }>(
     `
       SELECT
@@ -171,12 +204,21 @@ export async function getDailyReport({
   );
 
   const expenseTotal = expenseRes.rows.reduce((sum, row) => sum + row.amount, 0);
+  const paymentSummary = paymentSummaryRes.rows[0] ?? {
+    cash: 0,
+    non_cash: 0,
+    qris: 0,
+    debit: 0,
+    transfer: 0,
+    credit: 0,
+  };
 
   return {
     date,
     omzet: totalsRes.rows[0]?.omzet ?? 0,
     profit: profitRes.rows[0]?.profit ?? 0,
     transactions: totalsRes.rows[0]?.transactions ?? 0,
+    payment_summary: paymentSummary,
     top_skus: topRes.rows,
     custom_items: customRes.rows,
     expenses: expenseRes.rows,

@@ -68,7 +68,7 @@ await load()
         <button class="mb-btn" :disabled="isLoading" @click="load">{{ isLoading ? "Loading..." : "Load" }}</button>
       </div>
 
-      <div v-if="report" class="summary">
+      <div v-if="report" class="summary reportSummary">
         <div class="sumItem">
           <div class="label">Omzet</div>
           <div class="value">Rp {{ rupiah(report.omzet) }}</div>
@@ -112,11 +112,45 @@ await load()
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 12px;
 }
+.summary.reportSummary {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid var(--mb-border2);
+  background: var(--mb-surface2);
+}
 .sumItem {
   border: 1px solid var(--mb-border2);
   background: var(--mb-surface2);
   border-radius: 14px;
   padding: 14px;
+}
+.summary.reportSummary .sumItem {
+  background: var(--mb-surface);
+  border-color: var(--mb-border2);
+  box-shadow:
+    0 1px 0 rgba(17, 24, 39, 0.04),
+    0 12px 24px rgba(17, 24, 39, 0.06);
+}
+
+.summary.reportSummary .sumItem:nth-child(-n + 2) {
+  background: linear-gradient(
+    180deg,
+    rgba(52, 199, 89, 0.08),
+    rgba(52, 199, 89, 0.02) 35%,
+    var(--mb-surface) 100%
+  );
+}
+
+.summary.reportSummary .label {
+  font-size: 11px;
+  letter-spacing: 0.2px;
+}
+
+.summary.reportSummary .value {
+  margin-top: 4px;
+  font-size: 15px;
 }
 .label {
   font-size: 12px;

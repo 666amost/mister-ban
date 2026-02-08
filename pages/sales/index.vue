@@ -180,11 +180,31 @@ function saleDisplayTotal(sale: SaleRow) {
 }
 
 function hhmm(value: string) {
-  return new Date(value).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })
+  return new Date(value).toLocaleTimeString("id-ID", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "Asia/Jakarta",
+  })
 }
 
 function formatDate(value: string) {
-  return new Date(value).toLocaleDateString("id-ID", { day: "numeric", month: "short" })
+  const m = value.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (m) {
+    const year = Number(m[1])
+    const month = Number(m[2])
+    const day = Number(m[3])
+    return new Date(Date.UTC(year, month - 1, day, 12, 0, 0)).toLocaleDateString("id-ID", {
+      day: "2-digit",
+      month: "short",
+      timeZone: "Asia/Jakarta",
+    })
+  }
+  return new Date(value).toLocaleDateString("id-ID", {
+    day: "2-digit",
+    month: "short",
+    timeZone: "Asia/Jakarta",
+  })
 }
 
 const salePreviewById = computed(() => {
@@ -1190,8 +1210,8 @@ async function newTransaction() {
             </div>
             <div class="saleMeta">
               <span class="salePlateBadge">{{ s.customer_plate_no }}</span>
-              <span v-if="searchAllDates" class="saleDateBadge">{{ formatDate(s.sale_date) }}</span>
-              <span class="saleTime">{{ hhmm(s.created_at) }}</span>
+              <span class="saleDateBadge">{{ formatDate(s.sale_date) }}</span>
+              <span class="saleTime">{{ hhmm(s.created_at) }} WIB</span>
               <span class="salePayment">{{ paymentLabel(s) }}</span>
               <span v-if="isExpenseOnlySale(s)" class="saleExpenseOnly">Pengeluaran</span>
               <span v-if="s.discount > 0" class="saleDiscount">-{{ rupiah(s.discount) }}</span>
@@ -1538,6 +1558,7 @@ async function newTransaction() {
   flex-direction: column;
   min-height: calc(100vh - 140px);
   padding-bottom: 100px;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
 .mobileTabBar {
@@ -2294,12 +2315,15 @@ async function newTransaction() {
 }
 
 .saleItemLineTop {
-  font-weight: 800;
+  font-weight: 700;
   font-size: 14px;
-  line-height: 1.25;
-  white-space: nowrap;
+  line-height: 1.3;
+  white-space: normal;
   overflow: hidden;
-  text-overflow: ellipsis;
+  text-overflow: clip;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 
 .saleItemMoreTop {
@@ -2312,7 +2336,8 @@ async function newTransaction() {
   align-items: center;
   gap: 8px;
   margin-top: 6px;
-  font-size: 13px;
+  flex-wrap: wrap;
+  font-size: 12px;
   color: var(--mb-muted);
 }
 
@@ -2328,11 +2353,13 @@ async function newTransaction() {
 }
 
 .salePayment {
-  padding: 2px 8px;
+  padding: 2px 6px;
   border-radius: 6px;
-  background: var(--mb-surface2);
-  font-weight: 600;
+  background: transparent;
+  border: 1px solid var(--mb-border2);
+  font-weight: 500;
   font-size: 11px;
+  white-space: nowrap;
 }
 
 .saleExpenseOnly {
@@ -2354,6 +2381,7 @@ async function newTransaction() {
 
 .saleRight {
   text-align: right;
+  min-width: 88px;
 }
 
 .saleTotal {
@@ -2408,7 +2436,7 @@ async function newTransaction() {
   color: var(--mb-text);
 }
 
-@media (max-width: 420px) {
+@media (max-width: 720px) {
   .saleCard {
     grid-template-columns: 1fr;
   }
@@ -2419,7 +2447,7 @@ async function newTransaction() {
   }
 
   .salePlateBadge {
-    max-width: 52vw;
+    max-width: 60vw;
     overflow: hidden;
     text-overflow: ellipsis;
   }
@@ -2769,12 +2797,17 @@ async function newTransaction() {
 }
 
 .saleDateBadge {
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: rgba(0, 122, 255, 0.1);
-  color: #007aff;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--mb-muted);
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.saleTime {
+  white-space: nowrap;
 }
 
 .saleDiscount {

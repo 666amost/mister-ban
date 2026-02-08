@@ -6,9 +6,16 @@ export type InventoryRow = {
   name: string;
   size: string;
   brand: string;
+  product_type: string;
   qty_on_hand: number;
   avg_unit_cost: number;
   sell_price: number | null;
+};
+
+export type InventorySummary = {
+  ban_qty: number;
+  sparepart_qty: number;
+  oli_qty: number;
 };
 
 export async function ensureBalances(
@@ -71,6 +78,7 @@ export async function listInventory(
         p.sku,
         p.name,
         p.size,
+        p.product_type,
         b.name AS brand,
         COALESCE(ib.qty_on_hand, 0) AS qty_on_hand,
         COALESCE(ib.avg_unit_cost, 0) AS avg_unit_cost,
@@ -89,6 +97,7 @@ export async function listInventory(
           $2::text IS NULL
           OR p.sku ILIKE '%' || $2 || '%'
           OR p.name ILIKE '%' || $2 || '%'
+          OR p.product_type ILIKE '%' || $2 || '%'
           OR p.size ILIKE '%' || $2 || '%'
           OR b.name ILIKE '%' || $2 || '%'
         )
@@ -99,4 +108,72 @@ export async function listInventory(
     [storeId, term, limit, offset],
   );
   return rows as InventoryRow[];
+}
+
+export async function summarizeInventory(
+  db: DbConn,
+  storeId: string,
+  {
+    q,
+  }: {
+    q?: string;
+  },
+): Promise<InventorySummary> {
+  const term = q?.trim() ? q.trim() : null;
+
+  const totalResult = await db.query<{
+    ban_qty: number;
+    sparepart_qty: number;
+    oli_qty: number;
+  }>(
+    `
+      SELECT
+        COALESCE(SUM(
+          CASE
+            WHEN b.name NOT IN ('Oli', 'Disc pad', 'Disc', 'IML') 
+            THEN COALESCE(ib.qty_on_hand, 0)
+            ELSE 0
+          END
+        ), 0)::int AS ban_qty,
+        COALESCE(SUM(
+          CASE
+            WHEN b.name IN ('Disc pad', 'Disc', 'IML') 
+            THEN COALESCE(ib.qty_on_hand, 0)
+            ELSE 0
+          END
+        ), 0)::int AS sparepart_qty,
+        COALESCE(SUM(
+          CASE
+            WHEN b.name = 'Oli' 
+            THEN COALESCE(ib.qty_on_hand, 0)
+            ELSE 0
+          END
+        ), 0)::int AS oli_qty
+      FROM store_products sp
+      JOIN products p ON p.id = sp.product_id
+      JOIN brands b ON b.id = p.brand_id
+      LEFT JOIN inventory_balances ib
+        ON ib.store_id = sp.store_id
+       AND ib.product_id = sp.product_id
+      WHERE sp.store_id = $1
+        AND sp.status = 'active'
+        AND p.status = 'active'
+        AND (
+          $2::text IS NULL
+          OR p.sku ILIKE '%' || $2 || '%'
+          OR p.name ILIKE '%' || $2 || '%'
+          OR p.product_type ILIKE '%' || $2 || '%'
+          OR p.size ILIKE '%' || $2 || '%'
+          OR b.name ILIKE '%' || $2 || '%'
+        )
+    `,
+    [storeId, term],
+  );
+
+  const totals = totalResult.rows[0];
+  return {
+    ban_qty: totals?.ban_qty ?? 0,
+    sparepart_qty: totals?.sparepart_qty ?? 0,
+    oli_qty: totals?.oli_qty ?? 0,
+  };
 }

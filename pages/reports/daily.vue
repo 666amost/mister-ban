@@ -36,11 +36,21 @@ type DailyInput = {
   line_total: number
 }
 
+type DailyPaymentSummary = {
+  cash: number
+  non_cash: number
+  qris: number
+  debit: number
+  transfer: number
+  credit: number
+}
+
 type DailyReport = {
   date: string
   omzet: number
   profit: number
   transactions: number
+  payment_summary: DailyPaymentSummary
   top_skus: DailyTopSku[]
   custom_items: DailyCustomItem[]
   expenses: DailyExpense[]
@@ -52,6 +62,12 @@ const date = ref(new Date().toISOString().slice(0, 10))
 const report = ref<DailyReport | null>(null)
 const isLoading = ref(false)
 const errorMessage = ref<string | null>(null)
+const nonCashOther = computed(() => {
+  const summary = report.value?.payment_summary
+  if (!summary) return 0
+  const knownNonCash = summary.qris + summary.debit + summary.transfer + summary.credit
+  return Math.max(0, summary.non_cash - knownNonCash)
+})
 
 function rupiah(value: number) {
   return value.toLocaleString("id-ID")
@@ -119,6 +135,40 @@ await load()
         <div class="sumItem">
           <div class="label">Pengeluaran</div>
           <div class="value">Rp {{ rupiah(report.expense_total) }}</div>
+        </div>
+      </div>
+
+      <div v-if="report" class="tableWrap">
+        <div class="sectionTitle">Metode Pembayaran</div>
+        <div class="summary paymentSummary">
+          <div class="sumItem">
+            <div class="label">Tunai</div>
+            <div class="value">Rp {{ rupiah(report.payment_summary.cash) }}</div>
+          </div>
+          <div class="sumItem">
+            <div class="label">Non Tunai</div>
+            <div class="value">Rp {{ rupiah(report.payment_summary.non_cash) }}</div>
+          </div>
+          <div class="sumItem">
+            <div class="label">QRIS</div>
+            <div class="value">Rp {{ rupiah(report.payment_summary.qris) }}</div>
+          </div>
+          <div class="sumItem">
+            <div class="label">Debit</div>
+            <div class="value">Rp {{ rupiah(report.payment_summary.debit) }}</div>
+          </div>
+          <div class="sumItem">
+            <div class="label">Transfer</div>
+            <div class="value">Rp {{ rupiah(report.payment_summary.transfer) }}</div>
+          </div>
+          <div class="sumItem">
+            <div class="label">Kredit</div>
+            <div class="value">Rp {{ rupiah(report.payment_summary.credit) }}</div>
+          </div>
+          <div v-if="nonCashOther > 0" class="sumItem">
+            <div class="label">Non Tunai Lainnya</div>
+            <div class="value">Rp {{ rupiah(nonCashOther) }}</div>
+          </div>
         </div>
       </div>
 
@@ -259,6 +309,41 @@ await load()
 .value {
   margin-top: 6px;
   font-weight: 900;
+}
+.summary.paymentSummary {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid var(--mb-border2);
+  background: var(--mb-surface2);
+}
+
+.summary.paymentSummary .sumItem {
+  background: var(--mb-surface);
+  border-color: var(--mb-border2);
+  box-shadow:
+    0 1px 0 rgba(17, 24, 39, 0.04),
+    0 12px 24px rgba(17, 24, 39, 0.06);
+}
+
+.summary.paymentSummary .sumItem:nth-child(-n + 2) {
+  background: linear-gradient(
+    180deg,
+    rgba(52, 199, 89, 0.08),
+    rgba(52, 199, 89, 0.02) 35%,
+    var(--mb-surface) 100%
+  );
+}
+
+.summary.paymentSummary .label {
+  font-size: 11px;
+  letter-spacing: 0.2px;
+}
+
+.summary.paymentSummary .value {
+  margin-top: 4px;
+  font-size: 15px;
 }
 .tableWrap {
   margin-top: 14px;
