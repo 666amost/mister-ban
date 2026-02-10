@@ -14,6 +14,7 @@ export const inventoryListQuerySchema = z.object({
   q: optionalNonEmptyString,
   limit: z.coerce.number().int().min(1).max(200).optional(),
   offset: z.coerce.number().int().min(0).optional(),
+  category_filter: z.enum(["BAN", "SPAREPART", "CAIRAN", "BAN_DALAM", "OLI"]).optional(),
 });
 
 export const inventoryAdjustBodySchema = z

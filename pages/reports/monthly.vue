@@ -22,6 +22,7 @@ type MonthlyReport = {
   omzet: number
   profit: number
   transactions: number
+  expense_total: number
   daily?: MonthlyDaily[]
   top_skus?: MonthlyTopSku[]
 }
@@ -80,6 +81,10 @@ await load()
         <div class="sumItem">
           <div class="label">Transaksi</div>
           <div class="value">{{ report.transactions }}</div>
+        </div>
+        <div class="sumItem">
+          <div class="label">Pengeluaran</div>
+          <div class="value">Rp {{ rupiah(report.expense_total) }}</div>
         </div>
       </div>
 

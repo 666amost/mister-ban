@@ -62,7 +62,9 @@ export async function listStoreProducts(
           OR p.product_type ILIKE '%' || $2 || '%'
           OR b.name ILIKE '%' || $2 || '%'
         )
-      ORDER BY b.name, p.name, p.size, p.sku
+      ORDER BY b.name, p.name,
+        CASE WHEN p.size ~ '-[0-9]+$' THEN CAST(SUBSTRING(p.size FROM '-([0-9]+)$') AS INTEGER) ELSE 999 END,
+        p.size, p.sku
       LIMIT $3
       OFFSET $4
     `,
@@ -106,7 +108,9 @@ export async function listMasterProducts(
           OR p.product_type ILIKE '%' || $1 || '%'
           OR b.name ILIKE '%' || $1 || '%'
         )
-      ORDER BY b.name, p.name, p.size, p.sku
+      ORDER BY b.name, p.name,
+        CASE WHEN p.size ~ '-[0-9]+$' THEN CAST(SUBSTRING(p.size FROM '-([0-9]+)$') AS INTEGER) ELSE 999 END,
+        p.size, p.sku
       LIMIT $2
       OFFSET $3
     `,

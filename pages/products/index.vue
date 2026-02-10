@@ -604,7 +604,7 @@ onMounted(async () => {
           <input v-model.number="createForm.initial_qty" class="mb-input" type="number" min="0" />
         </label>
         <label class="field">
-          <span>Modal / Unit Cost (Rp)</span>
+          <span title="Harga beli/modal per unit untuk stok awal">Harga Beli (Rp)</span>
           <input v-model.number="createForm.initial_unit_cost" class="mb-input" type="number" min="0" />
         </label>
         <label class="field">
@@ -663,7 +663,7 @@ onMounted(async () => {
               <input v-model.number="attachInitialQty" class="mb-input" type="number" min="0" />
             </label>
             <label class="field">
-              <span>Unit Cost (Rp)</span>
+              <span title="Harga beli/modal per unit untuk stok awal">Harga Beli (Rp)</span>
               <input v-model.number="attachUnitCost" class="mb-input" type="number" min="0" />
             </label>
           </div>
@@ -703,10 +703,10 @@ onMounted(async () => {
       <div v-else class="bulkForm">
         <label class="field smallField">
           <span>Qty Delta</span>
-          <input v-model.number="bulkQtyDelta" class="mb-input" type="number" step="1" />
+          <input v-model.number="bulkQtyDelta" class="mb-input" type="number" step="1" placeholder="+10 atau -5" />
         </label>
         <label class="field smallField">
-          <span>Unit Cost (Rp)</span>
+          <span title="Hanya berpengaruh saat tambah stok (Qty Delta positif)">Harga Beli (Rp)</span>
           <input v-model.number="bulkUnitCost" class="mb-input" type="number" min="0" step="1" />
         </label>
         <label class="field bulkNoteField">
@@ -825,10 +825,10 @@ onMounted(async () => {
                           <div class="editRow">
                             <label class="field smallField">
                               <span>Qty Delta</span>
-                              <input v-model.number="stockQtyDelta" class="mb-input" type="number" step="1" />
+                              <input v-model.number="stockQtyDelta" class="mb-input" type="number" step="1" placeholder="+10 atau -5" />
                             </label>
                             <label class="field smallField">
-                              <span>Unit Cost (Rp)</span>
+                              <span title="Hanya berpengaruh saat tambah stok (Qty Delta positif)">Harga Beli (Rp)</span>
                               <input v-model.number="stockUnitCost" class="mb-input" type="number" min="0" step="1" />
                             </label>
                             <label class="field noteField">
@@ -842,7 +842,7 @@ onMounted(async () => {
                             <span v-if="stockError" class="errorInline">{{ stockError }}</span>
                           </div>
                           <div class="hint">
-                            Tips: Qty Delta <strong>+10</strong> untuk tambah stok. Untuk tambah stok, isi Unit Cost supaya avg cost ter-update.
+                            <strong>Harga Modal (Avg Cost):</strong> Saat tambah stok (+), modal dihitung ulang. Saat kurang stok (-), modal tetap.
                           </div>
                         </td>
                       </tr>

@@ -16,8 +16,12 @@ type InventoryRow = {
 type InventorySummary = {
   ban_qty: number
   sparepart_qty: number
+  cairan_qty: number
+  ban_dalam_qty: number
   oli_qty: number
 }
+
+type CategoryFilter = "BAN" | "SPAREPART" | "CAIRAN" | "BAN_DALAM" | "OLI" | null
 
 const me = useMe()
 
@@ -25,6 +29,8 @@ const items = ref<InventoryRow[]>([])
 const summary = ref<InventorySummary>({
   ban_qty: 0,
   sparepart_qty: 0,
+  cairan_qty: 0,
+  ban_dalam_qty: 0,
   oli_qty: 0,
 })
 const isLoading = ref(false)
@@ -35,6 +41,7 @@ const pageOffset = ref(0)
 const currentPage = ref(1)
 const hasMore = ref(true)
 const pageInput = ref(1)
+const categoryFilter = ref<CategoryFilter>(null)
 
 const bulkMode = ref(false)
 const bulkQtyDelta = ref(0)
@@ -78,12 +85,16 @@ async function load(options?: { reset?: boolean }) {
   isLoading.value = true
   errorMessage.value = null
   try {
+    const queryParams: Record<string, unknown> = {
+      q: q.value,
+      limit: pageLimit.value,
+      offset: pageOffset.value,
+    }
+    if (categoryFilter.value) {
+      queryParams.category_filter = categoryFilter.value
+    }
     const res = await $fetch<{ items: InventoryRow[]; summary: InventorySummary }>("/api/inventory", {
-      query: {
-        q: q.value,
-        limit: pageLimit.value,
-        offset: pageOffset.value,
-      },
+      query: queryParams,
     })
     items.value = res.items
     summary.value = res.summary
@@ -97,6 +108,8 @@ async function load(options?: { reset?: boolean }) {
     summary.value = {
       ban_qty: 0,
       sparepart_qty: 0,
+      cairan_qty: 0,
+      ban_dalam_qty: 0,
       oli_qty: 0,
     }
   } finally {
@@ -130,6 +143,15 @@ async function jumpToPage() {
 
 function clearSearch() {
   q.value = ""
+  load({ reset: true })
+}
+
+function selectCategory(category: CategoryFilter) {
+  if (categoryFilter.value === category) {
+    categoryFilter.value = null
+  } else {
+    categoryFilter.value = category
+  }
   load({ reset: true })
 }
 
@@ -266,18 +288,54 @@ onMounted(async () => {
 
     <section class="mb-card">
       <div class="summaryGrid">
-        <div class="summaryItem highlight">
+        <button 
+          type="button" 
+          :class="['summaryItem', { highlight: categoryFilter === null, active: categoryFilter === null }]"
+          @click="selectCategory(null)"
+        >
+          <div class="summaryLabel">Semua</div>
+          <div class="summaryValue">{{ formatNumber(summary.ban_qty + summary.sparepart_qty + summary.cairan_qty + summary.ban_dalam_qty + summary.oli_qty) }}</div>
+        </button>
+        <button 
+          type="button" 
+          :class="['summaryItem', { active: categoryFilter === 'BAN' }]"
+          @click="selectCategory('BAN')"
+        >
           <div class="summaryLabel">Total Qty Ban</div>
           <div class="summaryValue">{{ formatNumber(summary.ban_qty) }}</div>
-        </div>
-        <div class="summaryItem">
+        </button>
+        <button 
+          type="button" 
+          :class="['summaryItem', { active: categoryFilter === 'SPAREPART' }]"
+          @click="selectCategory('SPAREPART')"
+        >
           <div class="summaryLabel">Total Qty Sparepart</div>
           <div class="summaryValue">{{ formatNumber(summary.sparepart_qty) }}</div>
-        </div>
-        <div class="summaryItem">
+        </button>
+        <button 
+          type="button" 
+          :class="['summaryItem', { active: categoryFilter === 'CAIRAN' }]"
+          @click="selectCategory('CAIRAN')"
+        >
+          <div class="summaryLabel">Total Qty Cairan</div>
+          <div class="summaryValue">{{ formatNumber(summary.cairan_qty) }}</div>
+        </button>
+        <button 
+          type="button" 
+          :class="['summaryItem', { active: categoryFilter === 'BAN_DALAM' }]"
+          @click="selectCategory('BAN_DALAM')"
+        >
+          <div class="summaryLabel">Total Qty Ban Dalam</div>
+          <div class="summaryValue">{{ formatNumber(summary.ban_dalam_qty) }}</div>
+        </button>
+        <button 
+          type="button" 
+          :class="['summaryItem', { active: categoryFilter === 'OLI' }]"
+          @click="selectCategory('OLI')"
+        >
           <div class="summaryLabel">Total Qty Oli</div>
           <div class="summaryValue">{{ formatNumber(summary.oli_qty) }}</div>
-        </div>
+        </button>
       </div>
     </section>
 
@@ -290,11 +348,11 @@ onMounted(async () => {
       </div>
       <div class="bulkForm">
         <label class="field smallField">
-          <span>Qty Delta (untuk semua item)</span>
-          <input v-model.number="bulkQtyDelta" class="mb-input" type="number" step="1" />
+          <span>Qty Delta</span>
+          <input v-model.number="bulkQtyDelta" class="mb-input" type="number" step="1" placeholder="+10 atau -5" />
         </label>
         <label class="field smallField">
-          <span>Unit Cost (Rp)</span>
+          <span title="Hanya berpengaruh saat tambah stok (Qty Delta positif)">Harga Beli (Rp)</span>
           <input v-model.number="bulkUnitCost" class="mb-input" type="number" min="0" step="1" />
         </label>
         <label class="field bulkNoteField">
@@ -319,8 +377,8 @@ onMounted(async () => {
               <th>SKU</th>
               <th>Nama</th>
               <th style="text-align: right">Qty</th>
-              <th style="text-align: right">Avg Cost</th>
-              <th style="text-align: right">Sell</th>
+              <th v-if="me.user.value?.role === 'ADMIN'" style="text-align: right" title="Harga modal (rata-rata). Berubah saat tambah stok, tetap saat kurang stok.">Modal (Avg)</th>
+              <th style="text-align: right">Harga Jual</th>
               <th v-if="me.user.value?.role === 'ADMIN' && !bulkMode" style="width: 1%"></th>
             </tr>
           </thead>
@@ -336,7 +394,7 @@ onMounted(async () => {
                   <div class="muted">{{ i.size }}</div>
                 </td>
                 <td style="text-align: right">{{ i.qty_on_hand }}</td>
-                <td style="text-align: right">Rp {{ rupiah(i.avg_unit_cost) }}</td>
+                <td v-if="me.user.value?.role === 'ADMIN'" style="text-align: right">Rp {{ rupiah(i.avg_unit_cost) }}</td>
                 <td style="text-align: right">Rp {{ rupiah(i.sell_price ?? 0) }}</td>
                 <td v-if="me.user.value?.role === 'ADMIN' && !bulkMode" style="text-align: right">
                   <button class="mb-btn" type="button" @click="startAdjust(i)">Adjust</button>
@@ -344,14 +402,14 @@ onMounted(async () => {
               </tr>
               <tr v-if="me.user.value?.role === 'ADMIN' && adjustingId === i.product_id && !bulkMode">
                 <td v-if="bulkMode"></td>
-                <td :colspan="bulkMode ? 7 : 6">
+                <td :colspan="5">
                   <div class="adjRow">
                     <label class="field smallField">
                       <span>Qty Delta</span>
-                      <input v-model.number="adjQtyDelta" class="mb-input" type="number" step="1" />
+                      <input v-model.number="adjQtyDelta" class="mb-input" type="number" step="1" placeholder="+10 atau -5" />
                     </label>
                     <label class="field smallField">
-                      <span>Unit Cost (Rp)</span>
+                      <span title="Hanya berpengaruh saat tambah stok (Qty Delta positif)">Harga Beli (Rp)</span>
                       <input v-model.number="adjUnitCost" class="mb-input" type="number" min="0" step="1" />
                     </label>
                     <label class="field noteField">
@@ -365,8 +423,7 @@ onMounted(async () => {
                     <span v-if="adjError" class="errorInline">{{ adjError }}</span>
                   </div>
                   <div class="hint">
-                    Tips: pakai Qty Delta <strong>+10</strong> untuk tambah stok, atau <strong>-1</strong> untuk koreksi stok.
-                    Untuk tambah stok, isi Unit Cost supaya avg cost ter-update.
+                    <strong>Harga Modal (Avg Cost):</strong> Saat tambah stok (+), modal dihitung ulang. Saat kurang stok (-), modal tetap.
                   </div>
                 </td>
               </tr>
@@ -541,10 +598,19 @@ th {
   border-radius: 12px;
   padding: 12px;
   background: var(--mb-surface);
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  width: 100%;
 }
 .summaryItem.highlight {
   border-color: rgba(52, 199, 89, 0.35);
   background: rgba(52, 199, 89, 0.08);
+}
+.summaryItem.active {
+  border-color: rgba(52, 199, 89, 0.65);
+  background: rgba(52, 199, 89, 0.15);
+  font-weight: 700;
 }
 .summaryLabel {
   font-size: 12px;

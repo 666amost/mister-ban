@@ -362,11 +362,24 @@ export async function getMonthlyReport({
     [storeId, start, endIso],
   );
 
+  const expenseTotalRes = await db.query<{ expense_total: number }>(
+    `
+      SELECT COALESCE(SUM(se.amount), 0)::int AS expense_total
+      FROM sales_expenses se
+      JOIN sales s ON s.id = se.sale_id
+      WHERE s.store_id = $1
+        AND s.sale_date >= $2::date
+        AND s.sale_date < $3::date
+    `,
+    [storeId, start, endIso],
+  );
+
   return {
     month,
     omzet: totalsRes.rows[0]?.omzet ?? 0,
     profit: profitRes.rows[0]?.profit ?? 0,
     transactions: totalsRes.rows[0]?.transactions ?? 0,
+    expense_total: expenseTotalRes.rows[0]?.expense_total ?? 0,
     daily,
     top_skus: topRes.rows,
   };

@@ -15,6 +15,7 @@ export default defineEventHandler(async (event) => {
       q: query.q,
       limit: query.limit ?? 50,
       offset: query.offset ?? 0,
+      category_filter: query.category_filter,
     }),
     summarizeInventory(getPool(), storeId, {
       q: query.q,

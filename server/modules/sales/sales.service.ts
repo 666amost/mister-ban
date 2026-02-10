@@ -324,6 +324,65 @@ export async function createSale({
   });
 }
 
+export type SalesQtySummary = {
+  ban_qty: number;
+  oli_qty: number;
+  kampas_qty: number;
+  total_qty: number;
+};
+
+export async function getSalesQtySummary({
+  db,
+  storeId,
+  date,
+  allDates,
+}: {
+  db: DbConn;
+  storeId: string;
+  date: string;
+  allDates?: boolean;
+}): Promise<SalesQtySummary> {
+  const params: Array<string> = [storeId];
+  let dateFilter = "";
+  if (!allDates) {
+    dateFilter = "AND s.sale_date = $2::date";
+    params.push(date);
+  }
+
+  const { rows } = await db.query<SalesQtySummary>(
+    `
+      SELECT
+        COALESCE(SUM(CASE
+          WHEN UPPER(TRIM(p.product_type)) = 'BAN'
+               AND LOWER(TRIM(b.name)) NOT IN ('ban dalam', 'oli', 'disc pad', 'disc', 'iml', 'cairan')
+               AND LOWER(p.name) NOT LIKE '%ban dalam%'
+               AND LOWER(p.name) NOT LIKE '%tube%'
+          THEN si.qty ELSE 0
+        END), 0)::int AS ban_qty,
+        COALESCE(SUM(CASE
+          WHEN LOWER(TRIM(b.name)) = 'oli'
+               OR UPPER(TRIM(p.product_type)) = 'OLI'
+          THEN si.qty ELSE 0
+        END), 0)::int AS oli_qty,
+        COALESCE(SUM(CASE
+          WHEN LOWER(TRIM(b.name)) IN ('disc pad', 'disc')
+               OR UPPER(TRIM(p.product_type)) = 'SPAREPART'
+          THEN si.qty ELSE 0
+        END), 0)::int AS kampas_qty,
+        COALESCE(SUM(si.qty), 0)::int AS total_qty
+      FROM sales_items si
+      JOIN sales s ON s.id = si.sale_id
+      JOIN products p ON p.id = si.product_id
+      JOIN brands b ON b.id = p.brand_id
+      WHERE s.store_id = $1
+        ${dateFilter}
+    `,
+    params,
+  );
+
+  return rows[0] ?? { ban_qty: 0, oli_qty: 0, kampas_qty: 0, total_qty: 0 };
+}
+
 export async function listSales({
   db,
   storeId,

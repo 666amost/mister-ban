@@ -65,6 +65,13 @@ type PaymentType = "CASH" | "TRANSFER" | "QRIS" | "DEBIT" | "CREDIT" | "TEMPO"
 type ExpenseItem = { item_name: string; amount: number }
 type PaymentItem = { payment_type: PaymentType; amount: number }
 
+type SalesQtySummary = {
+  ban_qty: number
+  oli_qty: number
+  kampas_qty: number
+  total_qty: number
+}
+
 const me = useMe()
 
 const plateNo = ref("")
@@ -93,6 +100,7 @@ const dropdownOpen = ref(false)
 
 const salesLoading = ref(false)
 const sales = ref<SaleRow[]>([])
+const qtySummary = ref<SalesQtySummary>({ ban_qty: 0, oli_qty: 0, kampas_qty: 0, total_qty: 0 })
 const historyQuery = ref("")
 const lastHistoryQuery = ref<string>("")
 const searchAllDates = ref(false)
@@ -222,7 +230,7 @@ async function runSearch() {
   errorMessage.value = null
   try {
     const res = await $fetch<{ items: ProductItem[] }>("/api/products", { 
-      query: { q: search.value, limit: 20 },
+      query: { q: search.value, limit: 50 },
       headers: { Accept: 'application/json' },
     })
     products.value = res.items
@@ -310,11 +318,12 @@ async function loadSales() {
     if (isAdmin.value && searchAllDates.value) {
       query.all_dates = "true"
     }
-    const res = await $fetch<{ items: SaleRow[] }>("/api/sales", { 
+    const res = await $fetch<{ items: SaleRow[]; qty_summary: SalesQtySummary }>("/api/sales", { 
       query,
       headers: { Accept: 'application/json' },
     })
     sales.value = res.items
+    qtySummary.value = res.qty_summary ?? { ban_qty: 0, oli_qty: 0, kampas_qty: 0, total_qty: 0 }
   } catch (error) {
     errorMessage.value = statusMessage(error) ?? "Gagal memuat sales"
     console.error('Sales load error:', error)
@@ -607,7 +616,7 @@ async function runEditSearch() {
   editError.value = null
   try {
     const res = await $fetch<{ items: ProductItem[] }>("/api/products", {
-      query: { q: editSearch.value, limit: 20 },
+      query: { q: editSearch.value, limit: 50 },
       headers: { Accept: "application/json" },
     })
     editProducts.value = res.items
@@ -1181,6 +1190,25 @@ async function newTransaction() {
               <path d="M18 6L6 18M6 6l12 12" />
             </svg>
           </button>
+        </div>
+      </div>
+
+      <div v-if="qtySummary.total_qty > 0" class="qtySummaryBar">
+        <div class="qtySumItem">
+          <span class="qtySumLabel">Ban</span>
+          <span class="qtySumValue">{{ qtySummary.ban_qty }}</span>
+        </div>
+        <div class="qtySumItem">
+          <span class="qtySumLabel">Kampas</span>
+          <span class="qtySumValue">{{ qtySummary.kampas_qty }}</span>
+        </div>
+        <div class="qtySumItem">
+          <span class="qtySumLabel">Oli</span>
+          <span class="qtySumValue">{{ qtySummary.oli_qty }}</span>
+        </div>
+        <div class="qtySumItem qtySumTotal">
+          <span class="qtySumLabel">Total</span>
+          <span class="qtySumValue">{{ qtySummary.total_qty }}</span>
         </div>
       </div>
 
@@ -2200,6 +2228,41 @@ async function newTransaction() {
 
 .historySearchBar {
   margin-bottom: 8px;
+}
+
+.qtySummaryBar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--mb-border2);
+  border-radius: 14px;
+  background: var(--mb-surface2);
+}
+.qtySumItem {
+  flex: 1;
+  text-align: center;
+  padding: 6px 4px;
+  border-radius: 10px;
+  background: var(--mb-surface);
+  border: 1px solid var(--mb-border2);
+}
+.qtySumItem.qtySumTotal {
+  background: rgba(52, 199, 89, 0.08);
+  border-color: rgba(52, 199, 89, 0.35);
+}
+.qtySumLabel {
+  display: block;
+  font-size: 10px;
+  color: var(--mb-muted);
+  letter-spacing: 0.3px;
+}
+.qtySumValue {
+  display: block;
+  margin-top: 2px;
+  font-size: 16px;
+  font-weight: 900;
+  line-height: 1.2;
 }
 
 .historySearchWrap {
