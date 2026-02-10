@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted } from "vue"
+import { onBeforeUnmount, onMounted } from "vue"
 
 const me = useMe()
 const storeContext = useStoreContext()
@@ -32,6 +32,8 @@ type NavGroup = {
   items: NavItem[]
   adminOnly?: boolean
 }
+
+type ThemeMode = "system" | "dark" | "light"
 
 const navGroups = computed<NavGroup[]>(() => {
   const groups: NavGroup[] = [
@@ -88,8 +90,39 @@ const bottomItems = computed(() => {
 const navQuery = ref("")
 
 const navCollapsed = ref<Record<string, boolean>>({})
+const themeMode = ref<ThemeMode>("system")
 
 let navCollapseTimer: ReturnType<typeof setTimeout> | null = null
+let colorSchemeMedia: MediaQueryList | null = null
+let colorSchemeHandler: ((event: MediaQueryListEvent) => void) | null = null
+
+const themeLabel = computed(() => {
+  if (themeMode.value === "system") return "Tema: Auto"
+  if (themeMode.value === "dark") return "Tema: Gelap"
+  return "Tema: Terang"
+})
+
+function applyThemeMode(mode: ThemeMode) {
+  if (typeof document === "undefined") return
+  const root = document.documentElement
+  if (mode === "system") {
+    root.removeAttribute("data-theme")
+    return
+  }
+  root.setAttribute("data-theme", mode)
+}
+
+function cycleThemeMode() {
+  if (themeMode.value === "system") {
+    themeMode.value = "dark"
+    return
+  }
+  if (themeMode.value === "dark") {
+    themeMode.value = "light"
+    return
+  }
+  themeMode.value = "system"
+}
 
 onMounted(() => {
   try {
@@ -97,6 +130,28 @@ onMounted(() => {
     if (raw) navCollapsed.value = JSON.parse(raw) as Record<string, boolean>
   } catch {
     // ignore
+  }
+
+  try {
+    const rawTheme = localStorage.getItem("mb_theme_mode_v1")
+    if (rawTheme === "system" || rawTheme === "dark" || rawTheme === "light") {
+      themeMode.value = rawTheme
+    }
+  } catch {
+    // ignore
+  }
+
+  applyThemeMode(themeMode.value)
+  colorSchemeMedia = window.matchMedia("(prefers-color-scheme: dark)")
+  colorSchemeHandler = () => {
+    if (themeMode.value === "system") applyThemeMode("system")
+  }
+  colorSchemeMedia.addEventListener("change", colorSchemeHandler)
+})
+
+onBeforeUnmount(() => {
+  if (colorSchemeMedia && colorSchemeHandler) {
+    colorSchemeMedia.removeEventListener("change", colorSchemeHandler)
   }
 })
 
@@ -114,6 +169,15 @@ watch(
   },
   { deep: true },
 )
+
+watch(themeMode, (mode) => {
+  applyThemeMode(mode)
+  try {
+    localStorage.setItem("mb_theme_mode_v1", mode)
+  } catch {
+    // ignore
+  }
+})
 
 watch(
   () => route.path,
@@ -231,11 +295,14 @@ async function logout() {
           <div class="mb-topH">{{ pageTitle }}</div>
           <div class="mb-topSub">
             <span v-if="storeName">{{ storeName }}</span>
-            <template v-if="storeName && me.user.value"><span class="sep">•</span></template>
+            <template v-if="storeName && me.user.value"><span class="sep">&middot;</span></template>
             <span v-if="me.user.value">{{ me.user.value.email }}</span>
           </div>
         </div>
         <div class="mb-topActions">
+          <button class="mb-btnSwitch" type="button" @click="cycleThemeMode">
+            <span>{{ themeLabel }}</span>
+          </button>
           <slot name="top-actions" />
           <button v-if="role === 'ADMIN'" class="mb-btnSwitch mb-mobileOnly" @click="navigateTo('/select-store')">
             <MbIcon name="inventory" />

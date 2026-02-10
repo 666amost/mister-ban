@@ -23,9 +23,9 @@ defineProps<{
   border-radius: 8px;
   background: linear-gradient(
     90deg,
-    rgba(29, 29, 31, 0.04) 0%,
-    rgba(29, 29, 31, 0.08) 50%,
-    rgba(29, 29, 31, 0.04) 100%
+    var(--mb-skeleton-from) 0%,
+    var(--mb-skeleton-mid) 50%,
+    var(--mb-skeleton-from) 100%
   );
   background-size: 200% 100%;
   animation: mb-skeleton 1.5s ease-in-out infinite;

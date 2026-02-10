@@ -1296,7 +1296,7 @@ async function newTransaction() {
         <span class="totalValue">Rp {{ rupiah(bottomTotal) }}</span>
       </div>
       <button 
-        class="submitBtn" 
+        :class="['submitBtn', { 'is-loading': submitLoading }]"
         :disabled="submitDisabled"
         @click="submit"
       >
@@ -2559,7 +2559,7 @@ async function newTransaction() {
   gap: 12px;
   padding: 12px 16px;
   padding-bottom: max(12px, env(safe-area-inset-bottom));
-  background: rgba(255, 255, 255, 0.92);
+  background: var(--mb-glass-surface-strong);
   backdrop-filter: blur(12px);
   border-top: 1px solid var(--mb-border2);
   z-index: 100;
@@ -2594,7 +2594,7 @@ async function newTransaction() {
   border: none;
   border-radius: 14px;
   background: linear-gradient(180deg, var(--mb-accent), var(--mb-accent2));
-  color: white;
+  color: var(--mb-accent-ink);
   font-weight: 800;
   font-size: 16px;
   cursor: pointer;
@@ -2604,6 +2604,11 @@ async function newTransaction() {
 .submitBtn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.submitBtn.is-loading:disabled {
+  opacity: 1;
+  cursor: progress;
 }
 
 .submitBtn:not(:disabled):active {

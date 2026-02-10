@@ -361,7 +361,7 @@ await load()
 th,
 td {
   padding: 10px 8px;
-  border-bottom: 1px solid rgba(42, 58, 94, 0.5);
+  border-bottom: 1px solid var(--mb-table-border);
 }
 th {
   text-align: left;
@@ -388,19 +388,19 @@ th {
   border: 1px solid transparent;
 }
 .typeBadge.product {
-  background: rgba(26, 179, 148, 0.14);
-  color: #0f5f4f;
-  border-color: rgba(15, 95, 79, 0.2);
+  background: var(--mb-badge-product-bg);
+  color: var(--mb-badge-product-fg);
+  border-color: var(--mb-badge-product-border);
 }
 .typeBadge.custom {
-  background: rgba(59, 130, 246, 0.12);
-  color: #1f4f95;
-  border-color: rgba(31, 79, 149, 0.2);
+  background: var(--mb-badge-custom-bg);
+  color: var(--mb-badge-custom-fg);
+  border-color: var(--mb-badge-custom-border);
 }
 .typeBadge.expense {
-  background: rgba(220, 38, 38, 0.12);
-  color: #a51d1d;
-  border-color: rgba(165, 29, 29, 0.2);
+  background: var(--mb-badge-expense-bg);
+  color: var(--mb-badge-expense-fg);
+  border-color: var(--mb-badge-expense-border);
 }
 .error {
   margin: 12px 0 0;

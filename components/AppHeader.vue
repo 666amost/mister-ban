@@ -21,7 +21,7 @@ defineProps<Props>()
             <template v-else>
               <span v-if="subtitle">{{ subtitle }}</span>
               <template v-if="storeName">
-                <span class="sep">•</span>
+                <span class="sep">&middot;</span>
                 <span class="store">{{ storeName }}</span>
               </template>
             </template>
@@ -78,7 +78,7 @@ defineProps<Props>()
   padding: 0 6px;
 }
 .store {
-  color: rgba(29, 29, 31, 0.9);
+  color: var(--mb-pill-text);
 }
 .actions {
   display: flex;

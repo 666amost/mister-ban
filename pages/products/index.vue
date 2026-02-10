@@ -1075,7 +1075,7 @@ onMounted(async () => {
 th,
 td {
   padding: 10px 8px;
-  border-bottom: 1px solid rgba(42, 58, 94, 0.5);
+  border-bottom: 1px solid var(--mb-table-border);
 }
 th {
   text-align: left;
