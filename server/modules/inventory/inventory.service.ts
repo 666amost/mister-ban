@@ -8,6 +8,7 @@ export async function adjustInventory({
   productId,
   qtyDelta,
   unitCost,
+  resetAvgCost,
   note,
 }: {
   storeId: string;
@@ -15,6 +16,7 @@ export async function adjustInventory({
   productId: string;
   qtyDelta: number;
   unitCost?: number;
+  resetAvgCost?: boolean;
   note?: string;
 }) {
   return await tx(async (client) => {
@@ -27,7 +29,9 @@ export async function adjustInventory({
     if (newQty < 0) throw badRequest("Stok tidak cukup");
 
     let newAvg = current.avg_unit_cost;
-    if (qtyDelta > 0) {
+    if (resetAvgCost) {
+      newAvg = 0;
+    } else if (qtyDelta > 0) {
       const cost = unitCost ?? current.avg_unit_cost;
       const numerator =
         current.qty_on_hand * current.avg_unit_cost + qtyDelta * cost;
@@ -44,15 +48,19 @@ export async function adjustInventory({
       [storeId, productId, newQty, newAvg],
     );
 
-    await client.query(
-      `
-        INSERT INTO inventory_ledger (
-          store_id, product_id, txn_type, qty_delta, unit_cost, ref_type, ref_id, note, txn_at, created_by
-        )
-        VALUES ($1, $2, 'ADJUST', $3, $4, 'MANUAL_ADJUST', NULL, $5, now(), $6)
-      `,
-      [storeId, productId, qtyDelta, unitCost ?? null, note ?? null, userId],
-    );
+    // inventory_ledger enforces qty_delta <> 0, so avg-cost-only reset is persisted
+    // in inventory_balances without creating a ledger row.
+    if (qtyDelta !== 0) {
+      await client.query(
+        `
+          INSERT INTO inventory_ledger (
+            store_id, product_id, txn_type, qty_delta, unit_cost, ref_type, ref_id, note, txn_at, created_by
+          )
+          VALUES ($1, $2, 'ADJUST', $3, $4, 'MANUAL_ADJUST', NULL, $5, now(), $6)
+        `,
+        [storeId, productId, qtyDelta, unitCost ?? null, note ?? null, userId],
+      );
+    }
 
     return {
       product_id: productId,

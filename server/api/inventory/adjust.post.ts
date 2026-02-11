@@ -18,6 +18,7 @@ export default defineEventHandler(async (event) => {
     productId: body.product_id,
     qtyDelta: body.qty_delta,
     unitCost: body.unit_cost,
+    resetAvgCost: body.reset_avg_cost,
     note: body.note,
   });
 

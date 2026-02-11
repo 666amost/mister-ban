@@ -202,6 +202,31 @@ async function submitAdjust(productId: string) {
   }
 }
 
+async function clearAvgCost(productId: string) {
+  adjLoading.value = true
+  adjError.value = null
+  try {
+    const body: Record<string, unknown> = {
+      product_id: productId,
+      qty_delta: 0,
+      reset_avg_cost: true,
+    }
+    if (adjNote.value.trim().length) {
+      body.note = adjNote.value.trim()
+    }
+    await $fetch("/api/inventory/adjust", {
+      method: "POST",
+      body,
+    })
+    cancelAdjust()
+    await load()
+  } catch (error) {
+    adjError.value = statusMessage(error) ?? "Gagal mengosongkan avg cost"
+  } finally {
+    adjLoading.value = false
+  }
+}
+
 function toggleBulkSelect(productId: string) {
   if (bulkSelected.value.has(productId)) {
     bulkSelected.value.delete(productId)
@@ -394,7 +419,10 @@ onMounted(async () => {
                   <div class="muted">{{ i.size }}</div>
                 </td>
                 <td style="text-align: right">{{ i.qty_on_hand }}</td>
-                <td v-if="me.user.value?.role === 'ADMIN'" style="text-align: right">Rp {{ rupiah(i.avg_unit_cost) }}</td>
+                <td v-if="me.user.value?.role === 'ADMIN'" style="text-align: right">
+                  <template v-if="i.avg_unit_cost > 0">Rp {{ rupiah(i.avg_unit_cost) }}</template>
+                  <template v-else>-</template>
+                </td>
                 <td style="text-align: right">Rp {{ rupiah(i.sell_price ?? 0) }}</td>
                 <td v-if="me.user.value?.role === 'ADMIN' && !bulkMode" style="text-align: right">
                   <button class="mb-btn" type="button" @click="startAdjust(i)">Adjust</button>
@@ -418,6 +446,9 @@ onMounted(async () => {
                     </label>
                     <button class="mb-btnPrimary" type="button" :disabled="adjLoading" @click="submitAdjust(i.product_id)">
                       {{ adjLoading ? "Saving..." : "Save" }}
+                    </button>
+                    <button class="mb-btn" type="button" :disabled="adjLoading" @click="clearAvgCost(i.product_id)">
+                      Kosongkan Avg Cost
                     </button>
                     <button class="mb-btn" type="button" :disabled="adjLoading" @click="cancelAdjust">Cancel</button>
                     <span v-if="adjError" class="errorInline">{{ adjError }}</span>

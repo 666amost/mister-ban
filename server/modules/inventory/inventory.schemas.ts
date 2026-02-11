@@ -22,6 +22,9 @@ export const inventoryAdjustBodySchema = z
     product_id: z.string().uuid(),
     qty_delta: z.coerce.number().int(),
     unit_cost: z.coerce.number().int().min(0).optional(),
+    reset_avg_cost: z.coerce.boolean().optional(),
     note: z.string().trim().max(200).optional(),
   })
-  .refine((v) => v.qty_delta !== 0, { message: "qty_delta must not be 0" });
+  .refine((v) => v.qty_delta !== 0 || v.reset_avg_cost === true, {
+    message: "qty_delta must not be 0 unless resetting avg cost",
+  });

@@ -492,7 +492,7 @@ async function submitBulkPriceUpdate() {
   if (bulkSelected.value.size === 0) return
   if (bulkType.value === 'price' && bulkSellPrice.value <= 0) return
   if (bulkType.value === 'stock' && bulkQtyDelta.value === 0) {
-    bulkError.value = "Qty Delta tidak boleh 0"
+    bulkError.value = "Qty tidak boleh 0"
     return
   }
   
@@ -702,11 +702,11 @@ onMounted(async () => {
 
       <div v-else class="bulkForm">
         <label class="field smallField">
-          <span>Qty Delta</span>
+          <span>Qty</span>
           <input v-model.number="bulkQtyDelta" class="mb-input" type="number" step="1" placeholder="+10 atau -5" />
         </label>
         <label class="field smallField">
-          <span title="Hanya berpengaruh saat tambah stok (Qty Delta positif)">Harga Beli (Rp)</span>
+          <span title="Hanya berpengaruh saat tambah stok (Qty positif)">Harga Beli (Rp)</span>
           <input v-model.number="bulkUnitCost" class="mb-input" type="number" min="0" step="1" />
         </label>
         <label class="field bulkNoteField">
@@ -824,11 +824,11 @@ onMounted(async () => {
                         <td :colspan="bulkMode ? 6 : 5">
                           <div class="editRow">
                             <label class="field smallField">
-                              <span>Qty Delta</span>
+                              <span>Qty</span>
                               <input v-model.number="stockQtyDelta" class="mb-input" type="number" step="1" placeholder="+10 atau -5" />
                             </label>
                             <label class="field smallField">
-                              <span title="Hanya berpengaruh saat tambah stok (Qty Delta positif)">Harga Beli (Rp)</span>
+                              <span title="Hanya berpengaruh saat tambah stok (Qty positif)">Harga Beli (Rp)</span>
                               <input v-model.number="stockUnitCost" class="mb-input" type="number" min="0" step="1" />
                             </label>
                             <label class="field noteField">
