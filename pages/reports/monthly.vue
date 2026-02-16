@@ -17,6 +17,17 @@ type MonthlyTopSku = {
   revenue: number
 }
 
+type MonthlyBrandTransaction = {
+  brand: string
+  transactions: number
+}
+
+type MonthlyExpense = {
+  item_name: string
+  amount: number
+  entries: number
+}
+
 type MonthlyReport = {
   month: string
   omzet: number
@@ -25,12 +36,15 @@ type MonthlyReport = {
   expense_total: number
   daily?: MonthlyDaily[]
   top_skus?: MonthlyTopSku[]
+  brand_transactions?: MonthlyBrandTransaction[]
+  expenses?: MonthlyExpense[]
 }
 
 const month = ref(new Date().toISOString().slice(0, 7))
 const report = ref<MonthlyReport | null>(null)
 const isLoading = ref(false)
 const errorMessage = ref<string | null>(null)
+const isExpenseDetailOpen = ref(false)
 
 function rupiah(value: number) {
   return value.toLocaleString("id-ID")
@@ -48,6 +62,7 @@ async function load() {
   try {
     const res = await $fetch<{ report: MonthlyReport }>("/api/reports/monthly", { query: { month: month.value } })
     report.value = res.report
+    isExpenseDetailOpen.value = false
   } catch (error) {
     errorMessage.value = statusMessage(error) ?? "Gagal memuat report"
   } finally {
@@ -82,10 +97,53 @@ await load()
           <div class="label">Transaksi</div>
           <div class="value">{{ report.transactions }}</div>
         </div>
-        <div class="sumItem">
-          <div class="label">Pengeluaran</div>
+        <div
+          class="sumItem sumItemClickable"
+          role="button"
+          tabindex="0"
+          @click="isExpenseDetailOpen = !isExpenseDetailOpen"
+          @keydown.enter.prevent="isExpenseDetailOpen = !isExpenseDetailOpen"
+          @keydown.space.prevent="isExpenseDetailOpen = !isExpenseDetailOpen"
+        >
+          <div class="labelRow">
+            <div class="label">Pengeluaran</div>
+            <div class="actionLink">{{ isExpenseDetailOpen ? "Tutup" : "Detail" }}</div>
+          </div>
           <div class="value">Rp {{ rupiah(report.expense_total) }}</div>
         </div>
+      </div>
+
+      <div v-if="report?.brand_transactions?.length" class="tableWrap">
+        <div class="sectionTitle">Transaksi per Merk</div>
+        <div class="summary brandSummary">
+          <div v-for="item in report.brand_transactions" :key="item.brand" class="sumItem">
+            <div class="label">{{ item.brand }}</div>
+            <div class="value">{{ item.transactions }} transaksi</div>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="report && isExpenseDetailOpen" class="tableWrap">
+        <div class="sectionTitle">Detail Pengeluaran</div>
+        <div v-if="report?.expenses?.length">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th class="alignRight">Jumlah Input</th>
+                <th class="alignRight">Nominal</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="item in report.expenses" :key="item.item_name">
+                <td>{{ item.item_name }}</td>
+                <td class="alignRight">{{ item.entries }}</td>
+                <td class="alignRight">Rp {{ rupiah(item.amount) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div v-else class="emptyState">Tidak ada pengeluaran di bulan ini</div>
       </div>
 
       <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
@@ -156,6 +214,62 @@ await load()
 .summary.reportSummary .value {
   margin-top: 4px;
   font-size: 15px;
+}
+.summary.brandSummary {
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+.labelRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.actionLink {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--mb-primary);
+  user-select: none;
+}
+.sumItemClickable {
+  cursor: pointer;
+}
+.sumItemClickable:focus-visible {
+  outline: 2px solid var(--mb-primary);
+  outline-offset: 2px;
+}
+.tableWrap {
+  margin-top: 14px;
+  overflow: auto;
+}
+.sectionTitle {
+  margin-bottom: 8px;
+  font-weight: 800;
+}
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+th,
+td {
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--mb-table-border);
+}
+th {
+  text-align: left;
+  color: var(--mb-muted);
+  font-weight: 700;
+}
+.alignRight {
+  text-align: right;
+}
+.emptyState {
+  padding: 12px;
+  border: 1px dashed var(--mb-border2);
+  border-radius: 14px;
+  background: var(--mb-surface2);
+  color: var(--mb-muted);
+  font-size: 12px;
 }
 .label {
   font-size: 12px;

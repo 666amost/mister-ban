@@ -45,13 +45,11 @@ const hasMore = ref(true)
 const pageInput = ref(1)
 const categoryFilter = ref<CategoryFilter>(null)
 
-const bulkMode = ref(false)
-const bulkQtyDelta = ref(0)
-const bulkUnitCost = ref(0)
-const bulkNote = ref("")
-const bulkSelected = ref<Set<string>>(new Set())
-const bulkLoading = ref(false)
-const bulkError = ref<string | null>(null)
+const priceEditMode = ref(false)
+const priceDrafts = ref<Record<string, number>>({})
+const priceDirty = ref<Set<string>>(new Set())
+const priceSaveLoading = ref(false)
+const priceSaveError = ref<string | null>(null)
 
 const adjustingId = ref<string | null>(null)
 const adjQtyDelta = ref(0)
@@ -99,6 +97,58 @@ function statusMessage(error: unknown) {
   return typeof e.statusMessage === "string" ? e.statusMessage : null
 }
 
+function resetPriceDrafts() {
+  priceDrafts.value = Object.fromEntries(items.value.map((i) => [i.product_id, i.sell_price ?? 0])) as Record<string, number>
+  priceDirty.value = new Set()
+}
+
+function startPriceEditMode() {
+  cancelAdjust()
+  priceEditMode.value = true
+  priceSaveError.value = null
+  resetPriceDrafts()
+}
+
+function cancelPriceEditMode() {
+  priceEditMode.value = false
+  priceDrafts.value = {}
+  priceDirty.value = new Set()
+  priceSaveError.value = null
+}
+
+function syncPriceDraft(productId: string) {
+  const rawValue = priceDrafts.value[productId]
+  const normalized = Number.isFinite(rawValue) ? Math.max(0, Math.trunc(rawValue)) : 0
+  priceDrafts.value[productId] = normalized
+  const original = items.value.find((i) => i.product_id === productId)?.sell_price ?? 0
+  if (normalized === original) {
+    priceDirty.value.delete(productId)
+  } else {
+    priceDirty.value.add(productId)
+  }
+  priceDirty.value = new Set(priceDirty.value)
+}
+
+async function saveAllPriceEdits() {
+  if (priceDirty.value.size === 0) return
+  priceSaveLoading.value = true
+  priceSaveError.value = null
+  try {
+    for (const productId of priceDirty.value) {
+      await $fetch(`/api/products/${productId}`, {
+        method: "PATCH",
+        body: { sell_price: priceDrafts.value[productId] ?? 0 },
+      })
+    }
+    cancelPriceEditMode()
+    await load()
+  } catch (error) {
+    priceSaveError.value = statusMessage(error) ?? "Gagal simpan perubahan harga"
+  } finally {
+    priceSaveLoading.value = false
+  }
+}
+
 function resetPaging() {
   pageOffset.value = 0
   currentPage.value = 1
@@ -127,8 +177,7 @@ async function load(options?: { reset?: boolean }) {
     summary.value = res.summary
     hasMore.value = res.items.length === pageLimit.value
 
-    // selections are per-page to avoid accidental bulk adjust on hidden items
-    if (bulkMode.value) bulkSelected.value = new Set()
+    if (priceEditMode.value) resetPriceDrafts()
     if (adjustingId.value && !res.items.some((i) => i.product_id === adjustingId.value)) cancelAdjust()
   } catch (error) {
     errorMessage.value = statusMessage(error) ?? "Gagal memuat inventory"
@@ -254,69 +303,6 @@ async function clearAvgCost(productId: string) {
   }
 }
 
-function toggleBulkSelect(productId: string) {
-  if (bulkSelected.value.has(productId)) {
-    bulkSelected.value.delete(productId)
-  } else {
-    bulkSelected.value.add(productId)
-  }
-  bulkSelected.value = new Set(bulkSelected.value)
-}
-
-function toggleBulkSelectAll() {
-  if (bulkSelected.value.size === items.value.length) {
-    bulkSelected.value = new Set()
-  } else {
-    bulkSelected.value = new Set(items.value.map(i => i.product_id))
-  }
-}
-
-async function submitBulkAdjust() {
-  if (bulkSelected.value.size === 0 || bulkQtyDelta.value === 0) {
-    bulkError.value = "Qty Delta tidak boleh 0"
-    return
-  }
-  bulkLoading.value = true
-  bulkError.value = null
-  try {
-    for (const productId of bulkSelected.value) {
-      const body: Record<string, unknown> = {
-        product_id: productId,
-        qty_delta: bulkQtyDelta.value,
-      }
-      if (bulkQtyDelta.value > 0 && bulkUnitCost.value > 0) {
-        body.unit_cost = bulkUnitCost.value
-      }
-      if (bulkNote.value.trim().length) {
-        body.note = bulkNote.value.trim()
-      }
-      await $fetch("/api/inventory/adjust", {
-        method: "POST",
-        body,
-      })
-    }
-    bulkMode.value = false
-    bulkSelected.value = new Set()
-    bulkQtyDelta.value = 0
-    bulkUnitCost.value = 0
-    bulkNote.value = ""
-    await load()
-  } catch (error) {
-    bulkError.value = statusMessage(error) ?? "Gagal adjust stok massal"
-  } finally {
-    bulkLoading.value = false
-  }
-}
-
-function cancelBulk() {
-  bulkMode.value = false
-  bulkSelected.value = new Set()
-  bulkQtyDelta.value = 0
-  bulkUnitCost.value = 0
-  bulkNote.value = ""
-  bulkError.value = null
-}
-
 onMounted(async () => {
   await load({ reset: true })
 })
@@ -332,10 +318,24 @@ onMounted(async () => {
         </label>
         <button class="mb-btn" :disabled="isLoading" @click="load({ reset: true })">{{ isLoading ? "Loading..." : "Search" }}</button>
         <button v-if="q.trim().length" class="mb-btn" :disabled="isLoading" @click="clearSearch">Clear</button>
-        <button v-if="me.user.value?.role === 'ADMIN'" :class="bulkMode ? 'mb-btnDanger' : 'mb-btn'" @click="bulkMode ? cancelBulk() : bulkMode = true">
-          {{ bulkMode ? "Cancel Bulk" : "Bulk Adjust" }}
+        <button
+          v-if="me.user.value?.role === 'ADMIN'"
+          :class="priceEditMode ? 'mb-btnDanger' : 'mb-btn'"
+          @click="priceEditMode ? cancelPriceEditMode() : startPriceEditMode()"
+        >
+          {{ priceEditMode ? "Batal Edit Harga" : "Edit Harga" }}
+        </button>
+        <button
+          v-if="me.user.value?.role === 'ADMIN' && priceEditMode"
+          class="mb-btnPrimary"
+          type="button"
+          :disabled="priceSaveLoading || priceDirty.size === 0"
+          @click="saveAllPriceEdits"
+        >
+          {{ priceSaveLoading ? "Saving..." : `Save ${priceDirty.size} Perubahan` }}
         </button>
       </div>
+      <p v-if="priceEditMode && priceSaveError" class="error">{{ priceSaveError }}</p>
     </section>
 
     <section class="mb-card">
@@ -383,55 +383,22 @@ onMounted(async () => {
       </div>
     </section>
 
-    <section v-if="bulkMode && me.user.value?.role === 'ADMIN'" class="mb-card">
-      <div class="bulkHeader">
-        <div>
-          <div class="bulkTitle">Bulk Adjust</div>
-          <div class="bulkSub">{{ bulkSelected.size }} item dipilih</div>
-        </div>
-      </div>
-      <div class="bulkForm">
-        <label class="field smallField">
-          <span>Qty Delta</span>
-          <input v-model.number="bulkQtyDelta" class="mb-input" type="number" step="1" placeholder="+10 atau -5" />
-        </label>
-        <label class="field smallField">
-          <span title="Hanya berpengaruh saat tambah stok (Qty Delta positif)">Harga Beli (Rp)</span>
-          <input v-model.number="bulkUnitCost" class="mb-input" type="number" min="0" step="1" />
-        </label>
-        <label class="field bulkNoteField">
-          <span>Note</span>
-          <input v-model="bulkNote" class="mb-input" placeholder="Optional" />
-        </label>
-        <button class="mb-btnPrimary" type="button" :disabled="bulkLoading || bulkSelected.size === 0" @click="submitBulkAdjust">
-          {{ bulkLoading ? "Processing..." : `Apply to ${bulkSelected.size} items` }}
-        </button>
-        <span v-if="bulkError" class="errorInline">{{ bulkError }}</span>
-      </div>
-    </section>
-
     <section class="mb-card">
       <div v-if="items.length" class="tableWrap">
         <table class="table">
           <thead>
             <tr>
-              <th v-if="bulkMode" style="width: 40px">
-                <input type="checkbox" :checked="bulkSelected.size === items.length" @change="toggleBulkSelectAll()" />
-              </th>
               <th>SKU</th>
               <th>Nama</th>
               <th style="text-align: right">Qty</th>
               <th v-if="me.user.value?.role === 'ADMIN'" style="text-align: right" title="Harga modal (rata-rata). Berubah saat tambah stok, tetap saat kurang stok.">Modal (Avg)</th>
               <th style="text-align: right">Harga Jual</th>
-              <th v-if="me.user.value?.role === 'ADMIN' && !bulkMode" style="width: 1%"></th>
+              <th v-if="me.user.value?.role === 'ADMIN'" style="width: 1%"></th>
             </tr>
           </thead>
           <tbody>
             <template v-for="i in items" :key="i.product_id">
               <tr>
-                <td v-if="bulkMode" style="text-align: center">
-                  <input type="checkbox" :checked="bulkSelected.has(i.product_id)" @change="toggleBulkSelect(i.product_id)" />
-                </td>
                 <td class="mono">{{ i.sku }}</td>
                 <td>
                   <div class="strong">{{ productDisplayName(i.brand, i.name) }}</div>
@@ -442,14 +409,25 @@ onMounted(async () => {
                   <template v-if="i.avg_unit_cost > 0">Rp {{ rupiah(i.avg_unit_cost) }}</template>
                   <template v-else>-</template>
                 </td>
-                <td style="text-align: right">Rp {{ rupiah(i.sell_price ?? 0) }}</td>
-                <td v-if="me.user.value?.role === 'ADMIN' && !bulkMode" style="text-align: right">
-                  <button class="mb-btn" type="button" @click="startAdjust(i)">Adjust</button>
+                <td style="text-align: right">
+                  <template v-if="priceEditMode">
+                    <input
+                      v-model.number="priceDrafts[i.product_id]"
+                      class="mb-input priceInput"
+                      type="number"
+                      min="0"
+                      step="1"
+                      @input="syncPriceDraft(i.product_id)"
+                    />
+                  </template>
+                  <template v-else>Rp {{ rupiah(i.sell_price ?? 0) }}</template>
+                </td>
+                <td v-if="me.user.value?.role === 'ADMIN'" style="text-align: right">
+                  <button class="mb-btn" type="button" :disabled="priceEditMode" @click="startAdjust(i)">Adjust</button>
                 </td>
               </tr>
-              <tr v-if="me.user.value?.role === 'ADMIN' && adjustingId === i.product_id && !bulkMode">
-                <td v-if="bulkMode"></td>
-                <td :colspan="5">
+              <tr v-if="me.user.value?.role === 'ADMIN' && adjustingId === i.product_id && !priceEditMode">
+                <td :colspan="6">
                   <div class="adjRow">
                     <label class="field smallField">
                       <span>Qty Delta</span>
@@ -534,6 +512,11 @@ onMounted(async () => {
   min-width: 220px;
   flex: 1 1 260px;
 }
+.priceInput {
+  width: 140px;
+  margin-left: auto;
+  text-align: right;
+}
 .hint {
   margin-top: 6px;
   font-size: 12px;
@@ -610,33 +593,6 @@ th {
 .errorInline {
   font-size: 12px;
   color: var(--mb-danger);
-}
-.bulkHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 16px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--mb-border2);
-}
-.bulkTitle {
-  font-weight: 800;
-}
-.bulkSub {
-  font-size: 12px;
-  color: var(--mb-muted);
-  margin-top: 4px;
-}
-.bulkForm {
-  display: flex;
-  gap: 12px;
-  align-items: end;
-  flex-wrap: wrap;
-}
-.bulkNoteField {
-  flex: 1;
-  min-width: 240px;
 }
 .summaryGrid {
   display: grid;

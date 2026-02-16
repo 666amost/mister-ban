@@ -39,10 +39,6 @@ type DailyInput = {
 type DailyPaymentSummary = {
   cash: number
   non_cash: number
-  qris: number
-  debit: number
-  transfer: number
-  credit: number
 }
 
 type DailyReport = {
@@ -62,12 +58,6 @@ const date = ref(new Date().toISOString().slice(0, 10))
 const report = ref<DailyReport | null>(null)
 const isLoading = ref(false)
 const errorMessage = ref<string | null>(null)
-const nonCashOther = computed(() => {
-  const summary = report.value?.payment_summary
-  if (!summary) return 0
-  const knownNonCash = summary.qris + summary.debit + summary.transfer + summary.credit
-  return Math.max(0, summary.non_cash - knownNonCash)
-})
 
 function rupiah(value: number) {
   return value.toLocaleString("id-ID")
@@ -148,26 +138,6 @@ await load()
           <div class="sumItem">
             <div class="label">Non Tunai</div>
             <div class="value">Rp {{ rupiah(report.payment_summary.non_cash) }}</div>
-          </div>
-          <div class="sumItem">
-            <div class="label">QRIS</div>
-            <div class="value">Rp {{ rupiah(report.payment_summary.qris) }}</div>
-          </div>
-          <div class="sumItem">
-            <div class="label">Debit</div>
-            <div class="value">Rp {{ rupiah(report.payment_summary.debit) }}</div>
-          </div>
-          <div class="sumItem">
-            <div class="label">Transfer</div>
-            <div class="value">Rp {{ rupiah(report.payment_summary.transfer) }}</div>
-          </div>
-          <div class="sumItem">
-            <div class="label">Kredit</div>
-            <div class="value">Rp {{ rupiah(report.payment_summary.credit) }}</div>
-          </div>
-          <div v-if="nonCashOther > 0" class="sumItem">
-            <div class="label">Non Tunai Lainnya</div>
-            <div class="value">Rp {{ rupiah(nonCashOther) }}</div>
           </div>
         </div>
       </div>

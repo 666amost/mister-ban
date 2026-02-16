@@ -374,6 +374,41 @@ export async function getMonthlyReport({
     [storeId, start, endIso],
   );
 
+  const brandTransactionsRes = await db.query<{ brand: string; transactions: number }>(
+    `
+      SELECT
+        b.name AS brand,
+        COUNT(DISTINCT s.id)::int AS transactions
+      FROM sales_items si
+      JOIN sales s ON s.id = si.sale_id
+      JOIN products p ON p.id = si.product_id
+      JOIN brands b ON b.id = p.brand_id
+      WHERE s.store_id = $1
+        AND s.sale_date >= $2::date
+        AND s.sale_date < $3::date
+      GROUP BY b.name
+      ORDER BY transactions DESC, brand
+    `,
+    [storeId, start, endIso],
+  );
+
+  const expenseRes = await db.query<{ item_name: string; amount: number; entries: number }>(
+    `
+      SELECT
+        se.item_name,
+        COALESCE(SUM(se.amount), 0)::int AS amount,
+        COUNT(*)::int AS entries
+      FROM sales_expenses se
+      JOIN sales s ON s.id = se.sale_id
+      WHERE s.store_id = $1
+        AND s.sale_date >= $2::date
+        AND s.sale_date < $3::date
+      GROUP BY se.item_name
+      ORDER BY amount DESC, se.item_name
+    `,
+    [storeId, start, endIso],
+  );
+
   return {
     month,
     omzet: totalsRes.rows[0]?.omzet ?? 0,
@@ -382,5 +417,7 @@ export async function getMonthlyReport({
     expense_total: expenseTotalRes.rows[0]?.expense_total ?? 0,
     daily,
     top_skus: topRes.rows,
+    brand_transactions: brandTransactionsRes.rows,
+    expenses: expenseRes.rows,
   };
 }
