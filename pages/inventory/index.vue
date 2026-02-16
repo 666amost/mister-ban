@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { onMounted } from "vue"
 
+definePageMeta({ middleware: "admin" })
+
 type InventoryRow = {
   product_id: string
   sku: string
@@ -64,6 +66,31 @@ function rupiah(value: number) {
 
 function formatNumber(value: number) {
   return value.toLocaleString("id-ID")
+}
+
+function normalizeText(value: string) {
+  return value
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ")
+}
+
+function productDisplayName(brand: string, name: string) {
+  const brandTrimmed = brand.trim()
+  const nameTrimmed = name.trim()
+
+  if (!brandTrimmed) return nameTrimmed
+  if (!nameTrimmed) return brandTrimmed
+
+  const brandNormalized = normalizeText(brandTrimmed)
+  const nameNormalized = normalizeText(nameTrimmed)
+  if (nameNormalized === brandNormalized || nameNormalized.startsWith(`${brandNormalized} `)) {
+    return nameTrimmed
+  }
+  return `${brandTrimmed} ${nameTrimmed}`.replace(/\s+/g, " ").trim()
 }
 
 function statusMessage(error: unknown) {
@@ -315,14 +342,6 @@ onMounted(async () => {
       <div class="summaryGrid">
         <button 
           type="button" 
-          :class="['summaryItem', { highlight: categoryFilter === null, active: categoryFilter === null }]"
-          @click="selectCategory(null)"
-        >
-          <div class="summaryLabel">Semua</div>
-          <div class="summaryValue">{{ formatNumber(summary.ban_qty + summary.sparepart_qty + summary.cairan_qty + summary.ban_dalam_qty + summary.oli_qty) }}</div>
-        </button>
-        <button 
-          type="button" 
           :class="['summaryItem', { active: categoryFilter === 'BAN' }]"
           @click="selectCategory('BAN')"
         >
@@ -415,7 +434,7 @@ onMounted(async () => {
                 </td>
                 <td class="mono">{{ i.sku }}</td>
                 <td>
-                  <div class="strong">{{ i.brand }} {{ i.name }}</div>
+                  <div class="strong">{{ productDisplayName(i.brand, i.name) }}</div>
                   <div class="muted">{{ i.size }}</div>
                 </td>
                 <td style="text-align: right">{{ i.qty_on_hand }}</td>
@@ -633,10 +652,6 @@ th {
   text-align: left;
   font-family: inherit;
   width: 100%;
-}
-.summaryItem.highlight {
-  border-color: rgba(52, 199, 89, 0.35);
-  background: rgba(52, 199, 89, 0.08);
 }
 .summaryItem.active {
   border-color: rgba(52, 199, 89, 0.65);

@@ -42,12 +42,12 @@ const navGroups = computed<NavGroup[]>(() => {
       items: [
         { to: "/", label: "Dashboard", icon: "home", keywords: ["home"] },
         { to: "/sales", label: "Sales", icon: "sales", keywords: ["struk", "invoice", "kasir"] },
-        { to: "/inventory", label: "Inventory", icon: "inventory", keywords: ["stock", "stok"] },
       ],
     },
   ]
 
   if (role.value === "ADMIN") {
+    groups[0]?.items.push({ to: "/inventory", label: "Inventory", icon: "inventory", keywords: ["stock", "stok"] })
     groups.push(
       {
         label: "Master",
@@ -81,9 +81,10 @@ const bottomItems = computed(() => {
   const items = [
     { to: "/", label: "Home" },
     { to: "/sales", label: "Sales" },
-    { to: "/inventory", label: "Stock" },
   ]
-  if (role.value === "ADMIN") items.push({ to: "/products", label: "Products" })
+  if (role.value === "ADMIN") {
+    items.push({ to: "/inventory", label: "Stock" }, { to: "/products", label: "Products" })
+  }
   return items
 })
 

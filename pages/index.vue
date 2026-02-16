@@ -128,28 +128,19 @@ watch(
 );
 
 const menuItems = computed<MenuItem[]>(() => {
-  const role = me.user.value?.role;
-  const base: MenuItem[] = [
+  return [
     { title: "Sales", sub: "Transaksi penjualan & struk", to: "/sales", icon: "sales" },
     { title: "Inventory", sub: "Stok per toko", to: "/inventory", icon: "inventory" },
+    { title: "Products", sub: "Master produk", to: "/products", icon: "products" },
+    {
+      title: "Supplier Invoices",
+      sub: "Invoice supplier & pembayaran",
+      to: "/suppliers/invoices",
+      icon: "suppliers",
+    },
+    { title: "Daily Report", sub: "Rekap harian", to: "/reports/daily", icon: "reports" },
+    { title: "Monthly Report", sub: "Rekap bulanan", to: "/reports/monthly", icon: "reports" },
   ];
-
-  if (role === "ADMIN") {
-    return [
-      ...base,
-      { title: "Products", sub: "Master produk", to: "/products", icon: "products" },
-      {
-        title: "Supplier Invoices",
-        sub: "Invoice supplier & pembayaran",
-        to: "/suppliers/invoices",
-        icon: "suppliers",
-      },
-      { title: "Daily Report", sub: "Rekap harian", to: "/reports/daily", icon: "reports" },
-      { title: "Monthly Report", sub: "Rekap bulanan", to: "/reports/monthly", icon: "reports" },
-    ];
-  }
-
-  return base;
 });
 </script>
 
@@ -171,7 +162,7 @@ const menuItems = computed<MenuItem[]>(() => {
     </NuxtLink>
 
     <div class="quickGrid">
-      <NuxtLink to="/inventory" class="quickAction">
+      <NuxtLink v-if="isAdmin" to="/inventory" class="quickAction">
         <div class="qaIcon small">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />

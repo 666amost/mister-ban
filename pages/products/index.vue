@@ -192,6 +192,32 @@ function rupiah(value: number) {
   return value.toLocaleString("id-ID")
 }
 
+function normalizeText(value: string) {
+  return value
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ")
+}
+
+function productDisplayName(brand: string, name: string) {
+  const brandTrimmed = brand.trim()
+  const nameTrimmed = name.trim()
+
+  if (!brandTrimmed) return nameTrimmed
+  if (!nameTrimmed) return brandTrimmed
+
+  const brandNormalized = normalizeText(brandTrimmed)
+  const nameNormalized = normalizeText(nameTrimmed)
+  if (nameNormalized === brandNormalized || nameNormalized.startsWith(`${brandNormalized} `)) {
+    return nameTrimmed
+  }
+
+  return `${brandTrimmed} ${nameTrimmed}`.replace(/\s+/g, " ").trim()
+}
+
 function statusMessage(error: unknown) {
   if (!error || typeof error !== "object") return null
   const e = error as Record<string, unknown>
@@ -644,7 +670,7 @@ onMounted(async () => {
             :class="{ active: selectedMaster?.product_id === p.product_id }"
             @click="selectMaster(p)"
           >
-            <div class="mTitle">{{ p.brand }} {{ p.name }} {{ p.size }}</div>
+            <div class="mTitle">{{ productDisplayName(p.brand, p.name) }} {{ p.size }}</div>
             <div class="mSub">{{ p.sku }} • {{ p.product_type }}</div>
           </button>
         </div>
@@ -652,7 +678,7 @@ onMounted(async () => {
 
         <div v-if="selectedMaster" class="attachCard">
           <div class="attachTitle">Tambahkan ke toko</div>
-          <div class="attachSub">{{ selectedMaster.brand }} {{ selectedMaster.name }} {{ selectedMaster.size }}</div>
+          <div class="attachSub">{{ productDisplayName(selectedMaster.brand, selectedMaster.name) }} {{ selectedMaster.size }}</div>
           <div class="attachForm">
             <label class="field">
               <span>Sell Price (Rp)</span>

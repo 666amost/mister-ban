@@ -4,9 +4,11 @@ import { inventoryListQuerySchema } from "../../modules/inventory/inventory.sche
 import { getQueryWithSchema } from "../../utils/validate";
 import { getPool } from "../../db/pool";
 import { listInventory, summarizeInventory } from "../../modules/inventory/inventory.repo";
+import { requireAdmin } from "../../utils/rbac";
 
 export default defineEventHandler(async (event) => {
   const user = await requireUser(event);
+  requireAdmin(user);
   const storeId = resolveStoreId(event, user);
   const query = getQueryWithSchema(event, inventoryListQuerySchema);
 

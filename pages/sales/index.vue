@@ -149,11 +149,37 @@ function statusMessage(error: unknown) {
   return typeof e.statusMessage === "string" ? e.statusMessage : null
 }
 
+function normalizeText(value: string) {
+  return value
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ")
+}
+
+function productDisplayName(brand: string, name: string) {
+  const brandTrimmed = brand.trim()
+  const nameTrimmed = name.trim()
+
+  if (!brandTrimmed) return nameTrimmed
+  if (!nameTrimmed) return brandTrimmed
+
+  const brandNormalized = normalizeText(brandTrimmed)
+  const nameNormalized = normalizeText(nameTrimmed)
+  if (nameNormalized === brandNormalized || nameNormalized.startsWith(`${brandNormalized} `)) {
+    return nameTrimmed
+  }
+
+  return `${brandTrimmed} ${nameTrimmed}`.replace(/\s+/g, " ").trim()
+}
+
 function saleItemLabel(i: SaleItemDetail | CustomItemDetail) {
   if (i.type === "custom") {
     return `${i.item_name} x${i.qty}`
   }
-  const base = `${i.brand} ${i.name} ${i.size}`.replace(/\s+/g, " ").trim()
+  const base = `${productDisplayName(i.brand, i.name)} ${i.size}`.replace(/\s+/g, " ").trim()
   return `${base} x${i.qty}`
 }
 
@@ -933,7 +959,7 @@ async function newTransaction() {
               @click="addProduct(p)"
             >
               <div class="productInfo">
-                <div class="productName">{{ p.brand }} {{ p.name }}</div>
+                <div class="productName">{{ productDisplayName(p.brand, p.name) }}</div>
                 <div class="productMeta">{{ p.size }} • {{ p.sku }}</div>
               </div>
               <div class="productRight">
@@ -972,7 +998,7 @@ async function newTransaction() {
               </svg>
             </button>
             <div class="cartItemInfo">
-              <div class="cartItemName">{{ x.product.brand }} {{ x.product.name }}</div>
+              <div class="cartItemName">{{ productDisplayName(x.product.brand, x.product.name) }}</div>
               <div class="cartItemMeta">{{ x.product.size }} • Rp {{ rupiah(x.product.sell_price) }}</div>
             </div>
             <div class="qtyControl">
@@ -1389,7 +1415,7 @@ async function newTransaction() {
                       @click="addEditProduct(p)"
                     >
                       <div class="productInfo">
-                        <div class="productName">{{ p.brand }} {{ p.name }}</div>
+                        <div class="productName">{{ productDisplayName(p.brand, p.name) }}</div>
                         <div class="productMeta">{{ p.size }} • {{ p.sku }}</div>
                       </div>
                       <div class="productRight">
@@ -1469,7 +1495,7 @@ async function newTransaction() {
               <div v-if="editItems.length" class="editItemsList">
                 <div class="editItemsTitle">Item Produk</div>
                 <div v-for="(ei, idx) in editItems" :key="'ei-' + idx" class="editItemRow">
-                  <span class="editItemName">{{ ei.brand }} {{ ei.name }} {{ ei.size }}</span>
+                  <span class="editItemName">{{ productDisplayName(ei.brand, ei.name) }} {{ ei.size }}</span>
                   <div class="editQtyControls">
                     <button type="button" class="qtyBtn" @click="decrementEditQty(ei.product_id)">-</button>
                     <span class="qtyValue">{{ ei.qty }}</span>
