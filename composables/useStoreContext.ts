@@ -13,9 +13,8 @@ export function useStoreContext() {
   async function refresh() {
     status.value = "loading";
     try {
-      const res = await $fetch<{ store: StoreContext | null }>(
-        "/api/store/current",
-      );
+      const fetcher = process.server ? useRequestFetch() : $fetch;
+      const res = await fetcher<{ store: StoreContext | null }>("/api/store/current");
       store.value = res.store;
       status.value = "ready";
       return res.store;
@@ -26,12 +25,18 @@ export function useStoreContext() {
   }
 
   async function select(storeId: string) {
-    await $fetch("/api/store/select", {
+    const fetcher = process.server ? useRequestFetch() : $fetch;
+    await fetcher("/api/store/select", {
       method: "POST",
       body: { store_id: storeId },
     });
     return refresh();
   }
 
-  return { store, status, refresh, select };
+  function clear() {
+    store.value = null;
+    status.value = "idle";
+  }
+
+  return { store, status, refresh, select, clear };
 }

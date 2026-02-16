@@ -2131,7 +2131,8 @@ async function newTransaction() {
 }
 
 .splitAmount {
-  width: 140px;
+  width: 120px;
+  flex-shrink: 0;
 }
 
 .splitRemove {
@@ -2558,6 +2559,32 @@ async function newTransaction() {
     gap: 10px;
     margin-top: 0;
   }
+
+  .editSheet .searchInput {
+    height: 44px;
+    font-size: 14px;
+  }
+
+  .editSheet .formInput {
+    height: 42px;
+    font-size: 14px;
+  }
+
+  .editSheet .paymentBtn {
+    padding: 10px 6px;
+    font-size: 12px;
+  }
+
+  .editItemRow {
+    grid-template-columns: 1fr auto auto auto;
+    gap: 6px;
+    font-size: 12px;
+  }
+
+  .editItemRow .qtyBtn {
+    width: 28px;
+    height: 28px;
+  }
 }
 
 .emptyHistory {
@@ -2654,7 +2681,7 @@ async function newTransaction() {
   justify-content: center;
   background: rgba(0, 0, 0, 0.4);
   z-index: 200;
-  padding: 16px;
+  padding: 0;
 }
 
 .successSheet {
@@ -2670,6 +2697,9 @@ async function newTransaction() {
 .editSheet {
   width: 100%;
   max-width: 420px;
+  max-height: 92vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   padding: 24px 20px;
   padding-bottom: max(24px, env(safe-area-inset-bottom));
   background: var(--mb-surface);
@@ -2691,6 +2721,14 @@ async function newTransaction() {
 
 .editForm {
   margin-top: 16px;
+}
+
+.editSearchSection .searchResults {
+  position: relative;
+  top: 8px;
+  max-height: 40vh;
+  box-shadow: none;
+  border-radius: 12px;
 }
 
 .editActions {
@@ -2929,7 +2967,8 @@ async function newTransaction() {
 }
 
 .editItemRow {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
   align-items: center;
   gap: 8px;
   padding: 8px 0;
@@ -2949,6 +2988,16 @@ async function newTransaction() {
   white-space: nowrap;
 }
 
+.editQtyControls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--mb-surface);
+  border-radius: 8px;
+  padding: 2px;
+  flex-shrink: 0;
+}
+
 .editItemQty {
   color: var(--mb-muted);
   font-size: 12px;
@@ -2956,6 +3005,8 @@ async function newTransaction() {
 
 .editItemPrice {
   font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .editItemRemove {

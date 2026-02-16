@@ -15,7 +15,8 @@ export function useMe() {
   async function refresh() {
     status.value = "loading";
     try {
-      const res = await $fetch<{ user: MeUser }>("/api/me");
+      const fetcher = process.server ? useRequestFetch() : $fetch;
+      const res = await fetcher<{ user: MeUser }>("/api/me");
       user.value = res.user;
       status.value = "ready";
       return res.user;
@@ -26,5 +27,10 @@ export function useMe() {
     }
   }
 
-  return { user, status, refresh };
+  function clear() {
+    user.value = null;
+    status.value = "idle";
+  }
+
+  return { user, status, refresh, clear };
 }

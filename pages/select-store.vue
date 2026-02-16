@@ -67,7 +67,13 @@ async function enterStore() {
 }
 
 async function logout() {
-  await $fetch("/api/auth/logout", { method: "POST" });
+  try {
+    await $fetch("/api/auth/logout", { method: "POST" });
+  } catch {
+    // ignore network/api logout error, state tetap dibersihkan di client
+  }
+  me.clear();
+  storeContext.clear();
   await navigateTo("/login");
 }
 </script>

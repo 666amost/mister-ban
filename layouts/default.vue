@@ -230,7 +230,13 @@ const pageTitle = computed(() => {
 })
 
 async function logout() {
-  await $fetch("/api/auth/logout", { method: "POST" })
+  try {
+    await $fetch("/api/auth/logout", { method: "POST" })
+  } catch {
+    // ignore network/api logout error, state tetap dibersihkan di client
+  }
+  me.clear()
+  storeContext.clear()
   await navigateTo("/login")
 }
 </script>
@@ -285,8 +291,16 @@ async function logout() {
       </nav>
 
       <div class="mb-sideActions">
-        <button v-if="role === 'ADMIN'" class="mb-btn" @click="navigateTo('/select-store')">Ganti Toko</button>
-        <button class="mb-btn" @click="logout">Logout</button>
+        <button
+          v-if="role === 'ADMIN'"
+          class="mb-btn mb-sideActionBtn"
+          @click="navigateTo('/select-store')"
+        >
+          Ganti Toko
+        </button>
+        <button class="mb-btn mb-sideActionBtn mb-sideActionLogout" @click="logout">
+          Logout
+        </button>
       </div>
     </aside>
 

@@ -590,6 +590,23 @@ a {
   gap: 10px;
 }
 
+.mb-sideActionBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+}
+
+.mb-sideActionLogout {
+  border-color: rgba(255, 95, 109, 0.35);
+  color: var(--mb-danger);
+}
+
+.mb-sideActionLogout:hover {
+  border-color: rgba(255, 95, 109, 0.55);
+  background: rgba(255, 95, 109, 0.12);
+}
+
 .mb-main {
   min-width: 0;
 }
@@ -658,11 +675,19 @@ a {
     grid-template-columns: 1fr;
   }
   .mb-sidebar {
-    position: static;
+    position: sticky;
+    top: 0;
+    z-index: 30;
     height: auto;
     border-right: 0;
     border-bottom: 1px solid var(--mb-border2);
-    padding: 12px 16px;
+    padding: 12px 14px 10px;
+    background: linear-gradient(
+      180deg,
+      var(--mb-glass-surface-strong) 0%,
+      var(--mb-glass-surface) 100%
+    );
+    backdrop-filter: blur(14px);
   }
   
   .mb-sideBrand {
@@ -675,33 +700,64 @@ a {
   }
   
   .mb-sideContext {
-    margin-top: 10px;
-    grid-auto-flow: column;
-    justify-content: flex-start;
-    gap: 10px;
+    margin-top: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
   }
   
   .mb-sideUser {
-    font-size: 11px;
+    font-size: 12px;
+    font-weight: 600;
+    max-width: 70vw;
+  }
+
+  .mb-pill {
+    order: 3;
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   
   .mb-sideRole {
-    font-size: 11px;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    font-weight: 800;
+    border: 1px solid var(--mb-border2);
+    background: var(--mb-surface2);
+    border-radius: 999px;
+    padding: 3px 8px;
   }
   
   .mb-sideActions {
-    display: none;
+    margin-top: 8px;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .mb-sideActionBtn {
+    height: 34px;
+    padding: 0 12px;
+    border-radius: 10px;
+    font-size: 12px;
   }
   .mb-search {
     display: none;
   }
   .mb-nav {
-    grid-auto-flow: column;
-    grid-auto-columns: max-content;
+    display: flex;
     overflow: auto;
-    gap: 10px;
-    padding-bottom: 2px;
-    margin-top: 12px;
+    gap: 8px;
+    padding: 2px 0 4px;
+    margin-top: 10px;
+    scrollbar-width: none;
+  }
+  .mb-nav::-webkit-scrollbar {
+    width: 0;
+    height: 0;
   }
   .mb-navGroup {
     display: contents;
@@ -716,25 +772,25 @@ a {
     display: contents;
   }
   .mb-navItem {
+    flex: 0 0 auto;
     white-space: nowrap;
+    padding: 9px 12px;
+    border-radius: 12px;
+    gap: 8px;
+  }
+
+  .mb-navIcon {
+    width: 16px;
+    height: 16px;
   }
   
   .mb-topbar {
-    padding: 12px 16px;
-  }
-  
-  .mb-topH {
-    font-size: 16px;
-  }
-  
-  .mb-topSub {
-    font-size: 11px;
-    margin-top: 4px;
+    display: none;
   }
   
   .mb-content {
-    padding: 16px;
-    padding-bottom: 86px;
+    padding: 14px;
+    padding-bottom: calc(86px + env(safe-area-inset-bottom));
   }
 
   .mb-bottomnav {
@@ -744,8 +800,8 @@ a {
     right: 0;
     bottom: 0;
     z-index: 20;
-    gap: 6px;
-    padding: 10px 12px;
+    gap: 8px;
+    padding: 8px 10px calc(10px + env(safe-area-inset-bottom));
     border-top: 1px solid var(--mb-border2);
     background: var(--mb-glass-surface-strong);
     backdrop-filter: blur(10px);
@@ -754,8 +810,8 @@ a {
   .mb-bottomItem {
     flex: 1 1 0;
     text-align: center;
-    padding: 10px 8px;
-    border-radius: 14px;
+    padding: 9px 8px;
+    border-radius: 12px;
     border: 1px solid transparent;
     color: var(--mb-text);
     text-decoration: none;

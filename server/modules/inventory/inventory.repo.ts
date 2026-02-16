@@ -138,9 +138,10 @@ export async function listInventory(
           $5::text IS NULL
           OR cp.category = $5
         )
-      ORDER BY b.name, cp.name,
+      ORDER BY
         CASE WHEN cp.size ~ '-[0-9]+$' THEN CAST(SUBSTRING(cp.size FROM '-([0-9]+)$') AS INTEGER) ELSE 999 END,
-        cp.size, cp.sku
+        CASE WHEN cp.size ~ '^[0-9]+' THEN CAST(SUBSTRING(cp.size FROM '^([0-9]+)') AS INTEGER) ELSE 999 END,
+        cp.size, b.name, cp.name, cp.sku
       LIMIT $3
       OFFSET $4
     `,

@@ -1,25 +1,43 @@
 export default defineNuxtRouteMiddleware(async (to) => {
-  if (to.path === "/login") return;
-
   const me = useMe();
-  if (!me.user.value) {
+  const storeContext = useStoreContext();
+
+  if (to.path === "/login") {
     try {
-      await me.refresh();
+      const freshUser = await me.refresh();
+      if (freshUser.role === "STAFF") return navigateTo("/");
+
+      if (!storeContext.store.value) {
+        await storeContext.refresh();
+      }
+
+      return navigateTo(storeContext.store.value ? "/" : "/select-store");
     } catch {
-      return navigateTo("/login");
+      me.clear();
+      storeContext.clear();
+      return;
     }
   }
 
-  if (me.user.value?.role === "STAFF") {
-    return;
+  async function resolveUser() {
+    if (me.user.value) return me.user.value;
+    try {
+      return await me.refresh();
+    } catch {
+      return null;
+    }
   }
 
+  const user = await resolveUser();
+
+  if (!user) {
+    storeContext.clear();
+    return navigateTo("/login");
+  }
+  if (user.role === "STAFF") return;
   if (to.path === "/select-store") return;
 
-  const storeContext = useStoreContext();
-  if (storeContext.store.value) {
-    return;
-  }
+  if (storeContext.store.value) return;
 
   try {
     await storeContext.refresh();

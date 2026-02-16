@@ -493,7 +493,10 @@ export async function listSales({
               'price', si.sell_price,
               'line_total', si.line_total
             )
-            ORDER BY b.name, p.name, p.size, p.sku
+            ORDER BY
+              CASE WHEN p.size ~ '-[0-9]+$' THEN CAST(SUBSTRING(p.size FROM '-([0-9]+)$') AS INTEGER) ELSE 999 END,
+              CASE WHEN p.size ~ '^[0-9]+' THEN CAST(SUBSTRING(p.size FROM '^([0-9]+)') AS INTEGER) ELSE 999 END,
+              p.size, b.name, p.name, p.sku
           )
           FROM sales_items si
           JOIN products p ON p.id = si.product_id
@@ -951,7 +954,10 @@ export async function getSaleDetail({
       JOIN products p ON p.id = si.product_id
       JOIN brands b ON b.id = p.brand_id
       WHERE si.sale_id = $1
-      ORDER BY b.name, p.name, p.size, p.sku
+      ORDER BY
+        CASE WHEN p.size ~ '-[0-9]+$' THEN CAST(SUBSTRING(p.size FROM '-([0-9]+)$') AS INTEGER) ELSE 999 END,
+        CASE WHEN p.size ~ '^[0-9]+' THEN CAST(SUBSTRING(p.size FROM '^([0-9]+)') AS INTEGER) ELSE 999 END,
+        p.size, b.name, p.name, p.sku
     `,
     [saleId],
   );

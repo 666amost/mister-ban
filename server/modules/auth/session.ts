@@ -27,12 +27,14 @@ export function setSessionCookie(
   token: string,
   maxAgeSeconds: number,
 ) {
+  const expiresAt = new Date(Date.now() + maxAgeSeconds * 1000);
   setCookie(event, SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
     path: "/",
     maxAge: maxAgeSeconds,
+    expires: expiresAt,
   });
 }
 
