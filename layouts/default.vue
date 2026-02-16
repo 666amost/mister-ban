@@ -33,6 +33,12 @@ type NavGroup = {
   adminOnly?: boolean
 }
 
+type BottomItem = {
+  to: string
+  label: string
+  icon: IconName
+}
+
 type ThemeMode = "system" | "dark" | "light"
 
 const navGroups = computed<NavGroup[]>(() => {
@@ -77,13 +83,16 @@ const navGroups = computed<NavGroup[]>(() => {
   return groups
 })
 
-const bottomItems = computed(() => {
-  const items = [
-    { to: "/", label: "Home" },
-    { to: "/sales", label: "Sales" },
+const bottomItems = computed<BottomItem[]>(() => {
+  const items: BottomItem[] = [
+    { to: "/", label: "Home", icon: "home" },
+    { to: "/sales", label: "Sales", icon: "sales" },
   ]
   if (role.value === "ADMIN") {
-    items.push({ to: "/inventory", label: "Stock" }, { to: "/products", label: "Products" })
+    items.push(
+      { to: "/inventory", label: "Stock", icon: "inventory" },
+      { to: "/products", label: "Products", icon: "products" },
+    )
   }
   return items
 })
@@ -342,7 +351,8 @@ async function logout() {
           :class="{ active: isActive(i.to) }"
           :to="i.to"
         >
-          {{ i.label }}
+          <MbIcon class="mb-bottomIcon" :name="i.icon" />
+          <span class="mb-bottomLabel">{{ i.label }}</span>
         </NuxtLink>
       </nav>
     </div>

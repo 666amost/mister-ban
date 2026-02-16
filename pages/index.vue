@@ -414,11 +414,12 @@ const menuItems = computed<MenuItem[]>(() => {
 
 .statsGrid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
 }
 
 .statItem {
+  min-width: 0;
   padding: 12px;
   border-radius: 12px;
   background: var(--mb-surface2);
@@ -521,6 +522,32 @@ const menuItems = computed<MenuItem[]>(() => {
   margin-top: 2px;
   font-size: 12px;
   color: var(--mb-muted);
+}
+
+@media (max-width: 560px) {
+  .quickGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .summaryHeader {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .storeBadge {
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .statsGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .statsGrid .statItem:last-child {
+    grid-column: 1 / -1;
+  }
 }
 
 @media (min-width: 768px) {

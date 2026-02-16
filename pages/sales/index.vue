@@ -3094,4 +3094,27 @@ async function newTransaction() {
     max-width: 1100px;
   }
 }
+
+@media (max-width: 900px) {
+  .salesPage {
+    padding-bottom: 196px;
+  }
+
+  .bottomBar {
+    left: 12px;
+    right: 12px;
+    bottom: calc(90px + env(safe-area-inset-bottom));
+    transform: none;
+    max-width: none;
+    padding-bottom: 12px;
+    border: 1px solid var(--mb-border2);
+    border-radius: 16px;
+    z-index: 19;
+  }
+
+  .submitBtn {
+    min-width: 128px;
+    padding: 0 18px;
+  }
+}
 </style>

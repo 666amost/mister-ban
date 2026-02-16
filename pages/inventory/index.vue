@@ -554,6 +554,7 @@ onMounted(async () => {
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
+  min-width: 760px;
 }
 th,
 td {
@@ -623,5 +624,59 @@ th {
   font-size: 24px;
   line-height: 1.1;
   font-weight: 900;
+}
+
+@media (max-width: 900px) {
+  .row {
+    gap: 8px;
+  }
+
+  .field {
+    min-width: 100%;
+  }
+
+  .row > .mb-btn,
+  .row > .mb-btnPrimary,
+  .row > .mb-btnDanger {
+    flex: 1 1 calc(50% - 4px);
+    min-width: 0;
+  }
+
+  .summaryGrid {
+    gap: 8px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .summaryItem {
+    padding: 10px;
+  }
+
+  .summaryValue {
+    font-size: 20px;
+  }
+
+  .tableWrap {
+    margin-left: -6px;
+    margin-right: -6px;
+    padding: 0 6px 2px;
+  }
+
+  .priceInput {
+    width: 120px;
+  }
+
+  .paginationBar {
+    align-items: stretch;
+  }
+
+  .pager,
+  .pageInput {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .pageInput .mb-input {
+    width: 76px;
+  }
 }
 </style>

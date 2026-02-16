@@ -246,6 +246,7 @@ await load()
 .page {
   display: grid;
   gap: 16px;
+  min-width: 0;
 }
 .row {
   display: flex;
@@ -317,14 +318,19 @@ await load()
 }
 .tableWrap {
   margin-top: 14px;
-  overflow: auto;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
 }
 .sectionTitle {
   margin-bottom: 8px;
   font-weight: 800;
 }
 .table {
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   border-collapse: collapse;
   font-size: 13px;
 }
@@ -332,6 +338,7 @@ th,
 td {
   padding: 10px 8px;
   border-bottom: 1px solid var(--mb-table-border);
+  vertical-align: top;
 }
 th {
   text-align: left;
@@ -376,5 +383,20 @@ th {
   margin: 12px 0 0;
   color: var(--mb-danger);
   font-size: 12px;
+}
+
+@media (max-width: 900px) {
+  .field {
+    min-width: 100%;
+  }
+
+  .summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .sumItem {
+    padding: 12px;
+  }
 }
 </style>
