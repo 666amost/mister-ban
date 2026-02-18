@@ -64,8 +64,9 @@ export async function listStoreProducts(
         )
       ORDER BY
         CASE WHEN p.size ~ '-[0-9]+$' THEN CAST(SUBSTRING(p.size FROM '-([0-9]+)$') AS INTEGER) ELSE 999 END,
+        LOWER(TRIM(b.name)),
         CASE WHEN p.size ~ '^[0-9]+' THEN CAST(SUBSTRING(p.size FROM '^([0-9]+)') AS INTEGER) ELSE 999 END,
-        p.size, b.name, p.name, p.sku
+        p.size, p.name, p.sku
       LIMIT $3
       OFFSET $4
     `,
@@ -111,8 +112,9 @@ export async function listMasterProducts(
         )
       ORDER BY
         CASE WHEN p.size ~ '-[0-9]+$' THEN CAST(SUBSTRING(p.size FROM '-([0-9]+)$') AS INTEGER) ELSE 999 END,
+        LOWER(TRIM(b.name)),
         CASE WHEN p.size ~ '^[0-9]+' THEN CAST(SUBSTRING(p.size FROM '^([0-9]+)') AS INTEGER) ELSE 999 END,
-        p.size, b.name, p.name, p.sku
+        p.size, p.name, p.sku
       LIMIT $2
       OFFSET $3
     `,

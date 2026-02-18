@@ -495,8 +495,9 @@ export async function listSales({
             )
             ORDER BY
               CASE WHEN p.size ~ '-[0-9]+$' THEN CAST(SUBSTRING(p.size FROM '-([0-9]+)$') AS INTEGER) ELSE 999 END,
+              LOWER(TRIM(b.name)),
               CASE WHEN p.size ~ '^[0-9]+' THEN CAST(SUBSTRING(p.size FROM '^([0-9]+)') AS INTEGER) ELSE 999 END,
-              p.size, b.name, p.name, p.sku
+              p.size, p.name, p.sku
           )
           FROM sales_items si
           JOIN products p ON p.id = si.product_id
@@ -956,8 +957,9 @@ export async function getSaleDetail({
       WHERE si.sale_id = $1
       ORDER BY
         CASE WHEN p.size ~ '-[0-9]+$' THEN CAST(SUBSTRING(p.size FROM '-([0-9]+)$') AS INTEGER) ELSE 999 END,
+        LOWER(TRIM(b.name)),
         CASE WHEN p.size ~ '^[0-9]+' THEN CAST(SUBSTRING(p.size FROM '^([0-9]+)') AS INTEGER) ELSE 999 END,
-        p.size, b.name, p.name, p.sku
+        p.size, p.name, p.sku
     `,
     [saleId],
   );

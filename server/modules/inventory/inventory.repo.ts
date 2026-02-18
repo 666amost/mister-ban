@@ -140,8 +140,9 @@ export async function listInventory(
         )
       ORDER BY
         CASE WHEN cp.size ~ '-[0-9]+$' THEN CAST(SUBSTRING(cp.size FROM '-([0-9]+)$') AS INTEGER) ELSE 999 END,
+        LOWER(TRIM(b.name)),
         CASE WHEN cp.size ~ '^[0-9]+' THEN CAST(SUBSTRING(cp.size FROM '^([0-9]+)') AS INTEGER) ELSE 999 END,
-        cp.size, b.name, cp.name, cp.sku
+        cp.size, cp.name, cp.sku
       LIMIT $3
       OFFSET $4
     `,
