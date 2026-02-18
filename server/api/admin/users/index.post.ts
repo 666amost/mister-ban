@@ -10,7 +10,7 @@ import { readBodyWithSchema } from "../../../utils/validate";
 
 const bodySchema = z.object({
   email: z.string().email().max(100),
-  password: z.string().min(6).max(100),
+  password: z.string().min(8).max(100),
   role: z.enum(["ADMIN", "STAFF"]),
   store_id: z.string().uuid().nullable().optional(),
   is_active: z.boolean().default(true),

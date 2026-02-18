@@ -17,15 +17,18 @@ type UiUser = UserRow & {
   storeIdDraft: string | null
   isActiveDraft: boolean
   saving: boolean
+  deleting: boolean
   error: string | null
 }
 
 const stores = ref<Store[]>([])
 const users = ref<UiUser[]>([])
 const q = ref("")
+const PASSWORD_MIN_LENGTH = 8
 
 const isLoading = ref(false)
 const errorMessage = ref<string | null>(null)
+const currentUserId = ref<string | null>(null)
 
 const showCreateForm = ref(false)
 const createForm = ref({
@@ -36,6 +39,12 @@ const createForm = ref({
 })
 const createLoading = ref(false)
 const createError = ref<string | null>(null)
+const canSubmitCreate = computed(() => {
+  const emailOk = createForm.value.email.trim().length > 0
+  const passwordOk = createForm.value.password.length >= PASSWORD_MIN_LENGTH
+  const storeOk = createForm.value.role === "ADMIN" || Boolean(createForm.value.store_id)
+  return emailOk && passwordOk && storeOk
+})
 
 function statusMessage(error: unknown) {
   if (!error || typeof error !== "object") return null
@@ -47,17 +56,20 @@ async function load() {
   isLoading.value = true
   errorMessage.value = null
   try {
-    const [storesRes, usersRes] = await Promise.all([
+    const [storesRes, usersRes, meRes] = await Promise.all([
       $fetch<{ stores: Store[] }>("/api/stores"),
       $fetch<{ items: UserRow[] }>("/api/admin/users"),
+      $fetch<{ user: { id: string } }>("/api/me"),
     ])
     stores.value = storesRes.stores
+    currentUserId.value = meRes.user.id
     users.value = usersRes.items.map((u) => ({
       ...u,
       roleDraft: u.role,
       storeIdDraft: u.store_id,
       isActiveDraft: u.is_active,
       saving: false,
+      deleting: false,
       error: null,
     }))
   } catch (error) {
@@ -97,6 +109,11 @@ function closeCreateForm() {
 }
 
 async function createUser() {
+  if (createForm.value.password.length < PASSWORD_MIN_LENGTH) {
+    createError.value = `Password minimal ${PASSWORD_MIN_LENGTH} karakter`
+    return
+  }
+
   createLoading.value = true
   createError.value = null
   try {
@@ -142,6 +159,31 @@ async function save(u: UiUser) {
     u.saving = false
   }
 }
+
+function canDelete(u: UiUser) {
+  return u.id !== currentUserId.value
+}
+
+async function removeUser(u: UiUser) {
+  if (!canDelete(u)) {
+    u.error = "Tidak bisa menghapus akun sendiri"
+    return
+  }
+
+  const ok = confirm(`Hapus user ${u.email}?`)
+  if (!ok) return
+
+  u.deleting = true
+  u.error = null
+  try {
+    await $fetch("/api/admin/users/" + u.id, { method: "DELETE" })
+    users.value = users.value.filter((x) => x.id !== u.id)
+  } catch (error) {
+    u.error = statusMessage(error) ?? "Gagal menghapus user"
+  } finally {
+    u.deleting = false
+  }
+}
 </script>
 
 <template>
@@ -170,7 +212,14 @@ async function save(u: UiUser) {
           </label>
           <label class="field">
             <span>Password</span>
-            <input v-model="createForm.password" class="mb-input" type="password" placeholder="min 6 karakter" />
+            <input
+              v-model="createForm.password"
+              class="mb-input"
+              type="password"
+              :minlength="PASSWORD_MIN_LENGTH"
+              :placeholder="`minimal ${PASSWORD_MIN_LENGTH} karakter`"
+            />
+            <small class="hint"> Minimal {{ PASSWORD_MIN_LENGTH }} karakter agar bisa login.</small>
           </label>
           <label class="field">
             <span>Role</span>
@@ -190,7 +239,7 @@ async function save(u: UiUser) {
         <p v-if="createError" class="error">{{ createError }}</p>
         <div class="createActions">
           <button class="mb-btn" @click="closeCreateForm">Batal</button>
-          <button class="mb-btnPrimary" :disabled="createLoading" @click="createUser">
+          <button class="mb-btnPrimary" :disabled="createLoading || !canSubmitCreate" @click="createUser">
             {{ createLoading ? "Menyimpan..." : "Simpan" }}
           </button>
         </div>
@@ -229,9 +278,19 @@ async function save(u: UiUser) {
                   <input v-model="u.isActiveDraft" type="checkbox" />
                 </td>
                 <td style="text-align: right">
-                  <button class="mb-btnPrimary" :disabled="u.saving" @click="save(u)">
-                    {{ u.saving ? "..." : "Save" }}
-                  </button>
+                  <div class="actions">
+                    <button class="mb-btnPrimary" :disabled="u.saving || u.deleting" @click="save(u)">
+                      {{ u.saving ? "..." : "Save" }}
+                    </button>
+                    <button
+                      class="mb-btnDanger"
+                      :disabled="u.saving || u.deleting || !canDelete(u)"
+                      :title="!canDelete(u) ? 'Tidak bisa hapus akun sendiri' : undefined"
+                      @click="removeUser(u)"
+                    >
+                      {{ u.deleting ? "..." : "Hapus" }}
+                    </button>
+                  </div>
                 </td>
               </tr>
               <tr v-if="u.error">
@@ -286,6 +345,15 @@ async function save(u: UiUser) {
   justify-content: flex-end;
   gap: 10px;
   margin-top: 16px;
+}
+.hint {
+  font-size: 11px;
+  color: var(--mb-muted);
+}
+.actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
 }
 .slide-enter-active,
 .slide-leave-active {
