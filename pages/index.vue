@@ -36,6 +36,7 @@ const isAdmin = computed(() => me.user.value?.role === "ADMIN");
 const monthlyReport = ref<MonthlyReport | null>(null);
 const isLoadingMonthly = ref(false);
 const monthlyError = ref<string | null>(null);
+const requestFetch = process.server ? useRequestFetch() : $fetch;
 
 function rupiah(value: number) {
   return value.toLocaleString("id-ID");
@@ -107,7 +108,9 @@ async function loadMonthly() {
   isLoadingMonthly.value = true;
   monthlyError.value = null;
   try {
-    const res = await $fetch<{ report: MonthlyReport }>("/api/reports/monthly", { query: { month: thisMonth() } });
+    const res = await requestFetch<{ report: MonthlyReport }>("/api/reports/monthly", {
+      query: { month: thisMonth() },
+    });
     monthlyReport.value = res.report;
   } catch (error) {
     monthlyError.value = statusMessage(error) ?? "Gagal memuat ringkasan";
@@ -180,7 +183,20 @@ const menuItems = computed<MenuItem[]>(() => {
           </svg>
         </div>
         <div class="qaContent">
-          <div class="qaTitle">Laporan</div>
+          <div class="qaTitle">Laporan Harian</div>
+        </div>
+      </NuxtLink>
+
+      <NuxtLink v-if="isAdmin" to="/reports/monthly" class="quickAction">
+        <div class="qaIcon small">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 4h18v18H3z" />
+            <path d="M3 10h18" />
+            <path d="M8 2v4M16 2v4" />
+          </svg>
+        </div>
+        <div class="qaContent">
+          <div class="qaTitle">Laporan Bulanan</div>
         </div>
       </NuxtLink>
 

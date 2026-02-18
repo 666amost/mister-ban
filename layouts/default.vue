@@ -10,6 +10,7 @@ const storeName = computed(() => storeContext.store.value?.name ?? null)
 
 const sidebarOpen = ref(false)
 const isNavigating = ref(false)
+const moreMenuOpen = ref(false)
 
 type IconName =
   | "home"
@@ -34,9 +35,11 @@ type NavGroup = {
 }
 
 type BottomItem = {
-  to: string
+  key: string
   label: string
   icon: IconName
+  to?: string
+  kind: "link" | "menu"
 }
 
 type ThemeMode = "system" | "dark" | "light"
@@ -85,16 +88,29 @@ const navGroups = computed<NavGroup[]>(() => {
 
 const bottomItems = computed<BottomItem[]>(() => {
   const items: BottomItem[] = [
-    { to: "/", label: "Home", icon: "home" },
-    { to: "/sales", label: "Sales", icon: "sales" },
+    { key: "home", to: "/", label: "Home", icon: "home", kind: "link" },
+    { key: "sales", to: "/sales", label: "Sales", icon: "sales", kind: "link" },
   ]
   if (role.value === "ADMIN") {
     items.push(
-      { to: "/inventory", label: "Stock", icon: "inventory" },
-      { to: "/products", label: "Products", icon: "products" },
+      { key: "inventory", to: "/inventory", label: "Stock", icon: "inventory", kind: "link" },
+      { key: "more", label: "Lainnya", icon: "products", kind: "menu" },
     )
   }
   return items
+})
+
+const bottomOverflowItems = computed<NavItem[]>(() => {
+  if (role.value !== "ADMIN") return []
+  return [
+    { to: "/products", label: "Products", icon: "products" },
+    { to: "/suppliers", label: "Suppliers", icon: "suppliers" },
+    { to: "/suppliers/invoices", label: "Supplier Invoices", icon: "suppliers" },
+    { to: "/reports/daily", label: "Daily Report", icon: "reports" },
+    { to: "/reports/monthly", label: "Monthly Report", icon: "reports" },
+    { to: "/admin/users", label: "Users", icon: "users" },
+    { to: "/select-store", label: "Ganti Toko", icon: "inventory" },
+  ]
 })
 
 const navQuery = ref("")
@@ -105,6 +121,7 @@ const themeMode = ref<ThemeMode>("system")
 let navCollapseTimer: ReturnType<typeof setTimeout> | null = null
 let colorSchemeMedia: MediaQueryList | null = null
 let colorSchemeHandler: ((event: MediaQueryListEvent) => void) | null = null
+let windowKeyHandler: ((event: KeyboardEvent) => void) | null = null
 
 const themeLabel = computed(() => {
   if (themeMode.value === "system") return "Tema: Auto"
@@ -157,11 +174,19 @@ onMounted(() => {
     if (themeMode.value === "system") applyThemeMode("system")
   }
   colorSchemeMedia.addEventListener("change", colorSchemeHandler)
+
+  windowKeyHandler = (event: KeyboardEvent) => {
+    if (event.key === "Escape") moreMenuOpen.value = false
+  }
+  window.addEventListener("keydown", windowKeyHandler)
 })
 
 onBeforeUnmount(() => {
   if (colorSchemeMedia && colorSchemeHandler) {
     colorSchemeMedia.removeEventListener("change", colorSchemeHandler)
+  }
+  if (windowKeyHandler) {
+    window.removeEventListener("keydown", windowKeyHandler)
   }
 })
 
@@ -197,8 +222,13 @@ watch(
       isNavigating.value = false
     }, 200)
     sidebarOpen.value = false
+    moreMenuOpen.value = false
   },
 )
+
+watch(bottomOverflowItems, (items) => {
+  if (!items.length) moreMenuOpen.value = false
+})
 
 function isGroupOpen(label: string) {
   if (navQuery.value.trim()) return true
@@ -227,6 +257,20 @@ const filteredNavGroups = computed(() => {
 function isActive(path: string) {
   if (path === "/") return route.path === "/"
   return route.path === path || route.path.startsWith(`${path}/`)
+}
+
+function isBottomItemActive(item: BottomItem) {
+  if (item.kind === "menu") return bottomOverflowItems.value.some((entry) => isActive(entry.to))
+  return item.to ? isActive(item.to) : false
+}
+
+function toggleMoreMenu() {
+  if (!bottomOverflowItems.value.length) return
+  moreMenuOpen.value = !moreMenuOpen.value
+}
+
+function closeMoreMenu() {
+  moreMenuOpen.value = false
 }
 
 const pageTitle = computed(() => {
@@ -344,17 +388,66 @@ async function logout() {
       </main>
 
       <nav class="mb-bottomnav" aria-label="Bottom navigation">
-        <NuxtLink
+        <template
           v-for="i in bottomItems"
-          :key="i.to"
-          class="mb-bottomItem"
-          :class="{ active: isActive(i.to) }"
-          :to="i.to"
+          :key="i.key"
         >
-          <MbIcon class="mb-bottomIcon" :name="i.icon" />
-          <span class="mb-bottomLabel">{{ i.label }}</span>
-        </NuxtLink>
+          <NuxtLink
+            v-if="i.kind === 'link' && i.to"
+            class="mb-bottomItem"
+            :class="{ active: isBottomItemActive(i) }"
+            :to="i.to"
+          >
+            <MbIcon class="mb-bottomIcon" :name="i.icon" />
+            <span class="mb-bottomLabel">{{ i.label }}</span>
+          </NuxtLink>
+          <button
+            v-else
+            type="button"
+            class="mb-bottomItem mb-bottomItemBtn"
+            :class="{ active: isBottomItemActive(i), open: moreMenuOpen }"
+            :aria-expanded="moreMenuOpen ? 'true' : 'false'"
+            aria-haspopup="true"
+            aria-label="Menu lainnya"
+            @click="toggleMoreMenu"
+          >
+            <MbIcon class="mb-bottomIcon" :name="i.icon" />
+            <span class="mb-bottomLabel">{{ i.label }}</span>
+          </button>
+        </template>
       </nav>
+
+      <Transition name="mb-mobile-fade">
+        <button
+          v-if="moreMenuOpen"
+          type="button"
+          class="mb-bottomBackdrop"
+          aria-label="Tutup menu lainnya"
+          @click="closeMoreMenu"
+        ></button>
+      </Transition>
+
+      <Transition name="mb-mobile-sheet">
+        <section v-if="moreMenuOpen && bottomOverflowItems.length" class="mb-bottomSheet" aria-label="Menu lainnya">
+          <header class="mb-bottomSheetHead">
+            <div class="mb-bottomSheetTitle">Menu Lainnya</div>
+            <button type="button" class="mb-bottomSheetClose" @click="closeMoreMenu">Tutup</button>
+          </header>
+          <div class="mb-bottomSheetGrid">
+            <NuxtLink
+              v-for="item in bottomOverflowItems"
+              :key="item.to"
+              class="mb-bottomSheetItem"
+              :class="{ active: isActive(item.to) }"
+              :to="item.to"
+              @click="closeMoreMenu"
+            >
+              <MbIcon class="mb-bottomSheetIcon" :name="item.icon" />
+              <span class="mb-bottomSheetLabel">{{ item.label }}</span>
+            </NuxtLink>
+          </div>
+        </section>
+      </Transition>
     </div>
   </div>
 </template>
@@ -363,5 +456,137 @@ async function logout() {
 .sep {
   opacity: 0.7;
   padding: 0 6px;
+}
+
+.mb-bottomBackdrop,
+.mb-bottomSheet {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .mb-bottomItemBtn {
+    font: inherit;
+    line-height: inherit;
+    cursor: pointer;
+    background: transparent;
+  }
+
+  .mb-bottomItemBtn.open {
+    border-color: rgba(52, 199, 89, 0.55);
+    background: rgba(52, 199, 89, 0.12);
+    box-shadow: inset 0 0 0 1px rgba(52, 199, 89, 0.18);
+  }
+
+  .mb-bottomBackdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 21;
+    border: 0;
+    background: rgba(8, 10, 15, 0.35);
+    backdrop-filter: blur(2px);
+  }
+
+  .mb-bottomSheet {
+    display: block;
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: calc(88px + env(safe-area-inset-bottom));
+    z-index: 22;
+    border: 1px solid var(--mb-border2);
+    border-radius: 16px;
+    background: var(--mb-glass-surface-strong);
+    box-shadow: 0 22px 42px rgba(0, 0, 0, 0.28);
+    backdrop-filter: blur(18px);
+    padding: 10px;
+    max-height: min(62vh, 460px);
+    overflow-y: auto;
+  }
+
+  .mb-bottomSheetHead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 2px 4px 8px;
+  }
+
+  .mb-bottomSheetTitle {
+    font-size: 13px;
+    font-weight: 800;
+  }
+
+  .mb-bottomSheetClose {
+    height: 28px;
+    border-radius: 8px;
+    border: 1px solid var(--mb-border2);
+    background: var(--mb-surface);
+    color: var(--mb-text);
+    font-size: 12px;
+    font-weight: 700;
+    padding: 0 10px;
+  }
+
+  .mb-bottomSheetGrid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .mb-bottomSheetItem {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    padding: 10px;
+    border-radius: 12px;
+    border: 1px solid var(--mb-border2);
+    background: var(--mb-surface);
+    text-decoration: none;
+    color: var(--mb-text);
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .mb-bottomSheetItem.active {
+    border-color: rgba(52, 199, 89, 0.65);
+    background: rgba(52, 199, 89, 0.12);
+  }
+
+  .mb-bottomSheetIcon {
+    width: 16px;
+    height: 16px;
+    flex: 0 0 auto;
+    opacity: 0.85;
+  }
+
+  .mb-bottomSheetLabel {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mb-mobile-fade-enter-active,
+  .mb-mobile-fade-leave-active {
+    transition: opacity 140ms ease;
+  }
+
+  .mb-mobile-fade-enter-from,
+  .mb-mobile-fade-leave-to {
+    opacity: 0;
+  }
+
+  .mb-mobile-sheet-enter-active,
+  .mb-mobile-sheet-leave-active {
+    transition: transform 180ms ease, opacity 180ms ease;
+  }
+
+  .mb-mobile-sheet-enter-from,
+  .mb-mobile-sheet-leave-to {
+    transform: translateY(8px);
+    opacity: 0;
+  }
 }
 </style>

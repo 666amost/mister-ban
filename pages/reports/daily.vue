@@ -58,6 +58,7 @@ const date = ref(new Date().toISOString().slice(0, 10))
 const report = ref<DailyReport | null>(null)
 const isLoading = ref(false)
 const errorMessage = ref<string | null>(null)
+const requestFetch = process.server ? useRequestFetch() : $fetch
 
 function rupiah(value: number) {
   return value.toLocaleString("id-ID")
@@ -86,7 +87,7 @@ async function load() {
   isLoading.value = true
   errorMessage.value = null
   try {
-    const res = await $fetch<{ report: DailyReport }>("/api/reports/daily", { query: { date: date.value } })
+    const res = await requestFetch<{ report: DailyReport }>("/api/reports/daily", { query: { date: date.value } })
     report.value = res.report
   } catch (error) {
     errorMessage.value = statusMessage(error) ?? "Gagal memuat report"

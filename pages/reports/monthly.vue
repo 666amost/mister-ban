@@ -45,6 +45,7 @@ const report = ref<MonthlyReport | null>(null)
 const isLoading = ref(false)
 const errorMessage = ref<string | null>(null)
 const isExpenseDetailOpen = ref(false)
+const requestFetch = process.server ? useRequestFetch() : $fetch
 
 function rupiah(value: number) {
   return value.toLocaleString("id-ID")
@@ -60,7 +61,7 @@ async function load() {
   isLoading.value = true
   errorMessage.value = null
   try {
-    const res = await $fetch<{ report: MonthlyReport }>("/api/reports/monthly", { query: { month: month.value } })
+    const res = await requestFetch<{ report: MonthlyReport }>("/api/reports/monthly", { query: { month: month.value } })
     report.value = res.report
     isExpenseDetailOpen.value = false
   } catch (error) {

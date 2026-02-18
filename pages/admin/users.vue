@@ -354,6 +354,7 @@ async function removeUser(u: UiUser) {
   display: flex;
   gap: 8px;
   justify-content: flex-end;
+  flex-wrap: nowrap;
 }
 .slide-enter-active,
 .slide-leave-active {
@@ -365,10 +366,15 @@ async function removeUser(u: UiUser) {
   transform: translateY(-10px);
 }
 .tableWrap {
-  overflow: auto;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
 }
 .table {
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   border-collapse: collapse;
   font-size: 13px;
 }
@@ -415,5 +421,28 @@ th {
   padding: 10px 8px;
   color: var(--mb-danger);
   font-size: 12px;
+}
+
+@media (max-width: 900px) {
+  .headerActions {
+    width: 100%;
+  }
+
+  .headerActions .mb-btn,
+  .headerActions .mb-btnPrimary {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .table {
+    min-width: 820px;
+  }
+
+  .actions .mb-btnPrimary,
+  .actions .mb-btnDanger {
+    height: 34px;
+    font-size: 12px;
+    padding: 0 10px;
+  }
 }
 </style>
