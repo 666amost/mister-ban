@@ -251,6 +251,40 @@ export async function getMonthlyReport({
     [storeId, start, endIso],
   );
 
+  const paymentSummaryRes = await db.query<{
+    cash: number;
+    non_cash: number;
+    qris: number;
+    debit: number;
+    transfer: number;
+    credit: number;
+  }>(
+    `
+      SELECT
+        COALESCE(SUM(CASE WHEN p.payment_type = 'CASH' THEN p.amount ELSE 0 END), 0)::int AS cash,
+        COALESCE(SUM(CASE WHEN p.payment_type <> 'CASH' THEN p.amount ELSE 0 END), 0)::int AS non_cash,
+        COALESCE(SUM(CASE WHEN p.payment_type = 'QRIS' THEN p.amount ELSE 0 END), 0)::int AS qris,
+        COALESCE(SUM(CASE WHEN p.payment_type = 'DEBIT' THEN p.amount ELSE 0 END), 0)::int AS debit,
+        COALESCE(SUM(CASE WHEN p.payment_type = 'TRANSFER' THEN p.amount ELSE 0 END), 0)::int AS transfer,
+        COALESCE(SUM(CASE WHEN p.payment_type = 'CREDIT' THEN p.amount ELSE 0 END), 0)::int AS credit
+      FROM (
+        SELECT
+          UPPER(COALESCE(sp.payment_type, s.payment_type, '')) AS payment_type,
+          COALESCE(sp.amount, s.total, 0)::int AS amount
+        FROM sales s
+        LEFT JOIN LATERAL (
+          SELECT payment_type, amount
+          FROM sales_payments sp
+          WHERE sp.sale_id = s.id
+        ) sp ON true
+        WHERE s.store_id = $1
+          AND s.sale_date >= $2::date
+          AND s.sale_date < $3::date
+      ) p
+    `,
+    [storeId, start, endIso],
+  );
+
   const profitRes = await db.query<{ profit: number }>(
     `
       SELECT
@@ -386,8 +420,42 @@ export async function getMonthlyReport({
       WHERE s.store_id = $1
         AND s.sale_date >= $2::date
         AND s.sale_date < $3::date
+        AND NOT (
+          (
+            LOWER(TRIM(b.name)) = 'oli'
+            AND (
+              LOWER(COALESCE(p.sku, '')) LIKE '%gardan%'
+              OR LOWER(COALESCE(p.size, '')) LIKE '%gardan%'
+            )
+          )
+          OR LOWER(b.name) LIKE '%oli gardan%'
+        )
       GROUP BY b.name
       ORDER BY transactions DESC, brand
+    `,
+    [storeId, start, endIso],
+  );
+
+  const oliGardanTransactionsRes = await db.query<{ transactions: number }>(
+    `
+      SELECT COUNT(DISTINCT s.id)::int AS transactions
+      FROM sales_items si
+      JOIN sales s ON s.id = si.sale_id
+      JOIN products p ON p.id = si.product_id
+      JOIN brands b ON b.id = p.brand_id
+      WHERE s.store_id = $1
+        AND s.sale_date >= $2::date
+        AND s.sale_date < $3::date
+        AND (
+          (
+            LOWER(TRIM(b.name)) = 'oli'
+            AND (
+              LOWER(COALESCE(p.sku, '')) LIKE '%gardan%'
+              OR LOWER(COALESCE(p.size, '')) LIKE '%gardan%'
+            )
+          )
+          OR LOWER(b.name) LIKE '%oli gardan%'
+        )
     `,
     [storeId, start, endIso],
   );
@@ -409,12 +477,23 @@ export async function getMonthlyReport({
     [storeId, start, endIso],
   );
 
+  const paymentSummary = paymentSummaryRes.rows[0] ?? {
+    cash: 0,
+    non_cash: 0,
+    qris: 0,
+    debit: 0,
+    transfer: 0,
+    credit: 0,
+  };
+
   return {
     month,
     omzet: totalsRes.rows[0]?.omzet ?? 0,
     profit: profitRes.rows[0]?.profit ?? 0,
     transactions: totalsRes.rows[0]?.transactions ?? 0,
+    payment_summary: paymentSummary,
     expense_total: expenseTotalRes.rows[0]?.expense_total ?? 0,
+    oli_gardan_transactions: oliGardanTransactionsRes.rows[0]?.transactions ?? 0,
     daily,
     top_skus: topRes.rows,
     brand_transactions: brandTransactionsRes.rows,
