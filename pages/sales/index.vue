@@ -72,6 +72,24 @@ type SalesQtySummary = {
   total_qty: number
 }
 
+type SalesDailySummary = {
+  total_transactions: number
+  omzet: number
+  pengeluaran: number
+  sisa_omzet: number
+  non_tunai: number
+  tunai: number
+}
+
+const defaultDailySummary = (): SalesDailySummary => ({
+  total_transactions: 0,
+  omzet: 0,
+  pengeluaran: 0,
+  sisa_omzet: 0,
+  non_tunai: 0,
+  tunai: 0,
+})
+
 const me = useMe()
 
 const plateNo = ref("")
@@ -101,6 +119,7 @@ const dropdownOpen = ref(false)
 const salesLoading = ref(false)
 const sales = ref<SaleRow[]>([])
 const qtySummary = ref<SalesQtySummary>({ ban_qty: 0, oli_qty: 0, kampas_qty: 0, total_qty: 0 })
+const dailySummary = ref<SalesDailySummary>(defaultDailySummary())
 const historyQuery = ref("")
 const lastHistoryQuery = ref<string>("")
 const searchAllDates = ref(false)
@@ -344,12 +363,13 @@ async function loadSales() {
     if (isAdmin.value && searchAllDates.value) {
       query.all_dates = "true"
     }
-    const res = await $fetch<{ items: SaleRow[]; qty_summary: SalesQtySummary }>("/api/sales", { 
+    const res = await $fetch<{ items: SaleRow[]; qty_summary: SalesQtySummary; daily_summary?: SalesDailySummary }>("/api/sales", {
       query,
       headers: { Accept: 'application/json' },
     })
     sales.value = res.items
     qtySummary.value = res.qty_summary ?? { ban_qty: 0, oli_qty: 0, kampas_qty: 0, total_qty: 0 }
+    dailySummary.value = res.daily_summary ?? defaultDailySummary()
   } catch (error) {
     errorMessage.value = statusMessage(error) ?? "Gagal memuat sales"
     console.error('Sales load error:', error)
@@ -1219,22 +1239,36 @@ async function newTransaction() {
         </div>
       </div>
 
-      <div v-if="qtySummary.total_qty > 0" class="qtySummaryBar">
-        <div class="qtySumItem">
-          <span class="qtySumLabel">Ban</span>
-          <span class="qtySumValue">{{ qtySummary.ban_qty }}</span>
-        </div>
-        <div class="qtySumItem">
-          <span class="qtySumLabel">Kampas</span>
-          <span class="qtySumValue">{{ qtySummary.kampas_qty }}</span>
-        </div>
-        <div class="qtySumItem">
-          <span class="qtySumLabel">Oli</span>
-          <span class="qtySumValue">{{ qtySummary.oli_qty }}</span>
-        </div>
-        <div class="qtySumItem qtySumTotal">
-          <span class="qtySumLabel">Total</span>
-          <span class="qtySumValue">{{ qtySummary.total_qty }}</span>
+      <div class="dailySummaryPanel">
+        <div class="dailySummaryGrid">
+          <div class="dailySumItem">
+            <span class="dailySumLabel">Ban</span>
+            <span class="dailySumValue">{{ qtySummary.ban_qty }}</span>
+          </div>
+          <div class="dailySumItem">
+            <span class="dailySumLabel">Total Transaksi</span>
+            <span class="dailySumValue">{{ dailySummary.total_transactions }}</span>
+          </div>
+          <div class="dailySumItem">
+            <span class="dailySumLabel">Omset</span>
+            <span class="dailySumValue">Rp {{ rupiah(dailySummary.omzet) }}</span>
+          </div>
+          <div class="dailySumItem">
+            <span class="dailySumLabel">Pengeluaran</span>
+            <span class="dailySumValue">Rp {{ rupiah(dailySummary.pengeluaran) }}</span>
+          </div>
+          <div class="dailySumItem dailySumItemStrong">
+            <span class="dailySumLabel">Sisa Omset</span>
+            <span class="dailySumValue">Rp {{ rupiah(dailySummary.sisa_omzet) }}</span>
+          </div>
+          <div class="dailySumItem">
+            <span class="dailySumLabel">Non Tunai</span>
+            <span class="dailySumValue">Rp {{ rupiah(dailySummary.non_tunai) }}</span>
+          </div>
+          <div class="dailySumItem">
+            <span class="dailySumLabel">Tunai</span>
+            <span class="dailySumValue">Rp {{ rupiah(dailySummary.tunai) }}</span>
+          </div>
         </div>
       </div>
 
@@ -2257,39 +2291,47 @@ async function newTransaction() {
   margin-bottom: 8px;
 }
 
-.qtySummaryBar {
-  display: flex;
-  gap: 8px;
+.dailySummaryPanel {
   margin-bottom: 12px;
-  padding: 10px 12px;
+  padding: 10px;
   border: 1px solid var(--mb-border2);
   border-radius: 14px;
   background: var(--mb-surface2);
 }
-.qtySumItem {
-  flex: 1;
-  text-align: center;
-  padding: 6px 4px;
+
+.dailySummaryGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.dailySumItem {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
   border-radius: 10px;
   background: var(--mb-surface);
   border: 1px solid var(--mb-border2);
 }
-.qtySumItem.qtySumTotal {
-  background: rgba(52, 199, 89, 0.08);
+
+.dailySumItemStrong {
+  background: rgba(52, 199, 89, 0.1);
   border-color: rgba(52, 199, 89, 0.35);
 }
-.qtySumLabel {
+
+.dailySumLabel {
   display: block;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--mb-muted);
-  letter-spacing: 0.3px;
+  letter-spacing: 0.2px;
 }
-.qtySumValue {
+
+.dailySumValue {
   display: block;
-  margin-top: 2px;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 900;
-  line-height: 1.2;
+  line-height: 1.25;
+  word-break: break-word;
 }
 
 .historySearchWrap {
@@ -2524,6 +2566,12 @@ async function newTransaction() {
 
 .editLabel:hover {
   color: var(--mb-text);
+}
+
+@media (max-width: 420px) {
+  .dailySummaryGrid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 720px) {
@@ -3043,6 +3091,10 @@ async function newTransaction() {
 }
 
 @media (min-width: 768px) {
+  .dailySummaryGrid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
   .salesPage {
     max-width: 600px;
     margin: 0 auto;

@@ -331,6 +331,15 @@ export type SalesQtySummary = {
   total_qty: number;
 };
 
+export type SalesDailySummary = {
+  total_transactions: number;
+  omzet: number;
+  pengeluaran: number;
+  sisa_omzet: number;
+  non_tunai: number;
+  tunai: number;
+};
+
 export async function getSalesQtySummary({
   db,
   storeId,
@@ -381,6 +390,88 @@ export async function getSalesQtySummary({
   );
 
   return rows[0] ?? { ban_qty: 0, oli_qty: 0, kampas_qty: 0, total_qty: 0 };
+}
+
+export async function getSalesDailySummary({
+  db,
+  storeId,
+  date,
+  allDates,
+}: {
+  db: DbConn;
+  storeId: string;
+  date: string;
+  allDates?: boolean;
+}): Promise<SalesDailySummary> {
+  const params: Array<string> = [storeId];
+  let dateFilter = "";
+  if (!allDates) {
+    dateFilter = "AND s.sale_date = $2::date";
+    params.push(date);
+  }
+
+  const { rows } = await db.query<SalesDailySummary>(
+    `
+      WITH filtered_sales AS (
+        SELECT
+          s.id,
+          s.total,
+          UPPER(COALESCE(s.payment_type, '')) AS payment_type
+        FROM sales s
+        WHERE s.store_id = $1
+          ${dateFilter}
+      ),
+      payment_rows AS (
+        SELECT
+          fs.id AS sale_id,
+          UPPER(COALESCE(sp.payment_type, fs.payment_type, '')) AS payment_type,
+          COALESCE(sp.amount, fs.total, 0)::int AS amount
+        FROM filtered_sales fs
+        LEFT JOIN LATERAL (
+          SELECT payment_type, amount
+          FROM sales_payments sp
+          WHERE sp.sale_id = fs.id
+        ) sp ON true
+      ),
+      base AS (
+        SELECT
+          COALESCE(COUNT(*), 0)::int AS total_transactions,
+          COALESCE(SUM(total), 0)::int AS omzet
+        FROM filtered_sales
+      ),
+      expense AS (
+        SELECT COALESCE(SUM(se.amount), 0)::int AS pengeluaran
+        FROM sales_expenses se
+        JOIN filtered_sales fs ON fs.id = se.sale_id
+      ),
+      payment AS (
+        SELECT
+          COALESCE(SUM(CASE WHEN payment_type = 'CASH' THEN amount ELSE 0 END), 0)::int AS tunai,
+          COALESCE(SUM(CASE WHEN payment_type <> 'CASH' THEN amount ELSE 0 END), 0)::int AS non_tunai
+        FROM payment_rows
+      )
+      SELECT
+        base.total_transactions,
+        base.omzet,
+        expense.pengeluaran,
+        (base.omzet - expense.pengeluaran)::int AS sisa_omzet,
+        payment.non_tunai,
+        payment.tunai
+      FROM base, expense, payment
+    `,
+    params,
+  );
+
+  return (
+    rows[0] ?? {
+      total_transactions: 0,
+      omzet: 0,
+      pengeluaran: 0,
+      sisa_omzet: 0,
+      non_tunai: 0,
+      tunai: 0,
+    }
+  );
 }
 
 export async function listSales({

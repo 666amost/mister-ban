@@ -408,11 +408,11 @@ export async function getMonthlyReport({
     [storeId, start, endIso],
   );
 
-  const brandTransactionsRes = await db.query<{ brand: string; transactions: number }>(
+  const brandTransactionsRes = await db.query<{ brand: string; qty: number }>(
     `
       SELECT
         b.name AS brand,
-        COUNT(DISTINCT s.id)::int AS transactions
+        SUM(si.qty)::int AS qty
       FROM sales_items si
       JOIN sales s ON s.id = si.sale_id
       JOIN products p ON p.id = si.product_id
@@ -431,14 +431,14 @@ export async function getMonthlyReport({
           OR LOWER(b.name) LIKE '%oli gardan%'
         )
       GROUP BY b.name
-      ORDER BY transactions DESC, brand
+      ORDER BY qty DESC, brand
     `,
     [storeId, start, endIso],
   );
 
-  const oliGardanTransactionsRes = await db.query<{ transactions: number }>(
+  const oliGardanTransactionsRes = await db.query<{ qty: number }>(
     `
-      SELECT COUNT(DISTINCT s.id)::int AS transactions
+      SELECT SUM(si.qty)::int AS qty
       FROM sales_items si
       JOIN sales s ON s.id = si.sale_id
       JOIN products p ON p.id = si.product_id
@@ -493,7 +493,7 @@ export async function getMonthlyReport({
     transactions: totalsRes.rows[0]?.transactions ?? 0,
     payment_summary: paymentSummary,
     expense_total: expenseTotalRes.rows[0]?.expense_total ?? 0,
-    oli_gardan_transactions: oliGardanTransactionsRes.rows[0]?.transactions ?? 0,
+    oli_gardan_qty: oliGardanTransactionsRes.rows[0]?.qty ?? 0,
     daily,
     top_skus: topRes.rows,
     brand_transactions: brandTransactionsRes.rows,

@@ -19,7 +19,7 @@ type MonthlyTopSku = {
 
 type MonthlyBrandTransaction = {
   brand: string
-  transactions: number
+  qty: number
 }
 
 type MonthlyExpense = {
@@ -40,7 +40,7 @@ type MonthlyReport = {
   transactions: number
   payment_summary: MonthlyPaymentSummary
   expense_total: number
-  oli_gardan_transactions: number
+  oli_gardan_qty: number
   daily?: MonthlyDaily[]
   top_skus?: MonthlyTopSku[]
   brand_transactions?: MonthlyBrandTransaction[]
@@ -175,11 +175,11 @@ await load()
         <div class="summary brandSummary">
           <div v-for="item in report.brand_transactions" :key="item.brand" class="sumItem">
             <div class="label">{{ item.brand }}</div>
-            <div class="value">{{ item.transactions }} transaksi</div>
+            <div class="value">{{ item.qty }} pcs</div>
           </div>
-          <div v-if="report.oli_gardan_transactions > 0" class="sumItem oliGardanItem">
+          <div v-if="report.oli_gardan_qty > 0" class="sumItem oliGardanItem">
             <div class="label">Oli Gardan</div>
-            <div class="value">{{ report.oli_gardan_transactions }} transaksi</div>
+            <div class="value">{{ report.oli_gardan_qty }} pcs</div>
           </div>
         </div>
       </div>

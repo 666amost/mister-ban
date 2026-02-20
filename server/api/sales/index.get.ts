@@ -2,7 +2,11 @@ import { getPool } from "../../db/pool";
 import { requireUser } from "../../modules/auth/session";
 import { resolveStoreId } from "../../modules/store/store-context";
 import { salesListQuerySchema } from "../../modules/sales/sales.schemas";
-import { listSales, getSalesQtySummary } from "../../modules/sales/sales.service";
+import {
+  listSales,
+  getSalesQtySummary,
+  getSalesDailySummary,
+} from "../../modules/sales/sales.service";
 import { getQueryWithSchema } from "../../utils/validate";
 
 function todayIsoDate() {
@@ -30,7 +34,7 @@ export default defineEventHandler(async (event) => {
   const dateVal = query.date ?? todayIsoDate();
   const db = getPool();
 
-  const [items, qty_summary] = await Promise.all([
+  const [items, qty_summary, daily_summary] = await Promise.all([
     listSales({
       db,
       storeId,
@@ -47,11 +51,18 @@ export default defineEventHandler(async (event) => {
       date: dateVal,
       allDates,
     }),
+    getSalesDailySummary({
+      db,
+      storeId,
+      date: dateVal,
+      allDates,
+    }),
   ]);
 
   return {
     items,
     qty_summary,
+    daily_summary,
     date: dateVal,
     all_dates: allDates,
     can_expense_only: true,
