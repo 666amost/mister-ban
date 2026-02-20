@@ -28,6 +28,7 @@ type DailyInput = {
   sale_id: string
   created_at: string
   customer_plate_no: string
+  payment_method: string
   input_type: DailyInputType
   sku: string | null
   item_name: string
@@ -75,6 +76,30 @@ function inputTypeLabel(value: DailyInputType) {
   if (value === "product") return "Produk"
   if (value === "custom") return "Custom"
   return "Pengeluaran"
+}
+
+function paymentMethodLabel(value: string) {
+  const raw = String(value || "")
+    .toUpperCase()
+    .trim()
+  if (!raw) return "-"
+
+  const labelByType: Record<string, string> = {
+    CASH: "Tunai",
+    TRANSFER: "Transfer",
+    QRIS: "QRIS",
+    DEBIT: "Debit",
+    CREDIT: "Kredit",
+    TEMPO: "Tempo",
+    MIXED: "Campuran",
+  }
+
+  return raw
+    .split("+")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => labelByType[part] ?? part)
+    .join(" + ")
 }
 
 function statusMessage(error: unknown) {
@@ -213,6 +238,7 @@ await load()
               <th>Waktu</th>
               <th>Plat</th>
               <th>Tipe</th>
+              <th>Metode</th>
               <th>Item</th>
               <th class="alignRight">Qty</th>
               <th class="alignRight">Harga</th>
@@ -226,6 +252,7 @@ await load()
               <td>
                 <span :class="`typeBadge ${item.input_type}`">{{ inputTypeLabel(item.input_type) }}</span>
               </td>
+              <td class="mono">{{ paymentMethodLabel(item.payment_method) }}</td>
               <td>
                 <div>{{ item.item_name }}</div>
                 <div v-if="item.sku" class="itemMeta mono">{{ item.sku }}</div>

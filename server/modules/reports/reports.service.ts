@@ -137,6 +137,7 @@ export async function getDailyReport({
     sale_id: string;
     created_at: string;
     customer_plate_no: string;
+    payment_method: string;
     input_type: "product" | "custom" | "expense";
     sku: string | null;
     item_name: string;
@@ -145,12 +146,36 @@ export async function getDailyReport({
     line_total: number;
   }>(
     `
+      WITH base_sales AS (
+        SELECT
+          s.id,
+          s.created_at,
+          s.customer_plate_no,
+          COALESCE(
+            NULLIF(pay.payment_method, ''),
+            NULLIF(UPPER(COALESCE(s.payment_type, '')), ''),
+            '-'
+          ) AS payment_method
+        FROM sales s
+        LEFT JOIN LATERAL (
+          SELECT string_agg(pm.payment_type, ' + ' ORDER BY pm.payment_type) AS payment_method
+          FROM (
+            SELECT DISTINCT UPPER(COALESCE(sp.payment_type, '')) AS payment_type
+            FROM sales_payments sp
+            WHERE sp.sale_id = s.id
+              AND COALESCE(sp.payment_type, '') <> ''
+          ) pm
+        ) pay ON true
+        WHERE s.store_id = $1
+          AND s.sale_date = $2::date
+      )
       SELECT *
       FROM (
         SELECT
           s.id AS sale_id,
           s.created_at,
           s.customer_plate_no,
+          s.payment_method,
           'product'::text AS input_type,
           p.sku,
           CONCAT_WS(' ', b.name, p.name, p.size) AS item_name,
@@ -158,11 +183,9 @@ export async function getDailyReport({
           si.sell_price::int AS unit_price,
           si.line_total::int AS line_total
         FROM sales_items si
-        JOIN sales s ON s.id = si.sale_id
+        JOIN base_sales s ON s.id = si.sale_id
         JOIN products p ON p.id = si.product_id
         JOIN brands b ON b.id = p.brand_id
-        WHERE s.store_id = $1
-          AND s.sale_date = $2::date
 
         UNION ALL
 
@@ -170,6 +193,7 @@ export async function getDailyReport({
           s.id AS sale_id,
           s.created_at,
           s.customer_plate_no,
+          s.payment_method,
           'custom'::text AS input_type,
           NULL::text AS sku,
           sci.item_name,
@@ -177,9 +201,7 @@ export async function getDailyReport({
           sci.price::int AS unit_price,
           sci.line_total::int AS line_total
         FROM sales_custom_items sci
-        JOIN sales s ON s.id = sci.sale_id
-        WHERE s.store_id = $1
-          AND s.sale_date = $2::date
+        JOIN base_sales s ON s.id = sci.sale_id
 
         UNION ALL
 
@@ -187,6 +209,7 @@ export async function getDailyReport({
           s.id AS sale_id,
           s.created_at,
           s.customer_plate_no,
+          s.payment_method,
           'expense'::text AS input_type,
           NULL::text AS sku,
           se.item_name,
@@ -194,9 +217,7 @@ export async function getDailyReport({
           se.amount::int AS unit_price,
           se.amount::int AS line_total
         FROM sales_expenses se
-        JOIN sales s ON s.id = se.sale_id
-        WHERE s.store_id = $1
-          AND s.sale_date = $2::date
+        JOIN base_sales s ON s.id = se.sale_id
       ) entries
       ORDER BY created_at DESC, sale_id, input_type, item_name
     `,
