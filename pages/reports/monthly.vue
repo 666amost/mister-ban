@@ -64,6 +64,51 @@ function statusMessage(error: unknown) {
   return typeof e.statusMessage === "string" ? e.statusMessage : null
 }
 
+function formatPercent(part: number, total: number) {
+  if (!Number.isFinite(part) || !Number.isFinite(total) || total <= 0) return "0%"
+  const value = (part / total) * 100
+  return `${value.toLocaleString("id-ID", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  })}%`
+}
+
+const avgTicket = computed(() => {
+  const omzet = report.value?.omzet ?? 0
+  const transactions = report.value?.transactions ?? 0
+  if (transactions <= 0) return 0
+  return omzet / transactions
+})
+
+const profitMargin = computed(() => {
+  const omzet = report.value?.omzet ?? 0
+  const profit = report.value?.profit ?? 0
+  return formatPercent(profit, omzet)
+})
+
+const expenseRatio = computed(() => {
+  const omzet = report.value?.omzet ?? 0
+  const expense = report.value?.expense_total ?? 0
+  return formatPercent(expense, omzet)
+})
+
+const paymentTotal = computed(() => {
+  const cash = report.value?.payment_summary.cash ?? 0
+  const nonCash = report.value?.payment_summary.non_cash ?? 0
+  return cash + nonCash
+})
+
+const totalBrandQty = computed(() => {
+  const brands = report.value?.brand_transactions ?? []
+  const regularQty = brands.reduce((sum, item) => sum + item.qty, 0)
+  const oliGardanQty = report.value?.oli_gardan_qty ?? 0
+  return regularQty + oliGardanQty
+})
+
+function brandShare(qty: number) {
+  return formatPercent(qty, totalBrandQty.value)
+}
+
 function openExpenseDetail() {
   isExpenseDetailOpen.value = true
 }
@@ -130,15 +175,18 @@ await load()
       <div v-if="report" class="summary reportSummary">
         <div class="sumItem">
           <div class="label">Omzet</div>
-          <div class="value">Rp {{ rupiah(report.omzet) }}</div>
+          <div class="value monoNumeric">Rp {{ rupiah(report.omzet) }}</div>
+          <div class="meta">Pendapatan kotor bulanan</div>
         </div>
         <div class="sumItem">
           <div class="label">Profit</div>
-          <div class="value">Rp {{ rupiah(report.profit) }}</div>
+          <div class="value monoNumeric">Rp {{ rupiah(report.profit) }}</div>
+          <div class="meta">Margin {{ profitMargin }}</div>
         </div>
         <div class="sumItem">
           <div class="label">Transaksi</div>
-          <div class="value">{{ report.transactions }}</div>
+          <div class="value monoNumeric">{{ report.transactions }}</div>
+          <div class="meta">Rata-rata Rp {{ rupiah(avgTicket) }} per transaksi</div>
         </div>
         <div
           class="sumItem sumItemClickable"
@@ -152,7 +200,8 @@ await load()
             <div class="label">Pengeluaran</div>
             <span class="actionLink" aria-hidden="true">Detail</span>
           </div>
-          <div class="value">Rp {{ rupiah(report.expense_total) }}</div>
+          <div class="value monoNumeric">Rp {{ rupiah(report.expense_total) }}</div>
+          <div class="meta">{{ expenseRatio }} dari omzet</div>
         </div>
       </div>
 
@@ -161,11 +210,15 @@ await load()
         <div class="summary paymentSummary">
           <div class="sumItem">
             <div class="label">Tunai</div>
-            <div class="value">Rp {{ rupiah(report.payment_summary.cash) }}</div>
+            <div class="value monoNumeric">Rp {{ rupiah(report.payment_summary.cash) }}</div>
+            <div class="meta">{{ formatPercent(report.payment_summary.cash, paymentTotal) }} dari total pembayaran</div>
           </div>
           <div class="sumItem">
             <div class="label">Non Tunai</div>
-            <div class="value">Rp {{ rupiah(report.payment_summary.non_cash) }}</div>
+            <div class="value monoNumeric">Rp {{ rupiah(report.payment_summary.non_cash) }}</div>
+            <div class="meta">
+              {{ formatPercent(report.payment_summary.non_cash, paymentTotal) }} dari total pembayaran
+            </div>
           </div>
         </div>
       </div>
@@ -173,13 +226,25 @@ await load()
       <div v-if="report?.brand_transactions?.length" class="tableWrap">
         <div class="sectionTitle">Transaksi per Merk</div>
         <div class="summary brandSummary">
-          <div v-for="item in report.brand_transactions" :key="item.brand" class="sumItem">
-            <div class="label">{{ item.brand }}</div>
-            <div class="value">{{ item.qty }} pcs</div>
+          <div
+            v-for="(item, index) in report.brand_transactions"
+            :key="item.brand"
+            class="sumItem brandItem"
+          >
+            <div class="labelRow">
+              <div class="label">{{ item.brand }}</div>
+              <span class="rankBadge">#{{ index + 1 }}</span>
+            </div>
+            <div class="value qtyValue monoNumeric">{{ item.qty }} pcs</div>
+            <div class="meta">{{ brandShare(item.qty) }} dari total transaksi merk</div>
           </div>
-          <div v-if="report.oli_gardan_qty > 0" class="sumItem oliGardanItem">
-            <div class="label">Oli Gardan</div>
-            <div class="value">{{ report.oli_gardan_qty }} pcs</div>
+          <div v-if="report.oli_gardan_qty > 0" class="sumItem brandItem">
+            <div class="labelRow">
+              <div class="label">Oli Gardan</div>
+              <span class="rankBadge">#{{ report.brand_transactions.length + 1 }}</span>
+            </div>
+            <div class="value qtyValue monoNumeric">{{ report.oli_gardan_qty }} pcs</div>
+            <div class="meta">{{ brandShare(report.oli_gardan_qty) }} dari total transaksi merk</div>
           </div>
         </div>
       </div>
@@ -228,6 +293,13 @@ await load()
   display: grid;
   gap: 16px;
   min-width: 0;
+  --report-panel-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 1px 2px rgba(15, 23, 42, 0.05);
+  --report-item-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 1px 2px rgba(15, 23, 42, 0.06),
+    0 8px 18px rgba(15, 23, 42, 0.08);
 }
 .row {
   display: flex;
@@ -243,93 +315,69 @@ await load()
   min-width: 240px;
 }
 .summary {
-  margin-top: 14px;
+  margin-top: 12px;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 12px;
+  gap: 8px;
 }
 .summary.reportSummary {
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 10px;
-  padding: 12px;
-  border-radius: 16px;
-  border: 1px solid var(--mb-border2);
-  background: var(--mb-surface2);
-}
-.sumItem {
-  border: 1px solid var(--mb-border2);
-  background: var(--mb-surface2);
-  border-radius: 14px;
-  padding: 14px;
-}
-.summary.reportSummary .sumItem {
-  background: var(--mb-surface);
-  border-color: var(--mb-border2);
-  box-shadow:
-    0 1px 0 rgba(17, 24, 39, 0.04),
-    0 12px 24px rgba(17, 24, 39, 0.06);
-}
-
-.summary.reportSummary .sumItem:nth-child(-n + 2) {
-  background: linear-gradient(
-    180deg,
-    rgba(52, 199, 89, 0.08),
-    rgba(52, 199, 89, 0.02) 35%,
-    var(--mb-surface) 100%
-  );
-}
-
-.summary.reportSummary .label {
-  font-size: 11px;
-  letter-spacing: 0.2px;
-}
-
-.summary.reportSummary .value {
-  margin-top: 4px;
-  font-size: 15px;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
 }
 .summary.paymentSummary {
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 10px;
-  padding: 12px;
-  border-radius: 16px;
-  border: 1px solid var(--mb-border2);
-  background: var(--mb-surface2);
-}
-.summary.paymentSummary .sumItem {
-  background: var(--mb-surface);
-  border-color: var(--mb-border2);
-  box-shadow:
-    0 1px 0 rgba(17, 24, 39, 0.04),
-    0 12px 24px rgba(17, 24, 39, 0.06);
-}
-.summary.paymentSummary .sumItem:nth-child(-n + 2) {
-  background: linear-gradient(
-    180deg,
-    rgba(52, 199, 89, 0.08),
-    rgba(52, 199, 89, 0.02) 35%,
-    var(--mb-surface) 100%
-  );
-}
-.summary.paymentSummary .label {
-  font-size: 11px;
-  letter-spacing: 0.2px;
-}
-.summary.paymentSummary .value {
-  margin-top: 4px;
-  font-size: 15px;
 }
 .summary.brandSummary {
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
 }
-.oliGardanItem {
-  background: linear-gradient(
-    180deg,
-    rgba(255, 159, 10, 0.08),
-    rgba(255, 159, 10, 0.02) 35%,
-    var(--mb-surface2) 100%
-  ) !important;
-  border-color: rgba(255, 159, 10, 0.2) !important;
+.summary.reportSummary,
+.summary.paymentSummary,
+.summary.brandSummary {
+  padding: 8px;
+  border-radius: 14px;
+  border: 1px solid var(--mb-border2);
+  background: var(--mb-surface2);
+  box-shadow: var(--report-panel-shadow);
+}
+.sumItem {
+  min-width: 0;
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--mb-border2);
+  background: var(--mb-surface);
+  border-radius: 12px;
+  padding: 10px 12px;
+  display: grid;
+  gap: 4px;
+  box-shadow: var(--report-item-shadow);
+}
+.label {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--mb-muted);
+}
+.value {
+  margin-top: 0;
+  font-weight: 900;
+  line-height: 1.2;
+  font-size: clamp(16px, 1.6vw, 20px);
+  font-variant-numeric: tabular-nums;
+}
+.meta {
+  font-size: 10px;
+  line-height: 1.3;
+  color: var(--mb-muted);
+}
+.monoNumeric {
+  font-variant-numeric: tabular-nums;
+}
+.brandItem .label {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 13px;
+}
+.qtyValue {
+  font-size: clamp(17px, 1.7vw, 21px);
 }
 .labelRow {
   display: flex;
@@ -337,29 +385,44 @@ await load()
   justify-content: space-between;
   gap: 10px;
 }
+.rankBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  border: 1px solid var(--mb-border2);
+  background: var(--mb-surface2);
+  color: var(--mb-muted);
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+}
 .actionLink {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 46px;
-  height: 24px;
-  padding: 0 10px;
+  min-width: 42px;
+  height: 22px;
+  padding: 0 8px;
   border-radius: 999px;
   border: 1px solid var(--mb-border2);
   background: var(--mb-surface);
-  color: var(--mb-primary);
-  font-size: 10px;
+  color: var(--mb-accent);
+  font-size: 9px;
   font-weight: 800;
   line-height: 1;
   letter-spacing: 0.2px;
   user-select: none;
-  box-shadow: 0 1px 0 rgba(17, 24, 39, 0.05);
+  box-shadow: inset 0 0 0 1px var(--mb-accent-outline);
 }
 .sumItemClickable {
   cursor: pointer;
 }
 .sumItemClickable:focus-visible {
-  outline: 2px solid var(--mb-primary);
+  outline: 2px solid var(--mb-accent);
   outline-offset: 2px;
 }
 .tableWrap {
@@ -404,14 +467,6 @@ th {
   background: var(--mb-surface2);
   color: var(--mb-muted);
   font-size: 12px;
-}
-.label {
-  font-size: 12px;
-  color: var(--mb-muted);
-}
-.value {
-  margin-top: 6px;
-  font-weight: 900;
 }
 .error {
   margin: 12px 0 0;
@@ -488,7 +543,9 @@ th {
     min-width: 100%;
   }
 
-  .summary.reportSummary {
+  .summary.reportSummary,
+  .summary.paymentSummary,
+  .summary.brandSummary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
   }
@@ -522,6 +579,14 @@ th {
 
   .modalTableWrap {
     max-height: calc(92vh - 108px);
+  }
+}
+
+@media (max-width: 560px) {
+  .summary.reportSummary,
+  .summary.paymentSummary,
+  .summary.brandSummary {
+    grid-template-columns: 1fr;
   }
 }
 

@@ -248,8 +248,8 @@ const menuItems = computed<MenuItem[]>(() => {
           >
             <defs>
               <linearGradient id="mbArea" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stop-color="rgba(52, 199, 89, 0.25)" />
-                <stop offset="100%" stop-color="rgba(52, 199, 89, 0)" />
+                <stop offset="0%" stop-color="rgba(var(--mb-accent-rgb), 0.25)" />
+                <stop offset="100%" stop-color="rgba(var(--mb-accent-rgb), 0)" />
               </linearGradient>
             </defs>
             <path :d="`M ${sparkline.areaPoints} Z`" fill="url(#mbArea)" />
@@ -330,7 +330,7 @@ const menuItems = computed<MenuItem[]>(() => {
   align-items: center;
   justify-content: center;
   border-radius: 14px;
-  background: rgba(52, 199, 89, 0.12);
+  background: var(--mb-accent-soft-bg);
   flex-shrink: 0;
 }
 
@@ -415,9 +415,19 @@ const menuItems = computed<MenuItem[]>(() => {
 }
 
 .storeBadge {
+  display: inline-flex;
+  align-items: center;
   padding: 4px 10px;
   border-radius: 8px;
-  background: rgba(52, 199, 89, 0.1);
+  border: 1px solid var(--mb-accent-soft-border);
+  background: linear-gradient(
+    180deg,
+    rgba(var(--mb-accent-rgb), 0.24) 0%,
+    rgba(var(--mb-accent-rgb), 0.14) 100%
+  );
+  box-shadow:
+    inset 0 0 0 1px var(--mb-accent-outline),
+    var(--mb-accent-glow-soft);
   color: var(--mb-accent);
   font-size: 12px;
   font-weight: 700;

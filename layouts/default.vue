@@ -472,9 +472,11 @@ async function logout() {
   }
 
   .mb-bottomItemBtn.open {
-    border-color: rgba(52, 199, 89, 0.55);
-    background: rgba(52, 199, 89, 0.12);
-    box-shadow: inset 0 0 0 1px rgba(52, 199, 89, 0.18);
+    border-color: var(--mb-accent-hover-border);
+    background: var(--mb-accent-hover-bg);
+    box-shadow:
+      inset 0 0 0 1px var(--mb-accent-outline),
+      var(--mb-accent-glow-soft);
   }
 
   .mb-bottomBackdrop {
@@ -550,8 +552,11 @@ async function logout() {
   }
 
   .mb-bottomSheetItem.active {
-    border-color: rgba(52, 199, 89, 0.65);
-    background: rgba(52, 199, 89, 0.12);
+    border-color: var(--mb-accent-hover-border);
+    background: var(--mb-accent-hover-bg);
+    box-shadow:
+      inset 0 0 0 1px var(--mb-accent-outline),
+      var(--mb-accent-glow-soft);
   }
 
   .mb-bottomSheetIcon {
