@@ -102,6 +102,18 @@ function paymentMethodLabel(value: string) {
     .join(" + ")
 }
 
+function paymentMethodClass(value: string) {
+  const parts = String(value || "")
+    .toUpperCase()
+    .split("+")
+    .map((part) => part.trim())
+    .filter(Boolean)
+
+  if (parts.length === 0) return "unknown"
+  if (parts.length === 1) return parts[0] === "CASH" ? "cash" : "nonCash"
+  return "mixed"
+}
+
 function statusMessage(error: unknown) {
   if (!error || typeof error !== "object") return null
   const e = error as Record<string, unknown>
@@ -252,7 +264,11 @@ await load()
               <td>
                 <span :class="`typeBadge ${item.input_type}`">{{ inputTypeLabel(item.input_type) }}</span>
               </td>
-              <td class="mono">{{ paymentMethodLabel(item.payment_method) }}</td>
+              <td>
+                <span :class="`methodBadge ${paymentMethodClass(item.payment_method)}`">
+                  {{ paymentMethodLabel(item.payment_method) }}
+                </span>
+              </td>
               <td>
                 <div>{{ item.item_name }}</div>
                 <div v-if="item.sku" class="itemMeta mono">{{ item.sku }}</div>
@@ -406,6 +422,36 @@ th {
   background: var(--mb-badge-expense-bg);
   color: var(--mb-badge-expense-fg);
   border-color: var(--mb-badge-expense-border);
+}
+.methodBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.methodBadge.cash {
+  background: var(--mb-badge-product-bg);
+  color: var(--mb-badge-product-fg);
+  border-color: var(--mb-badge-product-border);
+}
+.methodBadge.nonCash {
+  background: var(--mb-badge-custom-bg);
+  color: var(--mb-badge-custom-fg);
+  border-color: var(--mb-badge-custom-border);
+}
+.methodBadge.mixed {
+  background: var(--mb-surface2);
+  color: var(--mb-text);
+  border-color: var(--mb-border2);
+}
+.methodBadge.unknown {
+  background: var(--mb-surface2);
+  color: var(--mb-muted);
+  border-color: var(--mb-border2);
 }
 .error {
   margin: 12px 0 0;
