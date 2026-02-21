@@ -1,3 +1,5 @@
+import { useRequestFetch } from '#app'
+
 type StoreContext = {
   id: string;
   name: string;
@@ -13,7 +15,7 @@ export function useStoreContext() {
   async function refresh() {
     status.value = "loading";
     try {
-      const fetcher = process.server ? useRequestFetch() : $fetch;
+      const fetcher = import.meta.server ? useRequestFetch() : $fetch;
       const res = await fetcher<{ store: StoreContext | null }>("/api/store/current");
       store.value = res.store;
       status.value = "ready";
@@ -25,7 +27,7 @@ export function useStoreContext() {
   }
 
   async function select(storeId: string) {
-    const fetcher = process.server ? useRequestFetch() : $fetch;
+    const fetcher = import.meta.server ? useRequestFetch() : $fetch;
     await fetcher("/api/store/select", {
       method: "POST",
       body: { store_id: storeId },

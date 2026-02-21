@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { onMounted, onBeforeUnmount } from 'vue'
+import { useRequestFetch } from '#app'
+
 definePageMeta({ middleware: "admin" })
 
 type MonthlyDaily = {
@@ -52,7 +55,7 @@ const report = ref<MonthlyReport | null>(null)
 const isLoading = ref(false)
 const errorMessage = ref<string | null>(null)
 const isExpenseDetailOpen = ref(false)
-const requestFetch = process.server ? useRequestFetch() : $fetch
+const requestFetch = import.meta.server ? useRequestFetch() : $fetch
 
 function rupiah(value: number) {
   return value.toLocaleString("id-ID")
@@ -123,7 +126,7 @@ function handleWindowKeydown(event: KeyboardEvent) {
   }
 }
 
-if (process.client) {
+if (import.meta.client) {
   watch(
     isExpenseDetailOpen,
     (open) => {
@@ -138,7 +141,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
-  if (process.client) {
+  if (import.meta.client) {
     document.body.style.overflow = ""
   }
   window.removeEventListener("keydown", handleWindowKeydown)

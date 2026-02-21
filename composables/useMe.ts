@@ -1,3 +1,5 @@
+import { useRequestFetch } from '#app'
+
 type MeUser = {
   id: string;
   email: string;
@@ -15,7 +17,7 @@ export function useMe() {
   async function refresh() {
     status.value = "loading";
     try {
-      const fetcher = process.server ? useRequestFetch() : $fetch;
+      const fetcher = import.meta.server ? useRequestFetch() : $fetch;
       const res = await fetcher<{ user: MeUser }>("/api/me");
       user.value = res.user;
       status.value = "ready";

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useRequestFetch } from '#app'
+
 definePageMeta({ middleware: "admin" })
 
 type DailyTopSku = {
@@ -42,12 +44,20 @@ type DailyPaymentSummary = {
   non_cash: number
 }
 
+type DailyQtyBreakdown = {
+  ban_qty: number
+  oli_qty: number
+  kampas_qty: number
+  custom_qty: number
+}
+
 type DailyReport = {
   date: string
   omzet: number
   profit: number
   transactions: number
   payment_summary: DailyPaymentSummary
+  qty_breakdown?: DailyQtyBreakdown
   top_skus: DailyTopSku[]
   custom_items: DailyCustomItem[]
   expenses: DailyExpense[]
@@ -59,7 +69,7 @@ const date = ref(new Date().toISOString().slice(0, 10))
 const report = ref<DailyReport | null>(null)
 const isLoading = ref(false)
 const errorMessage = ref<string | null>(null)
-const requestFetch = process.server ? useRequestFetch() : $fetch
+const requestFetch = import.meta.server ? useRequestFetch() : $fetch
 
 function rupiah(value: number) {
   return value.toLocaleString("id-ID")
@@ -154,6 +164,12 @@ const paymentTotal = computed(() => {
   return cash + nonCash
 })
 
+const totalQty = computed(() => {
+  const breakdown = report.value?.qty_breakdown
+  if (!breakdown) return 0
+  return breakdown.ban_qty + breakdown.oli_qty + breakdown.kampas_qty + breakdown.custom_qty
+})
+
 async function load() {
   isLoading.value = true
   errorMessage.value = null
@@ -218,6 +234,32 @@ await load()
             <div class="meta">
               {{ formatPercent(report.payment_summary.non_cash, paymentTotal) }} dari total pembayaran
             </div>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="report?.qty_breakdown" class="tableWrap">
+        <div class="sectionTitle">Breakdown Quantity</div>
+        <div class="summary paymentSummary">
+          <div class="sumItem">
+            <div class="label">Ban</div>
+            <div class="value monoNumeric">{{ report.qty_breakdown.ban_qty }}</div>
+            <div class="meta">{{ formatPercent(report.qty_breakdown.ban_qty, totalQty) }} dari total qty</div>
+          </div>
+          <div class="sumItem">
+            <div class="label">Oli</div>
+            <div class="value monoNumeric">{{ report.qty_breakdown.oli_qty }}</div>
+            <div class="meta">{{ formatPercent(report.qty_breakdown.oli_qty, totalQty) }} dari total qty</div>
+          </div>
+          <div class="sumItem">
+            <div class="label">Kampas</div>
+            <div class="value monoNumeric">{{ report.qty_breakdown.kampas_qty }}</div>
+            <div class="meta">{{ formatPercent(report.qty_breakdown.kampas_qty, totalQty) }} dari total qty</div>
+          </div>
+          <div class="sumItem">
+            <div class="label">Custom</div>
+            <div class="value monoNumeric">{{ report.qty_breakdown.custom_qty }}</div>
+            <div class="meta">{{ formatPercent(report.qty_breakdown.custom_qty, totalQty) }} dari total qty</div>
           </div>
         </div>
       </div>

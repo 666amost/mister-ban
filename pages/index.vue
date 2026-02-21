@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useRequestFetch } from '#app'
+
 const me = useMe();
 const storeContext = useStoreContext();
 
@@ -36,7 +38,7 @@ const isAdmin = computed(() => me.user.value?.role === "ADMIN");
 const monthlyReport = ref<MonthlyReport | null>(null);
 const isLoadingMonthly = ref(false);
 const monthlyError = ref<string | null>(null);
-const requestFetch = process.server ? useRequestFetch() : $fetch;
+const requestFetch = import.meta.server ? useRequestFetch() : $fetch;
 
 function rupiah(value: number) {
   return value.toLocaleString("id-ID");

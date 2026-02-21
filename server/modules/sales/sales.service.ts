@@ -362,10 +362,19 @@ export async function getSalesQtySummary({
     `
       SELECT
         COALESCE(SUM(CASE
-          WHEN UPPER(TRIM(p.product_type)) = 'BAN'
-               AND LOWER(TRIM(b.name)) NOT IN ('ban dalam', 'oli', 'disc pad', 'disc', 'iml', 'cairan')
-               AND LOWER(p.name) NOT LIKE '%ban dalam%'
-               AND LOWER(p.name) NOT LIKE '%tube%'
+          WHEN (
+            LOWER(TRIM(b.name)) LIKE '%zeneos%'
+            OR LOWER(TRIM(b.name)) LIKE '%irc%'
+            OR LOWER(TRIM(b.name)) LIKE '%aspira%'
+            OR LOWER(TRIM(b.name)) LIKE '%fdr%'
+            OR LOWER(TRIM(b.name)) LIKE '%swallow%'
+            OR (LOWER(TRIM(b.name)) LIKE '%maxxis%' AND LOWER(TRIM(b.name)) NOT LIKE '%tube%')
+            OR UPPER(TRIM(p.product_type)) = 'BAN'
+          )
+          AND LOWER(TRIM(b.name)) NOT IN ('ban dalam', 'oli', 'disc pad', 'disc', 'iml', 'cairan')
+          AND LOWER(TRIM(b.name)) NOT LIKE '%tube%'
+          AND LOWER(p.name) NOT LIKE '%ban dalam%'
+          AND LOWER(p.name) NOT LIKE '%tube%'
           THEN si.qty ELSE 0
         END), 0)::int AS ban_qty,
         COALESCE(SUM(CASE
@@ -454,7 +463,7 @@ export async function getSalesDailySummary({
         base.total_transactions,
         base.omzet,
         expense.pengeluaran,
-        (base.omzet - expense.pengeluaran)::int AS sisa_omzet,
+        (payment.tunai - expense.pengeluaran)::int AS sisa_omzet,
         payment.non_tunai,
         payment.tunai
       FROM base, expense, payment

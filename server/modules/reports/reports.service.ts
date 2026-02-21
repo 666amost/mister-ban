@@ -19,6 +19,57 @@ export async function getDailyReport({
     [storeId, date],
   );
 
+  const qtyBreakdownRes = await db.query<{
+    ban_qty: number;
+    oli_qty: number;
+    kampas_qty: number;
+    custom_qty: number;
+  }>(
+    `
+      SELECT
+        COALESCE(SUM(CASE
+          WHEN (
+            LOWER(TRIM(b.name)) LIKE '%zeneos%'
+            OR LOWER(TRIM(b.name)) LIKE '%irc%'
+            OR LOWER(TRIM(b.name)) LIKE '%aspira%'
+            OR LOWER(TRIM(b.name)) LIKE '%fdr%'
+            OR LOWER(TRIM(b.name)) LIKE '%swallow%'
+            OR (LOWER(TRIM(b.name)) LIKE '%maxxis%' AND LOWER(TRIM(b.name)) NOT LIKE '%tube%')
+            OR UPPER(TRIM(p.product_type)) = 'BAN'
+          )
+          AND LOWER(TRIM(b.name)) NOT IN ('ban dalam', 'oli', 'disc pad', 'disc', 'iml', 'cairan')
+          AND LOWER(TRIM(b.name)) NOT LIKE '%tube%'
+          AND LOWER(p.name) NOT LIKE '%ban dalam%'
+          AND LOWER(p.name) NOT LIKE '%tube%'
+          THEN si.qty ELSE 0
+        END), 0)::int AS ban_qty,
+        COALESCE(SUM(CASE
+          WHEN LOWER(TRIM(b.name)) = 'oli'
+               OR UPPER(TRIM(p.product_type)) = 'OLI'
+          THEN si.qty ELSE 0
+        END), 0)::int AS oli_qty,
+        COALESCE(SUM(CASE
+          WHEN LOWER(TRIM(b.name)) IN ('disc pad', 'disc')
+               OR UPPER(TRIM(p.product_type)) = 'SPAREPART'
+          THEN si.qty ELSE 0
+        END), 0)::int AS kampas_qty,
+        COALESCE((
+          SELECT SUM(sci.qty)::int
+          FROM sales_custom_items sci
+          JOIN sales s2 ON s2.id = sci.sale_id
+          WHERE s2.store_id = $1
+            AND s2.sale_date = $2::date
+        ), 0)::int AS custom_qty
+      FROM sales_items si
+      JOIN sales s ON s.id = si.sale_id
+      JOIN products p ON p.id = si.product_id
+      JOIN brands b ON b.id = p.brand_id
+      WHERE s.store_id = $1
+        AND s.sale_date = $2::date
+    `,
+    [storeId, date],
+  );
+
   const paymentSummaryRes = await db.query<{
     cash: number;
     non_cash: number;
@@ -233,6 +284,12 @@ export async function getDailyReport({
     transfer: 0,
     credit: 0,
   };
+  const qtyBreakdown = qtyBreakdownRes.rows[0] ?? {
+    ban_qty: 0,
+    oli_qty: 0,
+    kampas_qty: 0,
+    custom_qty: 0,
+  };
 
   return {
     date,
@@ -240,6 +297,7 @@ export async function getDailyReport({
     profit: profitRes.rows[0]?.profit ?? 0,
     transactions: totalsRes.rows[0]?.transactions ?? 0,
     payment_summary: paymentSummary,
+    qty_breakdown: qtyBreakdown,
     top_skus: topRes.rows,
     custom_items: customRes.rows,
     expenses: expenseRes.rows,
