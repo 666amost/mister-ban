@@ -368,6 +368,11 @@ export async function getSalesQtySummary({
             OR LOWER(TRIM(b.name)) LIKE '%aspira%'
             OR LOWER(TRIM(b.name)) LIKE '%fdr%'
             OR LOWER(TRIM(b.name)) LIKE '%swallow%'
+            OR LOWER(TRIM(b.name)) LIKE '%honda%'
+            OR LOWER(TRIM(b.name)) LIKE '%kingland%'
+            OR LOWER(TRIM(b.name)) LIKE '%michelin%'
+            OR LOWER(TRIM(b.name)) LIKE '%pirelli%'
+            OR LOWER(TRIM(b.name)) LIKE '%corsa%'
             OR (LOWER(TRIM(b.name)) LIKE '%maxxis%' AND LOWER(TRIM(b.name)) NOT LIKE '%tube%')
             OR UPPER(TRIM(p.product_type)) = 'BAN'
           )
