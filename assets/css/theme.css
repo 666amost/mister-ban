@@ -297,6 +297,7 @@ a {
   border-radius: 16px;
   padding: 18px;
   box-shadow: var(--mb-shadow);
+  min-width: 0;
 }
 
 .mb-btn {
