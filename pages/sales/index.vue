@@ -152,6 +152,12 @@ const editExpenses = ref<ExpenseItem[]>([])
 const editSaving = ref(false)
 const editError = ref<string | null>(null)
 
+const deleteConfirmOpen = ref(false)
+const deleteSaleId = ref<string | null>(null)
+const deleteSaleLabel = ref("")
+const deleteLoading = ref(false)
+const deleteError = ref<string | null>(null)
+
 const editSearch = ref("")
 const editSearchLoading = ref(false)
 const editSearchRan = ref(false)
@@ -894,6 +900,36 @@ async function saveEditSale() {
   }
 }
 
+function openDeleteConfirm(s: SaleRow) {
+  deleteSaleId.value = s.id
+  const preview = saleItemPreview(s, 1)
+  deleteSaleLabel.value = preview.lines[0] ?? s.customer_plate_no ?? s.id.slice(0, 8)
+  deleteError.value = null
+  deleteConfirmOpen.value = true
+}
+
+function closeDeleteConfirm() {
+  deleteConfirmOpen.value = false
+  deleteSaleId.value = null
+  deleteLoading.value = false
+  deleteError.value = null
+}
+
+async function confirmDelete() {
+  if (!deleteSaleId.value) return
+  deleteLoading.value = true
+  deleteError.value = null
+  try {
+    await $fetch(`/api/sales/${deleteSaleId.value}`, { method: "DELETE" })
+    closeDeleteConfirm()
+    await loadSales()
+  } catch (error) {
+    deleteError.value = statusMessage(error) ?? "Gagal menghapus transaksi"
+  } finally {
+    deleteLoading.value = false
+  }
+}
+
 async function newTransaction() {
   showSuccessSheet.value = false
   lastSaleId.value = null
@@ -1336,6 +1372,20 @@ async function newTransaction() {
                 </svg>
                 Edit
               </button>
+              <button
+                v-if="isAdmin"
+                type="button"
+                class="deleteLabel"
+                @click.stop="openDeleteConfirm(s)"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="3 6 5 6 21 6" />
+                  <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" />
+                  <path d="M10 11v6M14 11v6" />
+                  <path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" />
+                </svg>
+                Hapus
+              </button>
             </div>
           </div>
         </div>
@@ -1396,6 +1446,36 @@ async function newTransaction() {
                   <path d="M12 5v14M5 12h14" />
                 </svg>
                 Transaksi Baru
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <Teleport to="body">
+      <Transition name="sheet">
+        <div v-if="deleteConfirmOpen" class="successOverlay" @click.self="closeDeleteConfirm">
+          <div class="deleteSheet">
+            <div class="deleteSheetIcon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="3 6 5 6 21 6" />
+                <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" />
+                <path d="M10 11v6M14 11v6" />
+                <path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" />
+              </svg>
+            </div>
+            <div class="deleteSheetTitle">Hapus Transaksi?</div>
+            <div class="deleteSheetSub">{{ deleteSaleLabel }}</div>
+            <p v-if="deleteError" class="errorMsg">{{ deleteError }}</p>
+            <div class="deleteSheetActions">
+              <button type="button" class="newTxBtn" :disabled="deleteLoading" @click="closeDeleteConfirm">Batal</button>
+              <button type="button" class="deleteConfirmBtn" :disabled="deleteLoading" @click="confirmDelete">
+                <template v-if="deleteLoading">
+                  <div class="spinner light" />
+                  <span>Menghapus...</span>
+                </template>
+                <template v-else>Ya, Hapus</template>
               </button>
             </div>
           </div>
@@ -2566,6 +2646,103 @@ async function newTransaction() {
 
 .editLabel:hover {
   color: var(--mb-text);
+}
+
+.deleteLabel {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-size: 12px;
+  color: var(--mb-danger);
+  font-weight: 700;
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.deleteLabel svg {
+  width: 13px;
+  height: 13px;
+}
+
+.deleteLabel:hover {
+  opacity: 1;
+}
+
+.deleteSheet {
+  width: 100%;
+  max-width: 400px;
+  padding: 32px 24px;
+  padding-bottom: max(32px, env(safe-area-inset-bottom));
+  background: var(--mb-surface);
+  border-radius: 24px 24px 0 0;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.deleteSheetIcon {
+  width: 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(215, 0, 21, 0.1);
+  color: var(--mb-danger);
+  margin-bottom: 8px;
+}
+
+.deleteSheetIcon svg {
+  width: 28px;
+  height: 28px;
+}
+
+.deleteSheetTitle {
+  font-weight: 900;
+  font-size: 20px;
+}
+
+.deleteSheetSub {
+  color: var(--mb-muted);
+  font-size: 14px;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deleteSheetActions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 16px;
+  width: 100%;
+}
+
+.deleteConfirmBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 48px;
+  border: none;
+  border-radius: 14px;
+  background: var(--mb-danger);
+  color: white;
+  font-weight: 800;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.deleteConfirmBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 @media (max-width: 420px) {

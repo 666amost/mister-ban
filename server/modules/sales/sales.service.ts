@@ -942,6 +942,45 @@ export async function updateSaleFields({
   });
 }
 
+export async function deleteSale({
+  storeId,
+  saleId,
+}: {
+  storeId: string;
+  saleId: string;
+}) {
+  return await tx(async (client) => {
+    const saleRes = await client.query<{ id: string }>(
+      "SELECT id FROM sales WHERE id = $1 AND store_id = $2 FOR UPDATE",
+      [saleId, storeId],
+    );
+    if (!saleRes.rows[0]) throw badRequest("Sale tidak ditemukan");
+
+    const oldItems = await client.query<{ product_id: string; qty: number; unit_cost: number }>(
+      "SELECT product_id, qty, unit_cost FROM sales_items WHERE sale_id = $1",
+      [saleId],
+    );
+
+    for (const old of oldItems.rows) {
+      await client.query(
+        "UPDATE inventory_balances SET qty_on_hand = qty_on_hand + $3, updated_at = now() WHERE store_id = $1 AND product_id = $2",
+        [storeId, old.product_id, old.qty],
+      );
+      await client.query(
+        `INSERT INTO inventory_ledger (store_id, product_id, txn_type, qty_delta, unit_cost, ref_type, ref_id, note, txn_at)
+         VALUES ($1, $2, 'IN', $3, $4, 'MANUAL_ADJUST', $5, 'Reversal dari hapus sale', now())`,
+        [storeId, old.product_id, old.qty, old.unit_cost, saleId],
+      );
+    }
+
+    await client.query("DELETE FROM sales_items WHERE sale_id = $1", [saleId]);
+    await client.query("DELETE FROM sales_custom_items WHERE sale_id = $1", [saleId]);
+    await client.query("DELETE FROM sales_payments WHERE sale_id = $1", [saleId]);
+    await client.query("DELETE FROM sales_expenses WHERE sale_id = $1", [saleId]);
+    await client.query("DELETE FROM sales WHERE id = $1 AND store_id = $2", [saleId, storeId]);
+  });
+}
+
 export async function markSalePrintedFirst({
   db,
   storeId,
