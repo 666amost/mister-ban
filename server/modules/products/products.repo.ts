@@ -253,12 +253,14 @@ export async function updateMasterProduct(
     productId,
     name,
     size,
+    sku,
     productType,
     isActive,
   }: {
     productId: string;
     name?: string;
     size?: string;
+    sku?: string;
     productType?: string;
     isActive?: boolean;
   },
@@ -271,12 +273,13 @@ export async function updateMasterProduct(
       SET
         name = COALESCE($2, name),
         size = COALESCE($3, size),
-        product_type = COALESCE($4, product_type),
-        status = COALESCE($5::text, status)
+        sku = COALESCE($4, sku),
+        product_type = COALESCE($5, product_type),
+        status = COALESCE($6::text, status)
       WHERE id = $1
-      RETURNING id AS product_id, name, size, product_type, (status = 'active') AS is_active
+      RETURNING id AS product_id, name, size, sku, product_type, (status = 'active') AS is_active
     `,
-    [productId, name ?? null, size ?? null, productType ?? null, nextStatus],
+    [productId, name ?? null, size ?? null, sku ?? null, productType ?? null, nextStatus],
   );
   return rows[0] ?? null;
 }

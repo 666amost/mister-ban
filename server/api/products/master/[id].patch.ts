@@ -9,6 +9,7 @@ const paramsSchema = z.object({ id: z.string().uuid() });
 const bodySchema = z.object({
   name: z.string().trim().min(1).optional(),
   size: z.string().trim().min(1).optional(),
+  sku: z.string().trim().min(1).optional(),
   product_type: z.string().trim().min(1).optional(),
   is_active: z.boolean().optional(),
 });
@@ -26,6 +27,7 @@ export default defineEventHandler(async (event) => {
     productId: params.data.id,
     name: body.name,
     size: body.size,
+    sku: body.sku,
     productType: body.product_type,
     isActive: body.is_active,
   });

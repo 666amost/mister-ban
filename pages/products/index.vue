@@ -150,6 +150,7 @@ const editError = ref<string | null>(null)
 const editingMasterId = ref<string | null>(null)
 const masterName = ref("")
 const masterSize = ref("")
+const masterSku = ref("")
 const masterEditLoading = ref(false)
 const masterEditError = ref<string | null>(null)
 
@@ -467,6 +468,7 @@ function startEditMaster(row: ProductRow) {
   editingMasterId.value = row.product_id
   masterName.value = row.name
   masterSize.value = row.size
+  masterSku.value = row.sku
   masterEditError.value = null
 }
 
@@ -474,6 +476,7 @@ function cancelEditMaster() {
   editingMasterId.value = null
   masterName.value = ""
   masterSize.value = ""
+  masterSku.value = ""
   masterEditError.value = null
 }
 
@@ -483,7 +486,7 @@ async function saveEditMaster(productId: string) {
   try {
     await $fetch(`/api/products/master/${productId}`, {
       method: "PATCH",
-      body: { name: masterName.value, size: masterSize.value },
+      body: { name: masterName.value, size: masterSize.value, sku: masterSku.value },
     })
     cancelEditMaster()
     await load({ reset: true })
@@ -782,6 +785,10 @@ onMounted(async () => {
                             <label class="field smallField">
                               <span>Size</span>
                               <input v-model="masterSize" class="mb-input" />
+                            </label>
+                            <label class="field smallField">
+                              <span>SKU</span>
+                              <input v-model="masterSku" class="mb-input" />
                             </label>
                             <button
                               class="mb-btnPrimary"

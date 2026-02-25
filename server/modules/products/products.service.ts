@@ -194,17 +194,19 @@ export async function updateMasterProductForAdmin({
   productId,
   name,
   size,
+  sku,
   productType,
   isActive,
 }: {
   productId: string;
   name?: string;
   size?: string;
+  sku?: string;
   productType?: string;
   isActive?: boolean;
 }) {
   const updated = await tx(async (client) =>
-    updateMasterProduct(client, { productId, name, size, productType, isActive }),
+    updateMasterProduct(client, { productId, name, size, sku, productType, isActive }),
   );
   if (!updated) throw badRequest("Produk tidak ditemukan");
   return { item: updated };
