@@ -1,5 +1,63 @@
 import { getPool } from "../../db/pool";
 
+export type StoreSummaryRow = {
+  store_id: string;
+  store_name: string;
+  omzet: number;
+  profit: number;
+  transactions: number;
+};
+
+export async function getStoresSummary({
+  month,
+}: {
+  month: string;
+}): Promise<StoreSummaryRow[]> {
+  const db = getPool();
+  const start = `${month}-01`;
+  const end = new Date(`${month}-01T00:00:00.000Z`);
+  end.setUTCMonth(end.getUTCMonth() + 1);
+  const endIso = end.toISOString().slice(0, 10);
+
+  const res = await db.query<StoreSummaryRow>(
+    `
+      SELECT
+        st.id AS store_id,
+        st.name AS store_name,
+        COALESCE(agg.omzet, 0)::int AS omzet,
+        COALESCE(agg.profit, 0)::int AS profit,
+        COALESCE(agg.transactions, 0)::int AS transactions
+      FROM stores st
+      LEFT JOIN LATERAL (
+        SELECT
+          SUM(s.total)::int AS omzet,
+          SUM(
+            s.total
+            - COALESCE(c.cogs, 0)
+            - COALESCE(e.expenses, 0)
+          )::int AS profit,
+          COUNT(*)::int AS transactions
+        FROM sales s
+        LEFT JOIN (
+          SELECT sale_id, COALESCE(SUM(qty * unit_cost), 0)::int AS cogs
+          FROM sales_items GROUP BY sale_id
+        ) c ON c.sale_id = s.id
+        LEFT JOIN (
+          SELECT sale_id, COALESCE(SUM(amount), 0)::int AS expenses
+          FROM sales_expenses GROUP BY sale_id
+        ) e ON e.sale_id = s.id
+        WHERE s.store_id = st.id
+          AND s.sale_date >= $1::date
+          AND s.sale_date < $2::date
+      ) agg ON true
+      ORDER BY st.name
+    `,
+    [start, endIso],
+  );
+
+  return res.rows;
+}
+
 export async function getDailyReport({
   storeId,
   date,

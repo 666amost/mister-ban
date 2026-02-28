@@ -4,11 +4,21 @@ import { onMounted } from "vue";
 definePageMeta({ layout: "auth" })
 
 type Store = { id: string; name: string };
+type StoreSummary = {
+  store_id: string;
+  store_name: string;
+  omzet: number;
+  profit: number;
+  transactions: number;
+};
 
 const me = useMe();
 const storeContext = useStoreContext();
 
 const stores = ref<Store[]>([]);
+const storeSummary = ref<StoreSummary[]>([]);
+const summaryMonth = ref(new Date().toISOString().slice(0, 7));
+const isSummaryLoading = ref(false);
 const search = ref("");
 const selectedStoreId = ref("");
 const errorMessage = ref<string | null>(null);
@@ -36,6 +46,23 @@ async function loadStores() {
   }
 }
 
+async function loadSummary() {
+  isSummaryLoading.value = true;
+  try {
+    const res = await $fetch<{ stores: StoreSummary[] }>(
+      "/api/reports/stores-summary",
+      { query: { month: summaryMonth.value } },
+    );
+    storeSummary.value = res.stores;
+  } catch {
+    storeSummary.value = [];
+  } finally {
+    isSummaryLoading.value = false;
+  }
+}
+
+watch(summaryMonth, () => loadSummary());
+
 onMounted(async () => {
   await me.refresh();
   if (me.user.value?.role === "STAFF") {
@@ -44,7 +71,7 @@ onMounted(async () => {
   }
   
   await storeContext.refresh();
-  await loadStores();
+  await Promise.all([loadStores(), loadSummary()]);
 });
 
 const filteredStores = computed(() => {
@@ -91,6 +118,26 @@ async function logout() {
         </template>
         <button class="mb-btn" @click="logout">Logout</button>
       </AppHeader>
+
+      <section class="mb-card card">
+        <div class="cardHead">
+          <div>
+            <h2 class="cardTitle">Perbandingan Toko</h2>
+            <p class="cardSub">
+              Ringkasan omzet, profit & transaksi semua toko.
+            </p>
+          </div>
+          <input
+            v-model="summaryMonth"
+            type="month"
+            class="mb-input monthPicker"
+          />
+        </div>
+        <div v-if="isSummaryLoading" class="chartLoading">
+          <MbSkeleton style="height: 160px" />
+        </div>
+        <StoreComparisonChart v-else :stores="storeSummary" />
+      </section>
 
       <section class="mb-card card">
       <div class="cardHead">
@@ -260,5 +307,14 @@ async function logout() {
   margin: 12px 0 0;
   color: var(--mb-danger);
   font-size: 12px;
+}
+
+.monthPicker {
+  max-width: 160px;
+  font-size: 13px;
+}
+
+.chartLoading {
+  margin-top: 12px;
 }
 </style>

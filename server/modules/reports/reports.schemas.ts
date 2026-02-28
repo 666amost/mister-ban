@@ -10,3 +10,7 @@ export const dailyReportQuerySchema = z.object({
 export const monthlyReportQuerySchema = z.object({
   month: monthSchema.optional(),
 });
+
+export const storesSummaryQuerySchema = z.object({
+  month: monthSchema.optional(),
+});
