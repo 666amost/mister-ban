@@ -9,7 +9,7 @@ type StoreSummary = {
   store_name: string;
   omzet: number;
   profit: number;
-  transactions: number;
+  qty_ban: number;
 };
 
 const me = useMe();

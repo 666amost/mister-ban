@@ -5,7 +5,7 @@ export type StoreSummaryRow = {
   store_name: string;
   omzet: number;
   profit: number;
-  transactions: number;
+  qty_ban: number;
 };
 
 export async function getStoresSummary({
@@ -26,7 +26,7 @@ export async function getStoresSummary({
         st.name AS store_name,
         COALESCE(agg.omzet, 0)::int AS omzet,
         COALESCE(agg.profit, 0)::int AS profit,
-        COALESCE(agg.transactions, 0)::int AS transactions
+        COALESCE(ban.qty_ban, 0)::int AS qty_ban
       FROM stores st
       LEFT JOIN LATERAL (
         SELECT
@@ -35,8 +35,7 @@ export async function getStoresSummary({
             s.total
             - COALESCE(c.cogs, 0)
             - COALESCE(e.expenses, 0)
-          )::int AS profit,
-          COUNT(*)::int AS transactions
+          )::int AS profit
         FROM sales s
         LEFT JOIN (
           SELECT sale_id, COALESCE(SUM(qty * unit_cost), 0)::int AS cogs
@@ -50,6 +49,36 @@ export async function getStoresSummary({
           AND s.sale_date >= $1::date
           AND s.sale_date < $2::date
       ) agg ON true
+      LEFT JOIN LATERAL (
+        SELECT COALESCE(SUM(CASE
+          WHEN (
+            LOWER(TRIM(b.name)) LIKE '%zeneos%'
+            OR LOWER(TRIM(b.name)) LIKE '%irc%'
+            OR LOWER(TRIM(b.name)) LIKE '%aspira%'
+            OR LOWER(TRIM(b.name)) LIKE '%fdr%'
+            OR LOWER(TRIM(b.name)) LIKE '%swallow%'
+            OR LOWER(TRIM(b.name)) LIKE '%honda%'
+            OR LOWER(TRIM(b.name)) LIKE '%kingland%'
+            OR LOWER(TRIM(b.name)) LIKE '%michelin%'
+            OR LOWER(TRIM(b.name)) LIKE '%pirelli%'
+            OR LOWER(TRIM(b.name)) LIKE '%corsa%'
+            OR (LOWER(TRIM(b.name)) LIKE '%maxxis%' AND LOWER(TRIM(b.name)) NOT LIKE '%tube%')
+            OR UPPER(TRIM(p.product_type)) = 'BAN'
+          )
+          AND LOWER(TRIM(b.name)) NOT IN ('ban dalam', 'oli', 'disc pad', 'disc', 'iml', 'cairan')
+          AND LOWER(TRIM(b.name)) NOT LIKE '%tube%'
+          AND LOWER(p.name) NOT LIKE '%ban dalam%'
+          AND LOWER(p.name) NOT LIKE '%tube%'
+          THEN si.qty ELSE 0
+        END), 0)::int AS qty_ban
+        FROM sales s2
+        JOIN sales_items si ON si.sale_id = s2.id
+        JOIN products p ON p.id = si.product_id
+        JOIN brands b ON b.id = p.brand_id
+        WHERE s2.store_id = st.id
+          AND s2.sale_date >= $1::date
+          AND s2.sale_date < $2::date
+      ) ban ON true
       ORDER BY st.name
     `,
     [start, endIso],

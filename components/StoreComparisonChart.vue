@@ -6,10 +6,10 @@ type StoreSummary = {
   store_name: string;
   omzet: number;
   profit: number;
-  transactions: number;
+  qty_ban: number;
 };
 
-type MetricKey = "omzet" | "profit" | "transactions";
+type MetricKey = "omzet" | "profit" | "qty_ban";
 type AnimPhase = "reset" | "grow";
 
 const props = defineProps<{ stores: StoreSummary[] }>();
@@ -20,7 +20,7 @@ const phase = ref<AnimPhase>("reset");
 const metrics: { key: MetricKey; label: string; color: string }[] = [
   { key: "omzet", label: "Omzet", color: "rgba(52, 199, 89, 0.85)" },
   { key: "profit", label: "Profit", color: "rgba(59, 130, 246, 0.85)" },
-  { key: "transactions", label: "Transaksi", color: "rgba(255, 159, 64, 0.85)" },
+  { key: "qty_ban", label: "QTY Ban", color: "rgba(255, 159, 64, 0.85)" },
 ];
 
 function formatRupiah(n: number): string {
@@ -30,7 +30,7 @@ function formatRupiah(n: number): string {
 }
 
 function formatValue(key: MetricKey, val: number): string {
-  if (key === "transactions") return `${val} trx`;
+  if (key === "qty_ban") return `${val} unit`;
   return `Rp ${formatRupiah(val)}`;
 }
 
@@ -46,7 +46,7 @@ const sortedStores = computed(() =>
 const totals = computed(() => ({
   omzet: props.stores.reduce((s, t) => s + t.omzet, 0),
   profit: props.stores.reduce((s, t) => s + t.profit, 0),
-  transactions: props.stores.reduce((s, t) => s + t.transactions, 0),
+  qty_ban: props.stores.reduce((s, t) => s + t.qty_ban, 0),
 }));
 
 const DEFAULT_COLOR = "rgba(52, 199, 89, 0.85)";
