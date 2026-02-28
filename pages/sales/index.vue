@@ -140,6 +140,7 @@ const isExpenseOnly = computed(() => expenseOnlyMode.value)
 
 const editOpen = ref(false)
 const editSaleId = ref<string | null>(null)
+const editSaleDate = ref("")
 const editPlateNo = ref("")
 const editPaymentType = ref<PaymentType>("CASH")
 const editIsSplitPayment = ref(false)
@@ -596,6 +597,7 @@ function closeSuccessSheet() {
 
 function openEditSale(s: SaleRow) {
   editSaleId.value = s.id
+  editSaleDate.value = s.sale_date
   editPlateNo.value = s.customer_plate_no
   const ps = (s.payments ?? []) as SalePaymentDetail[]
   if (ps.length > 1) {
@@ -642,6 +644,7 @@ function openEditSale(s: SaleRow) {
 function closeEditSale() {
   editOpen.value = false
   editSaleId.value = null
+  editSaleDate.value = ""
   editSaving.value = false
   editError.value = null
   editItems.value = []
@@ -884,6 +887,7 @@ async function saveEditSale() {
       method: "PATCH",
       body: {
         plate_no: plate,
+        sale_date: editSaleDate.value || undefined,
         ...(editIsSplitPayment.value ? { payments: editPayments.value } : { payment_type: editPaymentType.value }),
         discount: editDiscount.value,
         items: includeItems ? currentItems : undefined,
@@ -1550,6 +1554,16 @@ async function newTransaction() {
                 </div>
               </div>
 
+              <div class="formRow">
+                <label class="formField">
+                  <span class="formLabel">Tanggal Transaksi</span>
+                  <input
+                    v-model="editSaleDate"
+                    class="formInput"
+                    type="date"
+                  />
+                </label>
+              </div>
               <div class="formRow">
                 <label class="formField">
                   <span class="formLabel">Plat Nomor</span>

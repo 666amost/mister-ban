@@ -27,6 +27,7 @@ export default defineEventHandler(async (event) => {
     paymentType: body.payment_type,
     payments: body.payments,
     plateNo: body.plate_no,
+    saleDate: body.sale_date,
     discount: body.discount,
     serviceFee: body.service_fee,
     items: body.items,

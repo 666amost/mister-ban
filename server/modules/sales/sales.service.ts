@@ -687,6 +687,7 @@ export async function updateSaleFields({
   paymentType,
   payments,
   plateNo,
+  saleDate,
   discount,
   serviceFee,
   items,
@@ -699,6 +700,7 @@ export async function updateSaleFields({
   paymentType?: string;
   payments?: SalePaymentInput[];
   plateNo?: string;
+  saleDate?: string;
   discount?: number;
   serviceFee?: number;
   items?: SaleItemInput[];
@@ -928,12 +930,13 @@ export async function updateSaleFields({
             discount = $5,
             service_fee = $6,
             subtotal = $7,
-            total = $8
+            total = $8,
+            sale_date = COALESCE($9::date, sale_date)
         WHERE id = $1
           AND store_id = $2
         RETURNING id, sale_date, payment_type, customer_plate_no, subtotal, discount, service_fee, total, created_at
       `,
-      [saleId, storeId, paymentTypeSummary, plateNo ?? null, newDiscount, newServiceFee, newSubtotal, newTotal],
+      [saleId, storeId, paymentTypeSummary, plateNo ?? null, newDiscount, newServiceFee, newSubtotal, newTotal, saleDate ?? null],
     );
 
     const row = updated.rows[0];

@@ -142,6 +142,7 @@ const updateCustomItemSchema = z.object({
 
 export const updateSaleBodySchema = z
   .object({
+    sale_date: dateSchema.optional(),
     payment_type: z
       .enum(["CASH", "TRANSFER", "QRIS", "DEBIT", "CREDIT", "TEMPO"])
       .optional(),
