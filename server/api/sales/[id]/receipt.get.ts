@@ -26,6 +26,55 @@ function qty(value: number) {
   return Number.isInteger(value) ? String(value) : value.toLocaleString("id-ID");
 }
 
+function normalizeText(value: string) {
+  return value
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function productDisplayName(brand: string, name: string) {
+  const brandTrimmed = brand.trim();
+  const nameTrimmed = name.trim();
+
+  if (!brandTrimmed) return nameTrimmed;
+  if (!nameTrimmed) return brandTrimmed;
+
+  const brandNormalized = normalizeText(brandTrimmed);
+  const nameNormalized = normalizeText(nameTrimmed);
+  if (nameNormalized === brandNormalized || nameNormalized.startsWith(`${brandNormalized} `)) {
+    return nameTrimmed;
+  }
+
+  return `${brandTrimmed} ${nameTrimmed}`.replace(/\s+/g, " ").trim();
+}
+
+function productReceiptName(brand: string, name: string, size: string) {
+  const base = productDisplayName(brand, name);
+  const sizeTrimmed = size.trim();
+  if (!sizeTrimmed) return base;
+  const baseNormalized = normalizeText(base);
+  const sizeNormalized = normalizeText(sizeTrimmed);
+  if (sizeNormalized && baseNormalized.includes(sizeNormalized)) return base;
+  return `${base} ${sizeTrimmed}`.replace(/\s+/g, " ").trim();
+}
+
+function storeInstagram(storeName: string, city: string, address: string) {
+  const source = normalizeText(`${storeName} ${city} ${address}`);
+
+  if (source.includes("kedoya")) return "@dunia_ban_kedoya";
+  if (source.includes("meruya") || source.includes("karang tengah")) return "@misterbanmotor";
+  if (source.includes("gondrong")) return "@m2tc.misterban.gondrong";
+  if (source.includes("paninggilan")) return "@m2tc.gemilangban.paninggilan";
+  if (source.includes("ciledug")) return "@m2tc.gemilangban.ciledugindah";
+  if (source.includes("kembangan")) return "@dunia_ban_kembangan";
+
+  return "";
+}
+
 function formatSaleDate(value: unknown) {
   const formatter = new Intl.DateTimeFormat("id-ID", {
     timeZone: "Asia/Jakarta",
@@ -67,6 +116,8 @@ export default defineEventHandler(async (event) => {
 
   const store = await getStoreById(getPool(), storeId);
   const storeName = store?.name?.trim() || "Mister Ban";
+  const storeCity = store?.city?.trim() || "";
+  const storeAddress = store?.address?.trim() || "";
   const storeLines = [store?.address?.trim(), store?.city?.trim()]
     .filter((v): v is string => Boolean(v && v.length > 0))
     .filter((v, i, arr) => arr.indexOf(v) === i);
@@ -107,19 +158,19 @@ export default defineEventHandler(async (event) => {
   const payments = (detail.payments ?? []) as PaymentRow[];
 
   const itemsHtml = items
-    .map(
-      (i) => `
+    .map((i) => {
+      const itemName = escapeHtml(productReceiptName(i.brand, i.name, i.size));
+      return `
         <tr>
           <td class="name">
-            <div class="sku">${escapeHtml(i.sku)}</div>
-            <div class="desc">${escapeHtml(`${i.brand} ${i.name} ${i.size}`)}</div>
+            <div class="desc">${itemName}</div>
           </td>
           <td class="qty">${qty(i.qty)}</td>
           <td class="price">${rupiah(i.sell_price)}</td>
           <td class="total">${rupiah(i.line_total)}</td>
         </tr>
-      `,
-    )
+      `;
+    })
     .join("");
 
   const customItemsHtml = customItems
@@ -127,8 +178,7 @@ export default defineEventHandler(async (event) => {
       (ci) => `
         <tr>
           <td class="name">
-            <div class="sku">${escapeHtml(ci.item_name)}</div>
-            <div class="desc">Custom</div>
+            <div class="desc">${escapeHtml(ci.item_name)}</div>
           </td>
           <td class="qty">${qty(ci.qty)}</td>
           <td class="price">${rupiah(ci.price)}</td>
@@ -148,6 +198,8 @@ export default defineEventHandler(async (event) => {
           )
           .join("")}`
       : `<div>Pembayaran: ${escapeHtml(String(payments[0]?.payment_type ?? detail.sale.payment_type))}</div>`;
+  const instagram = storeInstagram(storeName, storeCity, storeAddress);
+  const instagramHtml = instagram ? `<div>IG: ${escapeHtml(instagram)}</div>` : "";
 
   return `
     <!doctype html>
@@ -174,11 +226,11 @@ export default defineEventHandler(async (event) => {
           th.price, td.price { width: 10ch; }
           th.total, td.total { width: 10ch; }
           td.name { overflow-wrap: anywhere; word-break: break-word; }
-          .sku { font-weight: 700; }
-          .desc { opacity: 0.85; }
+          .desc { font-weight: 700; }
           .sum { border-top: 1px dashed #000; margin-top: 6px; padding-top: 6px; display: flex; justify-content: space-between; font-size: 12px; }
           .adjustment { display: flex; justify-content: space-between; font-size: 11px; margin-top: 4px; }
           .adjustment.discount { color: #c00; }
+          .footer { margin-top: 10px; font-size: 11px; text-align: center; line-height: 1.6; }
           @media print { .no-print { display: none; } }
         </style>
       </head>
@@ -209,6 +261,11 @@ export default defineEventHandler(async (event) => {
           <div class="sum">
             <div>Total</div>
             <div>${rupiah(detail.sale.total)}</div>
+          </div>
+          <div class="footer">
+            <div>Terima kasih</div>
+            <div>Barang yang sudah dibeli tidak dapat dikembalikan</div>
+            ${instagramHtml}
           </div>
           <div class="no-print" style="margin-top:10px">
             <button onclick="mbPrint()">Cetak</button>
