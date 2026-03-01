@@ -79,6 +79,9 @@ type SalesDailySummary = {
   sisa_omzet: number
   non_tunai: number
   tunai: number
+  qris: number
+  debit: number
+  transfer: number
 }
 
 const defaultDailySummary = (): SalesDailySummary => ({
@@ -88,6 +91,9 @@ const defaultDailySummary = (): SalesDailySummary => ({
   sisa_omzet: 0,
   non_tunai: 0,
   tunai: 0,
+  qris: 0,
+  debit: 0,
+  transfer: 0,
 })
 
 const me = useMe()
@@ -1302,12 +1308,20 @@ async function newTransaction() {
             <span class="dailySumValue">Rp {{ rupiah(dailySummary.sisa_omzet) }}</span>
           </div>
           <div class="dailySumItem">
-            <span class="dailySumLabel">Non Tunai</span>
-            <span class="dailySumValue">Rp {{ rupiah(dailySummary.non_tunai) }}</span>
-          </div>
-          <div class="dailySumItem">
             <span class="dailySumLabel">Tunai</span>
             <span class="dailySumValue">Rp {{ rupiah(dailySummary.tunai) }}</span>
+          </div>
+          <div class="dailySumItem">
+            <span class="dailySumLabel">QRIS</span>
+            <span class="dailySumValue">Rp {{ rupiah(dailySummary.qris) }}</span>
+          </div>
+          <div class="dailySumItem">
+            <span class="dailySumLabel">Debit</span>
+            <span class="dailySumValue">Rp {{ rupiah(dailySummary.debit) }}</span>
+          </div>
+          <div class="dailySumItem">
+            <span class="dailySumLabel">Transfer</span>
+            <span class="dailySumValue">Rp {{ rupiah(dailySummary.transfer) }}</span>
           </div>
         </div>
       </div>
@@ -1343,6 +1357,12 @@ async function newTransaction() {
               <span class="salePayment">{{ paymentLabel(s) }}</span>
               <span v-if="isExpenseOnlySale(s)" class="saleExpenseOnly">Pengeluaran</span>
               <span v-if="s.discount > 0" class="saleDiscount">-{{ rupiah(s.discount) }}</span>
+            </div>
+            <div v-if="s.expenses && s.expenses.length" class="saleExpensesDetail">
+              <div v-for="(exp, ei) in s.expenses" :key="ei" class="saleExpenseDetailRow">
+                <span class="saleExpenseDetailName">{{ exp.item_name }}</span>
+                <span class="saleExpenseDetailAmount">-Rp {{ rupiah(exp.amount) }}</span>
+              </div>
             </div>
           </div>
           <div class="saleRight">
@@ -3189,6 +3209,35 @@ async function newTransaction() {
 .saleService {
   color: var(--mb-accent);
   font-size: 11px;
+}
+
+.saleExpensesDetail {
+  margin-top: 6px;
+  display: grid;
+  gap: 2px;
+}
+
+.saleExpenseDetailRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--mb-muted);
+}
+
+.saleExpenseDetailName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.saleExpenseDetailAmount {
+  white-space: nowrap;
+  color: #ff3b30;
+  font-weight: 600;
 }
 
 .editItemsList {
