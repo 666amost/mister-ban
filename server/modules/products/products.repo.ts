@@ -82,13 +82,19 @@ export async function listMasterProducts(
     q,
     limit,
     offset,
+    brandId,
+    productType,
   }: {
     q?: string;
     limit: number;
     offset: number;
+    brandId?: string;
+    productType?: string;
   },
 ): Promise<MasterProductRow[]> {
   const term = q?.trim() ? q.trim() : null;
+  const filterBrandId = brandId ?? null;
+  const filterType = productType?.trim() || null;
   const { rows } = await db.query(
     `
       SELECT
@@ -102,6 +108,8 @@ export async function listMasterProducts(
       FROM products p
       INNER JOIN brands b ON b.id = p.brand_id
       WHERE p.status = 'active'
+        AND ($2::uuid IS NULL OR p.brand_id = $2::uuid)
+        AND ($3::text IS NULL OR p.product_type = $3)
         AND (
           $1::text IS NULL
           OR p.sku ILIKE '%' || $1 || '%'
@@ -115,13 +123,42 @@ export async function listMasterProducts(
         LOWER(TRIM(b.name)),
         CASE WHEN p.size ~ '^[0-9]+' THEN CAST(SUBSTRING(p.size FROM '^([0-9]+)') AS INTEGER) ELSE 999 END,
         p.size, p.name, p.sku
-      LIMIT $2
-      OFFSET $3
+      LIMIT $4
+      OFFSET $5
     `,
-    [term, limit, offset],
+    [term, filterBrandId, filterType, limit, offset],
   );
 
   return rows as MasterProductRow[];
+}
+
+export async function getMasterBrands(db: DbConn): Promise<{ id: string; name: string }[]> {
+  const { rows } = await db.query<{ id: string; name: string }>(
+    `
+      SELECT DISTINCT b.id, b.name
+      FROM products p
+      INNER JOIN brands b ON b.id = p.brand_id
+      WHERE p.status = 'active'
+      ORDER BY b.name
+    `,
+  );
+  return rows;
+}
+
+export async function getMasterTypes(db: DbConn, brandId: string): Promise<{ product_type: string }[]> {
+  const { rows } = await db.query<{ product_type: string }>(
+    `
+      SELECT DISTINCT product_type
+      FROM products
+      WHERE brand_id = $1
+        AND status = 'active'
+        AND product_type IS NOT NULL
+        AND TRIM(product_type) != ''
+      ORDER BY product_type
+    `,
+    [brandId],
+  );
+  return rows;
 }
 
 export async function upsertBrand(db: DbConn, name: string) {

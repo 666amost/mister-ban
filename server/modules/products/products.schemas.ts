@@ -14,6 +14,8 @@ export const productListQuerySchema = z.object({
   q: optionalNonEmptyString,
   limit: z.coerce.number().int().min(1).max(200).optional(),
   offset: z.coerce.number().int().min(0).optional(),
+  brand_id: optionalNonEmptyString,
+  product_type: optionalNonEmptyString,
 });
 
 export const createProductBodySchema = z.object({

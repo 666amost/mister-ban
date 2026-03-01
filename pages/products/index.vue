@@ -142,6 +142,12 @@ const attachUnitCost = ref(0)
 const attachLoading = ref(false)
 const attachError = ref<string | null>(null)
 
+const masterBrands = ref<{ id: string; name: string }[]>([])
+const masterBrandId = ref("")
+const masterTypes = ref<string[]>([])
+const masterType = ref("")
+const masterFiltersLoading = ref(false)
+
 const editingId = ref<string | null>(null)
 const editSellPrice = ref(0)
 const editLoading = ref(false)
@@ -241,7 +247,7 @@ function cancelPriceEditMode() {
 }
 
 function syncPriceDraft(productId: string) {
-  const rawValue = priceDrafts.value[productId]
+  const rawValue = priceDrafts.value[productId] ?? 0
   const normalized = Number.isFinite(rawValue) ? Math.max(0, Math.trunc(rawValue)) : 0
   priceDrafts.value[productId] = normalized
   const original = items.value.find((i) => i.product_id === productId)?.sell_price ?? 0
@@ -381,13 +387,53 @@ async function createProduct() {
   }
 }
 
+async function loadMasterFilters() {
+  masterFiltersLoading.value = true
+  masterError.value = null
+  try {
+    const res = await $fetch<{ brands: { id: string; name: string }[] }>("/api/products/master/filters")
+    masterBrands.value = res.brands
+  } catch (error) {
+    masterError.value = statusMessage(error) ?? "Gagal memuat daftar brand"
+  } finally {
+    masterFiltersLoading.value = false
+  }
+}
+
+async function onBrandChange() {
+  masterType.value = ""
+  masterTypes.value = []
+  masterItems.value = []
+  masterRan.value = false
+  selectedMaster.value = null
+  attachError.value = null
+
+  if (!masterBrandId.value) return
+
+  try {
+    const res = await $fetch<{ brands: { id: string; name: string }[]; types: { product_type: string }[] }>(
+      "/api/products/master/filters",
+      { query: { brand_id: masterBrandId.value } },
+    )
+    masterTypes.value = res.types.map((t) => t.product_type)
+  } catch (error) {
+    masterError.value = statusMessage(error) ?? "Gagal memuat tipe produk"
+  }
+}
+
 async function searchMaster() {
+  if (!masterBrandId.value) return
   masterLoading.value = true
   masterError.value = null
   attachError.value = null
   try {
     const res = await $fetch<{ items: MasterProductRow[] }>("/api/products/master", {
-      query: { q: masterQ.value, limit: 20 },
+      query: {
+        brand_id: masterBrandId.value,
+        product_type: masterType.value || undefined,
+        q: masterQ.value || undefined,
+        limit: 100,
+      },
     })
     masterItems.value = res.items
   } catch (error) {
@@ -397,6 +443,22 @@ async function searchMaster() {
     masterRan.value = true
   }
 }
+
+watch(masterType, () => {
+  if (masterBrandId.value) {
+    selectedMaster.value = null
+    searchMaster()
+  }
+})
+
+watch(
+  [showAdd, addTab],
+  ([show, tab]) => {
+    if (show && tab === "master" && masterBrands.value.length === 0) {
+      loadMasterFilters()
+    }
+  },
+)
 
 function selectMaster(p: MasterProductRow) {
   selectedMaster.value = p
@@ -431,6 +493,10 @@ async function attachSelected() {
     }
     await load({ reset: true })
     selectedMaster.value = null
+    masterBrandId.value = ""
+    masterType.value = ""
+    masterItems.value = []
+    masterRan.value = false
   } catch (error) {
     attachError.value = statusMessage(error) ?? "Gagal menambahkan produk ke toko"
   } finally {
@@ -640,18 +706,35 @@ onMounted(async () => {
       </form>
 
       <div v-else class="master">
-        <div class="row">
-          <label class="field">
-            <span>Cari master produk</span>
-            <input v-model="masterQ" class="mb-input" placeholder="SKU / brand / nama..." @keydown.enter.prevent="searchMaster" />
-          </label>
-          <button class="mb-btn" :disabled="masterLoading" @click="searchMaster">
-            {{ masterLoading ? "Loading..." : "Search" }}
-          </button>
-        </div>
-
         <p v-if="masterError" class="error">{{ masterError }}</p>
         <p v-if="attachError" class="error">{{ attachError }}</p>
+
+        <div class="masterFilters">
+          <label class="field">
+            <span>Brand</span>
+            <select v-model="masterBrandId" class="mb-input" :disabled="masterFiltersLoading" @change="onBrandChange">
+              <option value="">{{ masterFiltersLoading ? "Memuat..." : "-- Pilih Brand --" }}</option>
+              <option v-for="b in masterBrands" :key="b.id" :value="b.id">{{ b.name }}</option>
+            </select>
+          </label>
+
+          <label v-if="masterBrandId" class="field">
+            <span>Tipe Produk</span>
+            <select v-model="masterType" class="mb-input">
+              <option value="">-- Semua Tipe --</option>
+              <option v-for="t in masterTypes" :key="t" :value="t">{{ t }}</option>
+            </select>
+          </label>
+
+          <label v-if="masterBrandId" class="field">
+            <span>Filter Size/Nama (opsional)</span>
+            <input v-model="masterQ" class="mb-input" placeholder="Contoh: 110/70-12" @keydown.enter.prevent="searchMaster" />
+          </label>
+
+          <button v-if="masterBrandId" class="mb-btn" :disabled="masterLoading" @click="searchMaster">
+            {{ masterLoading ? "Loading..." : "Cari" }}
+          </button>
+        </div>
 
         <div v-if="masterItems.length" class="masterGrid">
           <button
@@ -667,6 +750,7 @@ onMounted(async () => {
           </button>
         </div>
         <div v-else-if="masterRan && !masterLoading" class="empty">Tidak ada hasil.</div>
+        <div v-else-if="!masterBrandId && !masterFiltersLoading" class="empty">Pilih brand terlebih dahulu.</div>
 
         <div v-if="selectedMaster" class="attachCard">
           <div class="attachTitle">Tambahkan ke toko</div>
@@ -926,6 +1010,16 @@ onMounted(async () => {
 }
 .master {
   margin-top: 14px;
+}
+.masterFilters {
+  display: flex;
+  gap: 12px;
+  align-items: end;
+  flex-wrap: wrap;
+}
+.masterFilters .field {
+  flex: 1;
+  min-width: 200px;
 }
 .masterGrid {
   margin-top: 12px;

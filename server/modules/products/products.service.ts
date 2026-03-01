@@ -5,6 +5,8 @@ import { ensureBalances } from "../inventory/inventory.repo";
 import {
   attachProductToStore,
   createProduct,
+  getMasterBrands,
+  getMasterTypes,
   listStoreProducts,
   listMasterProducts as listMasterProductsRepo,
   setStoreProductActive,
@@ -37,10 +39,14 @@ export async function listMasterProducts({
   q,
   limit,
   offset,
+  brandId,
+  productType,
 }: {
   q?: string;
   limit?: number;
   offset?: number;
+  brandId?: string;
+  productType?: string;
 }) {
   const safeLimit = limit ?? 50;
   const safeOffset = offset ?? 0;
@@ -48,7 +54,16 @@ export async function listMasterProducts({
     q,
     limit: safeLimit,
     offset: safeOffset,
+    brandId,
+    productType,
   });
+}
+
+export async function getMasterFilters(brandId?: string) {
+  const pool = getPool();
+  const brands = await getMasterBrands(pool);
+  const types = brandId ? await getMasterTypes(pool, brandId) : [];
+  return { brands, types };
 }
 
 export async function createProductForStore({

@@ -13,6 +13,8 @@ export default defineEventHandler(async (event) => {
     q: query.q,
     limit: query.limit,
     offset: query.offset,
+    brandId: query.brand_id,
+    productType: query.product_type,
   });
 
   return { items, limit: query.limit ?? 50, offset: query.offset ?? 0 };
