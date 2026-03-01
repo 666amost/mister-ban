@@ -148,6 +148,19 @@ const masterTypes = ref<string[]>([])
 const masterType = ref("")
 const masterFiltersLoading = ref(false)
 
+const showCreateDerived = ref(false)
+const derivedForm = reactive({
+  size: "",
+  sell_price: 0,
+  initial_qty: 0,
+  initial_unit_cost: 0,
+  sku: "",
+})
+const derivedLoading = ref(false)
+const derivedError = ref<string | null>(null)
+
+const createTypeSuggestions = ref<string[]>([])
+
 const editingId = ref<string | null>(null)
 const editSellPrice = ref(0)
 const editLoading = ref(false)
@@ -447,15 +460,36 @@ async function searchMaster() {
 watch(masterType, () => {
   if (masterBrandId.value) {
     selectedMaster.value = null
+    showCreateDerived.value = false
     searchMaster()
   }
 })
 
 watch(
   [showAdd, addTab],
-  ([show, tab]) => {
-    if (show && tab === "master" && masterBrands.value.length === 0) {
+  ([show]) => {
+    if (show && masterBrands.value.length === 0) {
       loadMasterFilters()
+    }
+  },
+)
+
+watch(
+  () => createForm.brand,
+  async (val) => {
+    const matched = masterBrands.value.find((b) => b.name.toLowerCase() === val.trim().toLowerCase())
+    if (!matched) {
+      createTypeSuggestions.value = []
+      return
+    }
+    try {
+      const res = await $fetch<{ brands: { id: string; name: string }[]; types: { product_type: string }[] }>(
+        "/api/products/master/filters",
+        { query: { brand_id: matched.id } },
+      )
+      createTypeSuggestions.value = res.types.map((t) => t.product_type)
+    } catch {
+      createTypeSuggestions.value = []
     }
   },
 )
@@ -466,6 +500,55 @@ function selectMaster(p: MasterProductRow) {
   attachInitialQty.value = 0
   attachUnitCost.value = 0
   attachError.value = null
+  showCreateDerived.value = false
+  derivedError.value = null
+}
+
+function toggleCreateDerived() {
+  showCreateDerived.value = !showCreateDerived.value
+  selectedMaster.value = null
+  derivedError.value = null
+  derivedForm.size = ""
+  derivedForm.sell_price = 0
+  derivedForm.initial_qty = 0
+  derivedForm.initial_unit_cost = 0
+  derivedForm.sku = ""
+}
+
+async function createDerived() {
+  const brand = masterBrands.value.find((b) => b.id === masterBrandId.value)
+  if (!brand || !masterType.value) return
+  derivedLoading.value = true
+  derivedError.value = null
+  try {
+    const sku = derivedForm.sku.trim() || generateSku({ brand: brand.name, name: masterType.value, size: derivedForm.size })
+    await $fetch("/api/products", {
+      method: "POST",
+      body: {
+        brand: brand.name,
+        product_type: masterType.value,
+        name: masterType.value,
+        size: derivedForm.size.trim(),
+        sku,
+        sell_price: derivedForm.sell_price,
+        initial_qty: derivedForm.initial_qty,
+        initial_unit_cost: derivedForm.initial_unit_cost,
+        is_active: true,
+      },
+    })
+    showCreateDerived.value = false
+    derivedForm.size = ""
+    derivedForm.sell_price = 0
+    derivedForm.initial_qty = 0
+    derivedForm.initial_unit_cost = 0
+    derivedForm.sku = ""
+    await searchMaster()
+    await load({ reset: true })
+  } catch (error) {
+    derivedError.value = statusMessage(error) ?? "Gagal membuat SKU baru"
+  } finally {
+    derivedLoading.value = false
+  }
 }
 
 async function attachSelected() {
@@ -669,11 +752,21 @@ onMounted(async () => {
       <form v-if="addTab === 'new'" class="form" @submit.prevent="createProduct">
         <label class="field">
           <span>Brand</span>
-          <input v-model="createForm.brand" class="mb-input" placeholder="Contoh: MAXXIS" required />
+          <input v-model="createForm.brand" list="brandSuggestions" class="mb-input" placeholder="Contoh: MAXXIS" required />
+          <datalist id="brandSuggestions">
+            <option v-for="b in masterBrands" :key="b.id" :value="b.name" />
+          </datalist>
         </label>
         <label class="field">
-          <span>Nama</span>
-          <input v-model="createForm.name" class="mb-input" placeholder="Contoh: Victra" required />
+          <span>Tipe Produk</span>
+          <input v-model="createForm.product_type" list="typeSuggestions" class="mb-input" placeholder="Contoh: M922, TUBETYPE" required />
+          <datalist id="typeSuggestions">
+            <option v-for="t in createTypeSuggestions" :key="t" :value="t" />
+          </datalist>
+        </label>
+        <label class="field">
+          <span>Nama (model)</span>
+          <input v-model="createForm.name" class="mb-input" placeholder="Contoh: Victra S98 CT" required />
         </label>
         <label class="field">
           <span>Size</span>
@@ -751,6 +844,47 @@ onMounted(async () => {
         </div>
         <div v-else-if="masterRan && !masterLoading" class="empty">Tidak ada hasil.</div>
         <div v-else-if="!masterBrandId && !masterFiltersLoading" class="empty">Pilih brand terlebih dahulu.</div>
+
+        <div v-if="masterBrandId && masterType" class="derivedBar">
+          <button type="button" class="mb-btn" @click="toggleCreateDerived">
+            {{ showCreateDerived ? "Batal" : "+ Buat Ukuran Baru" }}
+          </button>
+          <span class="derivedHint">Buat SKU baru untuk {{ masterBrands.find(b => b.id === masterBrandId)?.name }} — {{ masterType }}</span>
+        </div>
+
+        <div v-if="showCreateDerived && masterBrandId && masterType" class="attachCard">
+          <div class="attachTitle">Buat SKU Baru</div>
+          <div class="attachSub">Brand: {{ masterBrands.find(b => b.id === masterBrandId)?.name }} • Tipe: {{ masterType }}</div>
+          <div class="attachForm">
+            <label class="field">
+              <span>Size <span class="required">*</span></span>
+              <input v-model="derivedForm.size" class="mb-input" placeholder="Contoh: 110/70-12" required />
+            </label>
+            <label class="field">
+              <span>Sell Price (Rp)</span>
+              <input v-model.number="derivedForm.sell_price" class="mb-input" type="number" min="0" />
+            </label>
+            <label class="field">
+              <span>Stok Awal</span>
+              <input v-model.number="derivedForm.initial_qty" class="mb-input" type="number" min="0" />
+            </label>
+            <label class="field">
+              <span title="Harga beli/modal per unit">Harga Beli (Rp)</span>
+              <input v-model.number="derivedForm.initial_unit_cost" class="mb-input" type="number" min="0" />
+            </label>
+            <label class="field">
+              <span>SKU (optional)</span>
+              <input v-model="derivedForm.sku" class="mb-input" placeholder="Kosongkan untuk auto-generate" />
+            </label>
+          </div>
+          <div class="actions">
+            <button class="mb-btnPrimary" type="button" :disabled="derivedLoading || !derivedForm.size.trim()" @click="createDerived">
+              {{ derivedLoading ? "Menyimpan..." : "Simpan SKU Baru" }}
+            </button>
+            <button class="mb-btn" type="button" :disabled="derivedLoading" @click="toggleCreateDerived">Batal</button>
+          </div>
+          <p v-if="derivedError" class="error">{{ derivedError }}</p>
+        </div>
 
         <div v-if="selectedMaster" class="attachCard">
           <div class="attachTitle">Tambahkan ke toko</div>
@@ -1020,6 +1154,20 @@ onMounted(async () => {
 .masterFilters .field {
   flex: 1;
   min-width: 200px;
+}
+.derivedBar {
+  margin-top: 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.derivedHint {
+  font-size: 12px;
+  color: var(--mb-muted);
+}
+.required {
+  color: var(--mb-danger);
 }
 .masterGrid {
   margin-top: 12px;
