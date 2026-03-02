@@ -76,6 +76,17 @@ function formatPercent(part: number, total: number) {
   })}%`
 }
 
+function canonicalBrandLabel(raw: string) {
+  const brand = raw.trim()
+  if (!brand) return "Lainnya"
+
+  const lower = brand.toLowerCase()
+  if (lower.startsWith("maxxis")) return "Maxxis"
+  if (lower === "victra" || lower.startsWith("victra ")) return "Maxxis"
+
+  return brand
+}
+
 const avgTicket = computed(() => {
   const omzet = report.value?.omzet ?? 0
   const transactions = report.value?.transactions ?? 0
@@ -101,8 +112,23 @@ const paymentTotal = computed(() => {
   return cash + nonCash
 })
 
-const totalBrandQty = computed(() => {
+const groupedBrandTransactions = computed(() => {
   const brands = report.value?.brand_transactions ?? []
+  const grouped = new Map<string, number>()
+  
+  for (const item of brands) {
+    const canonical = canonicalBrandLabel(item.brand)
+    const current = grouped.get(canonical) ?? 0
+    grouped.set(canonical, current + item.qty)
+  }
+  
+  return Array.from(grouped.entries())
+    .map(([brand, qty]) => ({ brand, qty }))
+    .sort((a, b) => b.qty - a.qty)
+})
+
+const totalBrandQty = computed(() => {
+  const brands = groupedBrandTransactions.value
   const regularQty = brands.reduce((sum, item) => sum + item.qty, 0)
   const oliGardanQty = report.value?.oli_gardan_qty ?? 0
   return regularQty + oliGardanQty
@@ -226,11 +252,11 @@ await load()
         </div>
       </div>
 
-      <div v-if="report?.brand_transactions?.length" class="tableWrap">
+      <div v-if="groupedBrandTransactions.length" class="tableWrap">
         <div class="sectionTitle">Transaksi per Merk</div>
         <div class="summary brandSummary">
           <div
-            v-for="(item, index) in report.brand_transactions"
+            v-for="(item, index) in groupedBrandTransactions"
             :key="item.brand"
             class="sumItem brandItem"
           >
@@ -241,10 +267,10 @@ await load()
             <div class="value qtyValue monoNumeric">{{ item.qty }} pcs</div>
             <div class="meta">{{ brandShare(item.qty) }} dari total transaksi merk</div>
           </div>
-          <div v-if="report.oli_gardan_qty > 0" class="sumItem brandItem">
+          <div v-if="report && report.oli_gardan_qty > 0" class="sumItem brandItem">
             <div class="labelRow">
               <div class="label">Oli Gardan</div>
-              <span class="rankBadge">#{{ report.brand_transactions.length + 1 }}</span>
+              <span class="rankBadge">#{{ groupedBrandTransactions.length + 1 }}</span>
             </div>
             <div class="value qtyValue monoNumeric">{{ report.oli_gardan_qty }} pcs</div>
             <div class="meta">{{ brandShare(report.oli_gardan_qty) }} dari total transaksi merk</div>
