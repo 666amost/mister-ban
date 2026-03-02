@@ -341,6 +341,7 @@ export type SalesDailySummary = {
   qris: number;
   debit: number;
   transfer: number;
+  credit: number;
 };
 
 export async function getSalesQtySummary({
@@ -467,7 +468,8 @@ export async function getSalesDailySummary({
           COALESCE(SUM(CASE WHEN payment_type <> 'CASH' THEN amount ELSE 0 END), 0)::int AS non_tunai,
           COALESCE(SUM(CASE WHEN payment_type = 'QRIS' THEN amount ELSE 0 END), 0)::int AS qris,
           COALESCE(SUM(CASE WHEN payment_type = 'DEBIT' THEN amount ELSE 0 END), 0)::int AS debit,
-          COALESCE(SUM(CASE WHEN payment_type = 'TRANSFER' THEN amount ELSE 0 END), 0)::int AS transfer
+          COALESCE(SUM(CASE WHEN payment_type = 'TRANSFER' THEN amount ELSE 0 END), 0)::int AS transfer,
+          COALESCE(SUM(CASE WHEN payment_type = 'CREDIT' THEN amount ELSE 0 END), 0)::int AS credit
         FROM payment_rows
       )
       SELECT
@@ -479,7 +481,8 @@ export async function getSalesDailySummary({
         payment.tunai,
         payment.qris,
         payment.debit,
-        payment.transfer
+        payment.transfer,
+        payment.credit
       FROM base, expense, payment
     `,
     params,
@@ -496,6 +499,7 @@ export async function getSalesDailySummary({
       qris: 0,
       debit: 0,
       transfer: 0,
+      credit: 0,
     }
   );
 }

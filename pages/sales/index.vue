@@ -82,6 +82,7 @@ type SalesDailySummary = {
   qris: number
   debit: number
   transfer: number
+  credit: number
 }
 
 const defaultDailySummary = (): SalesDailySummary => ({
@@ -94,6 +95,7 @@ const defaultDailySummary = (): SalesDailySummary => ({
   qris: 0,
   debit: 0,
   transfer: 0,
+  credit: 0,
 })
 
 const me = useMe()
@@ -1322,6 +1324,10 @@ async function newTransaction() {
           <div class="dailySumItem">
             <span class="dailySumLabel">Transfer</span>
             <span class="dailySumValue">Rp {{ rupiah(dailySummary.transfer) }}</span>
+          </div>
+          <div class="dailySumItem">
+            <span class="dailySumLabel">Kredit</span>
+            <span class="dailySumValue">Rp {{ rupiah(dailySummary.credit) }}</span>
           </div>
         </div>
       </div>
