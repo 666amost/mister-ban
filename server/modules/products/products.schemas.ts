@@ -22,7 +22,10 @@ export const createProductBodySchema = z.object({
   brand: z.string().trim().min(1),
   product_type: z.string().trim().min(1),
   name: z.string().trim().min(1),
-  size: z.string().trim().min(1),
+  size: z.preprocess(
+    (v) => (typeof v === "string" && v.trim().length === 0 ? "-" : v),
+    z.string().trim().min(1).default("-"),
+  ),
   sku: z.string().trim().min(1),
   sell_price: z.coerce.number().int().min(0),
   initial_qty: z.coerce.number().int().min(0).default(0),

@@ -5,6 +5,7 @@ import { ensureBalances } from "../inventory/inventory.repo";
 import {
   attachProductToStore,
   createProduct,
+  deactivateProductsByBrandAndType,
   getMasterBrands,
   getMasterTypes,
   listStoreProducts,
@@ -225,4 +226,17 @@ export async function updateMasterProductForAdmin({
   );
   if (!updated) throw badRequest("Produk tidak ditemukan");
   return { item: updated };
+}
+
+export async function deleteProductTypeForAdmin({
+  brandId,
+  productType,
+}: {
+  brandId: string;
+  productType: string;
+}) {
+  const count = await tx(async (client) =>
+    deactivateProductsByBrandAndType(client, brandId, productType),
+  );
+  return { deleted: count };
 }

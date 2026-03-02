@@ -118,7 +118,7 @@ const addTab = ref<"new" | "master">("new")
 
 const createForm = reactive({
   brand: "",
-  product_type: "BAN",
+  product_type: "",
   name: "",
   size: "",
   sku: "",
@@ -142,6 +142,11 @@ const attachUnitCost = ref(0)
 const attachLoading = ref(false)
 const attachError = ref<string | null>(null)
 
+const masterNewTypeInput = ref("")
+const confirmDeleteType = ref(false)
+const deleteTypeLoading = ref(false)
+const deleteTypeError = ref<string | null>(null)
+
 const masterBrands = ref<{ id: string; name: string }[]>([])
 const masterBrandId = ref("")
 const masterTypes = ref<string[]>([])
@@ -150,6 +155,7 @@ const masterFiltersLoading = ref(false)
 
 const showCreateDerived = ref(false)
 const derivedForm = reactive({
+  name: "",
   size: "",
   sell_price: 0,
   initial_qty: 0,
@@ -160,6 +166,42 @@ const derivedLoading = ref(false)
 const derivedError = ref<string | null>(null)
 
 const createTypeSuggestions = ref<string[]>([])
+const createTypeCustom = ref("")
+
+const effectiveMasterType = computed(() =>
+  masterType.value === "__new__" ? masterNewTypeInput.value.trim() : masterType.value,
+)
+
+const existingStoreBrands = computed(() => {
+  const seen = new Map<string, string>()
+  for (const row of items.value) {
+    const b = row.brand?.trim()
+    if (b) {
+      const key = b.toLowerCase()
+      if (!seen.has(key)) seen.set(key, b)
+    }
+  }
+  return Array.from(seen.values()).sort((a, b) => a.localeCompare(b, "id-ID", { sensitivity: "base" }))
+})
+
+const allBrandSuggestions = computed(() => {
+  const seen = new Map<string, string>()
+  for (const b of existingStoreBrands.value) {
+    seen.set(b.toLowerCase(), b)
+  }
+  for (const b of masterBrands.value) {
+    const key = b.name.toLowerCase()
+    if (!seen.has(key)) seen.set(key, b.name)
+  }
+  return Array.from(seen.values()).sort((a, b) => a.localeCompare(b, "id-ID", { sensitivity: "base" }))
+})
+
+function resolveExistingBrand(input: string): string {
+  const trimmed = input.trim()
+  const lower = trimmed.toLowerCase()
+  const match = existingStoreBrands.value.find((b) => b.toLowerCase() === lower)
+  return match ?? trimmed
+}
 
 const editingId = ref<string | null>(null)
 const editSellPrice = ref(0)
@@ -175,6 +217,19 @@ const masterEditError = ref<string | null>(null)
 
 const removingId = ref<string | null>(null)
 const removeError = ref<string | null>(null)
+const confirmDeleteId = ref<string | null>(null)
+
+type Toast = { id: number; message: string; type: "success" | "error" }
+const toasts = ref<Toast[]>([])
+let toastSeq = 0
+
+function showToast(message: string, type: Toast["type"] = "success") {
+  const id = ++toastSeq
+  toasts.value.push({ id, message, type })
+  setTimeout(() => {
+    toasts.value = toasts.value.filter((t) => t.id !== id)
+  }, 3000)
+}
 
 const stockingId = ref<string | null>(null)
 const stockQtyDelta = ref(0)
@@ -359,7 +414,7 @@ watch(q, () => {
 
 function resetCreateForm() {
   createForm.brand = ""
-  createForm.product_type = "BAN"
+  createForm.product_type = ""
   createForm.name = ""
   createForm.size = ""
   createForm.sku = ""
@@ -367,20 +422,30 @@ function resetCreateForm() {
   createForm.initial_qty = 0
   createForm.initial_unit_cost = 0
   createForm.is_active = true
+  createTypeCustom.value = ""
 }
 
 async function createProduct() {
   createLoading.value = true
   createError.value = null
   try {
+    const resolvedType = createForm.product_type === "__custom__"
+      ? createTypeCustom.value.trim()
+      : createForm.product_type
+    if (!resolvedType) {
+      createError.value = "Tipe Produk wajib diisi"
+      createLoading.value = false
+      return
+    }
+    const resolvedBrand = resolveExistingBrand(createForm.brand)
     const sku = createForm.sku.trim().length
       ? createForm.sku.trim()
-      : generateSku({ brand: createForm.brand, name: createForm.name, size: createForm.size })
+      : generateSku({ brand: resolvedBrand, name: createForm.name, size: createForm.size })
     await $fetch("/api/products", {
       method: "POST",
       body: {
-        brand: createForm.brand,
-        product_type: createForm.product_type,
+        brand: resolvedBrand,
+        product_type: resolvedType,
         name: createForm.name,
         size: createForm.size,
         sku,
@@ -420,6 +485,9 @@ async function onBrandChange() {
   masterRan.value = false
   selectedMaster.value = null
   attachError.value = null
+  masterNewTypeInput.value = ""
+  confirmDeleteType.value = false
+  deleteTypeError.value = null
 
   if (!masterBrandId.value) return
 
@@ -461,7 +529,15 @@ watch(masterType, () => {
   if (masterBrandId.value) {
     selectedMaster.value = null
     showCreateDerived.value = false
-    searchMaster()
+    masterNewTypeInput.value = ""
+    confirmDeleteType.value = false
+    deleteTypeError.value = null
+    if (masterType.value !== "__new__") {
+      searchMaster()
+    } else {
+      masterItems.value = []
+      masterRan.value = false
+    }
   }
 })
 
@@ -477,9 +553,23 @@ watch(
 watch(
   () => createForm.brand,
   async (val) => {
-    const matched = masterBrands.value.find((b) => b.name.toLowerCase() === val.trim().toLowerCase())
+    const trimmed = val.trim()
+    const lower = trimmed.toLowerCase()
+    createForm.product_type = ""
+    createTypeCustom.value = ""
+
+    const storeTypes = Array.from(
+      new Set(
+        items.value
+          .filter((r) => r.brand?.trim().toLowerCase() === lower)
+          .map((r) => r.product_type?.trim())
+          .filter(Boolean),
+      ),
+    ) as string[]
+
+    const matched = masterBrands.value.find((b) => b.name.toLowerCase() === lower)
     if (!matched) {
-      createTypeSuggestions.value = []
+      createTypeSuggestions.value = storeTypes.sort((a, b) => a.localeCompare(b, "id-ID", { sensitivity: "base" }))
       return
     }
     try {
@@ -487,9 +577,11 @@ watch(
         "/api/products/master/filters",
         { query: { brand_id: matched.id } },
       )
-      createTypeSuggestions.value = res.types.map((t) => t.product_type)
+      const masterTypes2 = res.types.map((t) => t.product_type)
+      const merged = Array.from(new Set([...storeTypes, ...masterTypes2]))
+      createTypeSuggestions.value = merged.sort((a, b) => a.localeCompare(b, "id-ID", { sensitivity: "base" }))
     } catch {
-      createTypeSuggestions.value = []
+      createTypeSuggestions.value = storeTypes
     }
   },
 )
@@ -506,8 +598,10 @@ function selectMaster(p: MasterProductRow) {
 
 function toggleCreateDerived() {
   showCreateDerived.value = !showCreateDerived.value
+  confirmDeleteType.value = false
   selectedMaster.value = null
   derivedError.value = null
+  derivedForm.name = ""
   derivedForm.size = ""
   derivedForm.sell_price = 0
   derivedForm.initial_qty = 0
@@ -515,19 +609,46 @@ function toggleCreateDerived() {
   derivedForm.sku = ""
 }
 
+async function deleteProductType() {
+  if (!masterBrandId.value || !masterType.value || masterType.value === "__new__") return
+  deleteTypeLoading.value = true
+  deleteTypeError.value = null
+  try {
+    await $fetch("/api/products/master/type", {
+      method: "DELETE",
+      query: { brand_id: masterBrandId.value, product_type: masterType.value },
+    })
+    const deletedType = masterType.value
+    const brandName = masterBrands.value.find((b) => b.id === masterBrandId.value)?.name ?? ""
+    masterTypes.value = masterTypes.value.filter((t) => t !== deletedType)
+    masterType.value = ""
+    masterItems.value = []
+    masterRan.value = false
+    confirmDeleteType.value = false
+    showCreateDerived.value = false
+    showToast(`Tipe "${deletedType}" dari ${brandName} berhasil dihapus`)
+    await load({ reset: true })
+  } catch (error) {
+    deleteTypeError.value = statusMessage(error) ?? "Gagal menghapus tipe produk"
+  } finally {
+    deleteTypeLoading.value = false
+  }
+}
+
 async function createDerived() {
   const brand = masterBrands.value.find((b) => b.id === masterBrandId.value)
-  if (!brand || !masterType.value) return
+  if (!brand || !effectiveMasterType.value) return
   derivedLoading.value = true
   derivedError.value = null
   try {
-    const sku = derivedForm.sku.trim() || generateSku({ brand: brand.name, name: masterType.value, size: derivedForm.size })
+    const productName = derivedForm.name.trim() || effectiveMasterType.value
+    const sku = derivedForm.sku.trim() || generateSku({ brand: brand.name, name: productName, size: derivedForm.size })
     await $fetch("/api/products", {
       method: "POST",
       body: {
         brand: brand.name,
-        product_type: masterType.value,
-        name: masterType.value,
+        product_type: effectiveMasterType.value,
+        name: productName,
         size: derivedForm.size.trim(),
         sku,
         sell_price: derivedForm.sell_price,
@@ -537,6 +658,7 @@ async function createDerived() {
       },
     })
     showCreateDerived.value = false
+    derivedForm.name = ""
     derivedForm.size = ""
     derivedForm.sell_price = 0
     derivedForm.initial_qty = 0
@@ -545,7 +667,7 @@ async function createDerived() {
     await searchMaster()
     await load({ reset: true })
   } catch (error) {
-    derivedError.value = statusMessage(error) ?? "Gagal membuat SKU baru"
+    derivedError.value = statusMessage(error) ?? "Gagal membuat produk baru"
   } finally {
     derivedLoading.value = false
   }
@@ -604,8 +726,14 @@ async function saveEdit(productId: string) {
   editError.value = null
   try {
     await $fetch(`/api/products/${productId}`, { method: "PATCH", body: { sell_price: editSellPrice.value } })
+    const target = items.value.find((r) => r.product_id === productId)
+    if (target) {
+      target.sell_price = editSellPrice.value
+      if (priceEditMode.value) priceDrafts.value[productId] = editSellPrice.value
+    }
     cancelEdit()
-    await load({ reset: true })
+    showToast("Harga berhasil diperbarui")
+    load({ reset: true })
   } catch (error) {
     editError.value = statusMessage(error) ?? "Gagal update sell price"
   } finally {
@@ -637,8 +765,15 @@ async function saveEditMaster(productId: string) {
       method: "PATCH",
       body: { name: masterName.value, size: masterSize.value, sku: masterSku.value },
     })
+    const target = items.value.find((r) => r.product_id === productId)
+    if (target) {
+      target.name = masterName.value
+      target.size = masterSize.value
+      target.sku = masterSku.value
+    }
     cancelEditMaster()
-    await load({ reset: true })
+    showToast("Nama / SKU berhasil diperbarui")
+    load({ reset: true })
   } catch (error) {
     masterEditError.value = statusMessage(error) ?? "Gagal update master product"
   } finally {
@@ -646,22 +781,40 @@ async function saveEditMaster(productId: string) {
   }
 }
 
+function promptDelete(productId: string) {
+  confirmDeleteId.value = productId
+  removeError.value = null
+}
+
+function cancelDelete() {
+  confirmDeleteId.value = null
+  removeError.value = null
+}
+
 async function removeFromStore(productId: string) {
+  confirmDeleteId.value = null
   removingId.value = productId
   removeError.value = null
+  const snapshot = items.value.slice()
+  const deleted = snapshot.find((r) => r.product_id === productId)
+  items.value = items.value.filter((r) => r.product_id !== productId)
+  if (editingId.value === productId) cancelEdit()
+  if (stockingId.value === productId) cancelStock()
+  if (editingMasterId.value === productId) cancelEditMaster()
+  if (priceEditMode.value) {
+    delete priceDrafts.value[productId]
+    priceDirty.value.delete(productId)
+    priceDirty.value = new Set(priceDirty.value)
+  }
   try {
     await $fetch("/api/products/detach", { method: "POST", body: { product_id: productId } })
-    if (editingId.value === productId) cancelEdit()
-    if (stockingId.value === productId) cancelStock()
-    if (editingMasterId.value === productId) cancelEditMaster()
-    if (priceEditMode.value) {
-      delete priceDrafts.value[productId]
-      priceDirty.value.delete(productId)
-      priceDirty.value = new Set(priceDirty.value)
-    }
-    await load({ reset: true })
+    const label = deleted ? `${deleted.brand} ${deleted.name} ${deleted.size}`.trim() : "Produk"
+    showToast(`${label} berhasil dihapus dari toko`)
+    load({ reset: true })
   } catch (error) {
+    items.value = snapshot
     removeError.value = statusMessage(error) ?? "Gagal menghapus produk dari toko"
+    showToast(removeError.value, "error")
   } finally {
     removingId.value = null
   }
@@ -696,8 +849,13 @@ async function submitStock(productId: string) {
         note: stockNote.value.trim().length ? stockNote.value.trim() : undefined,
       },
     })
+    const target = items.value.find((r) => r.product_id === productId)
+    if (target) {
+      target.qty_on_hand = (target.qty_on_hand ?? 0) + stockQtyDelta.value
+    }
     cancelStock()
-    await load({ reset: true })
+    showToast("Stok berhasil diperbarui")
+    load({ reset: true })
   } catch (error) {
     stockError.value = statusMessage(error) ?? "Gagal adjust stok"
   } finally {
@@ -754,23 +912,44 @@ onMounted(async () => {
           <span>Brand</span>
           <input v-model="createForm.brand" list="brandSuggestions" class="mb-input" placeholder="Contoh: MAXXIS" required />
           <datalist id="brandSuggestions">
-            <option v-for="b in masterBrands" :key="b.id" :value="b.name" />
+            <option v-for="b in allBrandSuggestions" :key="b" :value="b" />
           </datalist>
         </label>
         <label class="field">
           <span>Tipe Produk</span>
-          <input v-model="createForm.product_type" list="typeSuggestions" class="mb-input" placeholder="Contoh: M922, TUBETYPE" required />
-          <datalist id="typeSuggestions">
-            <option v-for="t in createTypeSuggestions" :key="t" :value="t" />
-          </datalist>
+          <select
+            v-if="createTypeSuggestions.length > 0"
+            v-model="createForm.product_type"
+            class="mb-input"
+            required
+          >
+            <option value="">-- Pilih Tipe --</option>
+            <option v-for="t in createTypeSuggestions" :key="t" :value="t">{{ t }}</option>
+            <option value="__custom__">+ Tambah tipe baru...</option>
+          </select>
+          <input
+            v-else
+            v-model="createForm.product_type"
+            class="mb-input"
+            placeholder="Contoh: BAN, M922, TUBETYPE"
+            required
+          />
+          <input
+            v-if="createForm.product_type === '__custom__'"
+            v-model="createTypeCustom"
+            class="mb-input"
+            placeholder="Ketik nama tipe baru..."
+            style="margin-top: 4px"
+            required
+          />
         </label>
         <label class="field">
           <span>Nama (model)</span>
           <input v-model="createForm.name" class="mb-input" placeholder="Contoh: Victra S98 CT" required />
         </label>
         <label class="field">
-          <span>Size</span>
-          <input v-model="createForm.size" class="mb-input" placeholder="Contoh: 110/70-12" required />
+          <span>Ukuran / Varian</span>
+          <input v-model="createForm.size" class="mb-input" placeholder="Contoh: 110/70-12, 1L, Universal..." />
         </label>
         <label class="field">
           <span>Sell Price (Rp)</span>
@@ -816,12 +995,20 @@ onMounted(async () => {
             <select v-model="masterType" class="mb-input">
               <option value="">-- Semua Tipe --</option>
               <option v-for="t in masterTypes" :key="t" :value="t">{{ t }}</option>
+              <option value="__new__">+ Tambah tipe baru...</option>
             </select>
+            <input
+              v-if="masterType === '__new__'"
+              v-model="masterNewTypeInput"
+              class="mb-input"
+              placeholder="Ketik nama tipe baru (mis: Adrenalin Pro)"
+              style="margin-top: 4px"
+            />
           </label>
 
           <label v-if="masterBrandId" class="field">
-            <span>Filter Size/Nama (opsional)</span>
-            <input v-model="masterQ" class="mb-input" placeholder="Contoh: 110/70-12" @keydown.enter.prevent="searchMaster" />
+            <span>Filter Nama / Ukuran (opsional)</span>
+            <input v-model="masterQ" class="mb-input" placeholder="Contoh: 110/70-12, AX5, Universal..." @keydown.enter.prevent="searchMaster" />
           </label>
 
           <button v-if="masterBrandId" class="mb-btn" :disabled="masterLoading" @click="searchMaster">
@@ -845,20 +1032,44 @@ onMounted(async () => {
         <div v-else-if="masterRan && !masterLoading" class="empty">Tidak ada hasil.</div>
         <div v-else-if="!masterBrandId && !masterFiltersLoading" class="empty">Pilih brand terlebih dahulu.</div>
 
-        <div v-if="masterBrandId && masterType" class="derivedBar">
+        <div v-if="masterBrandId && (masterType && masterType !== '__new__' || masterNewTypeInput.trim())" class="derivedBar">
           <button type="button" class="mb-btn" @click="toggleCreateDerived">
-            {{ showCreateDerived ? "Batal" : "+ Buat Ukuran Baru" }}
+            {{ showCreateDerived ? "Batal" : "+ Buat Varian Baru" }}
           </button>
-          <span class="derivedHint">Buat SKU baru untuk {{ masterBrands.find(b => b.id === masterBrandId)?.name }} — {{ masterType }}</span>
+          <button
+            v-if="masterType && masterType !== '__new__'"
+            type="button"
+            class="mb-btn deleteTypeBtn"
+            :disabled="deleteTypeLoading"
+            @click="confirmDeleteType = !confirmDeleteType; showCreateDerived = false"
+          >
+            Hapus Tipe Ini
+          </button>
+          <span class="derivedHint">{{ masterBrands.find(b => b.id === masterBrandId)?.name }} — {{ effectiveMasterType }}</span>
         </div>
 
-        <div v-if="showCreateDerived && masterBrandId && masterType" class="attachCard">
-          <div class="attachTitle">Buat SKU Baru</div>
-          <div class="attachSub">Brand: {{ masterBrands.find(b => b.id === masterBrandId)?.name }} • Tipe: {{ masterType }}</div>
+        <div v-if="confirmDeleteType && masterType && masterType !== '__new__'" class="deleteTypeConfirm">
+          <span class="deleteConfirmLabel">Hapus tipe <strong>{{ masterType }}</strong> dari <strong>{{ masterBrands.find(b => b.id === masterBrandId)?.name }}</strong>?<br><small>Semua master produk dengan tipe ini akan dinonaktifkan.</small></span>
+          <div class="deleteTypeActions">
+            <button class="mb-btnDanger" type="button" :disabled="deleteTypeLoading" @click="deleteProductType">
+              {{ deleteTypeLoading ? "Menghapus..." : "Ya, Hapus Tipe" }}
+            </button>
+            <button class="mb-btn" type="button" :disabled="deleteTypeLoading" @click="confirmDeleteType = false">Batal</button>
+          </div>
+          <p v-if="deleteTypeError" class="error">{{ deleteTypeError }}</p>
+        </div>
+
+        <div v-if="showCreateDerived && masterBrandId && effectiveMasterType" class="attachCard">
+          <div class="attachTitle">Buat Produk Baru</div>
+          <div class="attachSub">Brand: {{ masterBrands.find(b => b.id === masterBrandId)?.name }} • Tipe: {{ effectiveMasterType }}</div>
           <div class="attachForm">
             <label class="field">
-              <span>Size <span class="required">*</span></span>
-              <input v-model="derivedForm.size" class="mb-input" placeholder="Contoh: 110/70-12" required />
+              <span>Nama Produk <span class="required">*</span></span>
+              <input v-model="derivedForm.name" class="mb-input" :placeholder="masterType" required />
+            </label>
+            <label class="field">
+              <span>Ukuran / Varian</span>
+              <input v-model="derivedForm.size" class="mb-input" placeholder="Contoh: 110/70-12, 1L, Universal (opsional)" />
             </label>
             <label class="field">
               <span>Sell Price (Rp)</span>
@@ -878,8 +1089,8 @@ onMounted(async () => {
             </label>
           </div>
           <div class="actions">
-            <button class="mb-btnPrimary" type="button" :disabled="derivedLoading || !derivedForm.size.trim()" @click="createDerived">
-              {{ derivedLoading ? "Menyimpan..." : "Simpan SKU Baru" }}
+            <button class="mb-btnPrimary" type="button" :disabled="derivedLoading || (!derivedForm.name.trim() && !effectiveMasterType)" @click="createDerived">
+              {{ derivedLoading ? "Menyimpan..." : "Simpan Produk Baru" }}
             </button>
             <button class="mb-btn" type="button" :disabled="derivedLoading" @click="toggleCreateDerived">Batal</button>
           </div>
@@ -972,9 +1183,20 @@ onMounted(async () => {
                             <button class="mb-btn" type="button" :disabled="priceEditMode" @click="startEdit(i)">Harga</button>
                             <button class="mb-btn" type="button" @click="startStock(i)">Stok</button>
                             <button class="mb-btn" type="button" @click="startEditMaster(i)">Nama</button>
-                            <button class="mb-btn" type="button" :disabled="removingId === i.product_id" @click="removeFromStore(i.product_id)">
-                              {{ removingId === i.product_id ? "..." : "Hapus" }}
+                            <button class="mb-btn" type="button" :disabled="removingId === i.product_id" @click="promptDelete(i.product_id)">
+                              {{ removingId === i.product_id ? "Menghapus..." : "Hapus" }}
                             </button>
+                          </div>
+                        </td>
+                      </tr>
+                      <tr v-if="confirmDeleteId === i.product_id">
+                        <td :colspan="5">
+                          <div class="editRow deleteConfirmRow">
+                            <span class="deleteConfirmLabel">Hapus <strong>{{ i.name }} {{ i.size }}</strong> dari toko?</span>
+                            <button class="mb-btnDanger" type="button" :disabled="removingId === i.product_id" @click="removeFromStore(i.product_id)">
+                              {{ removingId === i.product_id ? "Menghapus..." : "Ya, Hapus" }}
+                            </button>
+                            <button class="mb-btn" type="button" @click="cancelDelete">Batal</button>
                           </div>
                         </td>
                       </tr>
@@ -1084,6 +1306,16 @@ onMounted(async () => {
       <p v-if="removeError" class="error">{{ removeError }}</p>
     </section>
   </div>
+
+  <Teleport to="body">
+    <div class="toastStack">
+      <TransitionGroup name="toast">
+        <div v-for="t in toasts" :key="t.id" class="toast" :class="t.type === 'error' ? 'toastError' : 'toastSuccess'">
+          {{ t.message }}
+        </div>
+      </TransitionGroup>
+    </div>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -1372,5 +1604,75 @@ th {
 .errorInline {
   font-size: 12px;
   color: var(--mb-danger);
+}
+.deleteConfirmRow {
+  background: rgba(255, 59, 48, 0.06);
+}
+.deleteConfirmLabel {
+  font-size: 13px;
+  color: var(--mb-danger);
+}
+.deleteTypeBtn {
+  border-color: rgba(255, 59, 48, 0.5);
+  color: var(--mb-danger);
+}
+.deleteTypeBtn:hover {
+  background: rgba(255, 59, 48, 0.1);
+}
+.deleteTypeConfirm {
+  margin-top: 8px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: rgba(255, 59, 48, 0.07);
+  border: 1px solid rgba(255, 59, 48, 0.25);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.deleteTypeActions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+</style>
+
+<style>
+.toastStack {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+.toast {
+  padding: 10px 16px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  pointer-events: all;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+.toastSuccess {
+  background: rgba(52, 199, 89, 0.92);
+  color: #fff;
+}
+.toastError {
+  background: rgba(255, 59, 48, 0.92);
+  color: #fff;
+}
+.toast-enter-active,
+.toast-leave-active {
+  transition: all 0.28s ease;
+}
+.toast-enter-from {
+  opacity: 0;
+  transform: translateY(12px);
+}
+.toast-leave-to {
+  opacity: 0;
+  transform: translateY(12px);
 }
 </style>

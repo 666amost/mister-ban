@@ -284,6 +284,24 @@ export async function setStoreProductActive(
   return rows[0] ?? null;
 }
 
+export async function deactivateProductsByBrandAndType(
+  db: DbConn,
+  brandId: string,
+  productType: string,
+): Promise<number> {
+  const { rowCount } = await db.query(
+    `
+      UPDATE products
+      SET status = 'inactive'
+      WHERE brand_id = $1
+        AND product_type = $2
+        AND status = 'active'
+    `,
+    [brandId, productType],
+  );
+  return rowCount ?? 0;
+}
+
 export async function updateMasterProduct(
   db: DbConn,
   {
