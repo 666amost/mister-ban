@@ -26,13 +26,8 @@ type MasterProductRow = {
 
 const items = ref<ProductRow[]>([])
 const isLoading = ref(false)
-const isLoadingMore = ref(false)
 const errorMessage = ref<string | null>(null)
 const q = ref("")
-const pageLimit = ref(100)
-const pageOffset = ref(0)
-const currentPage = ref(1)
-const hasMore = ref(true)
 const expandedBrands = ref<Set<string>>(new Set())
 const expandedTypes = ref<Set<string>>(new Set())
 
@@ -172,6 +167,18 @@ const effectiveMasterType = computed(() =>
   masterType.value === "__new__" ? masterNewTypeInput.value.trim() : masterType.value,
 )
 
+const existingStoreTypes = computed(() => {
+  const seen = new Map<string, string>()
+  for (const row of items.value) {
+    const t = row.product_type?.trim()
+    if (t) {
+      const key = t.toLowerCase()
+      if (!seen.has(key)) seen.set(key, t)
+    }
+  }
+  return Array.from(seen.values()).sort((a, b) => a.localeCompare(b, "id-ID", { sensitivity: "base" }))
+})
+
 const existingStoreBrands = computed(() => {
   const seen = new Map<string, string>()
   for (const row of items.value) {
@@ -212,6 +219,8 @@ const editingMasterId = ref<string | null>(null)
 const masterName = ref("")
 const masterSize = ref("")
 const masterSku = ref("")
+const masterProductType = ref("")
+const masterProductTypeCustom = ref("")
 const masterEditLoading = ref(false)
 const masterEditError = ref<string | null>(null)
 
@@ -339,7 +348,7 @@ async function saveAllPriceEdits() {
       })
     }
     cancelPriceEditMode()
-    await load({ reset: true })
+    await load()
   } catch (error) {
     priceSaveError.value = statusMessage(error) ?? "Gagal simpan perubahan harga"
   } finally {
@@ -347,29 +356,15 @@ async function saveAllPriceEdits() {
   }
 }
 
-async function load(options?: { reset?: boolean }) {
-  const reset = options?.reset ?? true
-  if (reset) {
-    isLoading.value = true
-    errorMessage.value = null
-    pageOffset.value = 0
-    currentPage.value = 1
-    hasMore.value = true
-  } else {
-    isLoadingMore.value = true
-  }
+async function load() {
+  isLoading.value = true
+  errorMessage.value = null
   try {
-    if (!reset) {
-      pageOffset.value = (currentPage.value - 1) * pageLimit.value
-    }
     const res = await $fetch<{ items: ProductRow[] }>("/api/products", {
-      query: { q: q.value, limit: pageLimit.value, offset: pageOffset.value },
+      query: { q: q.value, limit: 500, _t: Date.now() },
       headers: { Accept: "application/json" },
     })
-    const nextItems = res.items
-    items.value = nextItems
-    pageOffset.value = (currentPage.value - 1) * pageLimit.value + nextItems.length
-    hasMore.value = nextItems.length === pageLimit.value
+    items.value = res.items
     if (priceEditMode.value) {
       resetPriceDrafts()
     }
@@ -377,38 +372,15 @@ async function load(options?: { reset?: boolean }) {
     errorMessage.value = statusMessage(error) ?? "Gagal memuat products"
     console.error("Products load error:", error)
   } finally {
-    if (reset) {
-      isLoading.value = false
-    } else {
-      isLoadingMore.value = false
-    }
+    isLoading.value = false
   }
-}
-
-async function loadMore() {
-  if (isLoading.value || isLoadingMore.value || !hasMore.value) return
-  currentPage.value += 1
-  await load({ reset: false })
-}
-
-async function goPrevPage() {
-  if (isLoading.value || isLoadingMore.value || currentPage.value <= 1) return
-  currentPage.value -= 1
-  await load({ reset: false })
-}
-
-async function goToPage(page: number) {
-  if (isLoading.value || isLoadingMore.value) return
-  if (!Number.isFinite(page) || page < 1) return
-  currentPage.value = Math.trunc(page)
-  await load({ reset: false })
 }
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 watch(q, () => {
   if (debounceTimer) clearTimeout(debounceTimer)
   debounceTimer = setTimeout(() => {
-    load({ reset: true })
+    load()
   }, 300)
 })
 
@@ -457,7 +429,10 @@ async function createProduct() {
     })
     resetCreateForm()
     showAdd.value = false
-    await load({ reset: true })
+    await load()
+    const brandKey = canonicalBrandLabel(resolvedBrand).toLowerCase()
+    expandedBrands.value = new Set([...expandedBrands.value, brandKey])
+    showToast("Produk berhasil ditambahkan")
   } catch (error) {
     createError.value = statusMessage(error) ?? "Gagal membuat produk"
   } finally {
@@ -627,7 +602,7 @@ async function deleteProductType() {
     confirmDeleteType.value = false
     showCreateDerived.value = false
     showToast(`Tipe "${deletedType}" dari ${brandName} berhasil dihapus`)
-    await load({ reset: true })
+    await load()
   } catch (error) {
     deleteTypeError.value = statusMessage(error) ?? "Gagal menghapus tipe produk"
   } finally {
@@ -665,7 +640,7 @@ async function createDerived() {
     derivedForm.initial_unit_cost = 0
     derivedForm.sku = ""
     await searchMaster()
-    await load({ reset: true })
+    await load()
   } catch (error) {
     derivedError.value = statusMessage(error) ?? "Gagal membuat produk baru"
   } finally {
@@ -696,8 +671,13 @@ async function attachSelected() {
         },
       })
     }
-    await load({ reset: true })
+    await load()
+    const addedBrand = selectedMaster.value?.brand ?? ""
+    const brandKey = canonicalBrandLabel(addedBrand).toLowerCase()
+    expandedBrands.value = new Set([...expandedBrands.value, brandKey])
+    showToast("Produk berhasil ditambahkan ke toko")
     selectedMaster.value = null
+    showAdd.value = false
     masterBrandId.value = ""
     masterType.value = ""
     masterItems.value = []
@@ -733,7 +713,7 @@ async function saveEdit(productId: string) {
     }
     cancelEdit()
     showToast("Harga berhasil diperbarui")
-    load({ reset: true })
+    load()
   } catch (error) {
     editError.value = statusMessage(error) ?? "Gagal update sell price"
   } finally {
@@ -746,6 +726,8 @@ function startEditMaster(row: ProductRow) {
   masterName.value = row.name
   masterSize.value = row.size
   masterSku.value = row.sku
+  masterProductType.value = row.product_type || ""
+  masterProductTypeCustom.value = ""
   masterEditError.value = null
 }
 
@@ -754,6 +736,8 @@ function cancelEditMaster() {
   masterName.value = ""
   masterSize.value = ""
   masterSku.value = ""
+  masterProductType.value = ""
+  masterProductTypeCustom.value = ""
   masterEditError.value = null
 }
 
@@ -761,19 +745,28 @@ async function saveEditMaster(productId: string) {
   masterEditLoading.value = true
   masterEditError.value = null
   try {
+    const resolvedType = masterProductType.value === "__custom__"
+      ? masterProductTypeCustom.value.trim()
+      : masterProductType.value
+    if (!resolvedType) {
+      masterEditError.value = "Tipe Produk wajib diisi"
+      masterEditLoading.value = false
+      return
+    }
     await $fetch(`/api/products/master/${productId}`, {
       method: "PATCH",
-      body: { name: masterName.value, size: masterSize.value, sku: masterSku.value },
+      body: { name: masterName.value, size: masterSize.value, sku: masterSku.value, product_type: resolvedType },
     })
     const target = items.value.find((r) => r.product_id === productId)
     if (target) {
       target.name = masterName.value
       target.size = masterSize.value
       target.sku = masterSku.value
+      target.product_type = resolvedType
     }
     cancelEditMaster()
-    showToast("Nama / SKU berhasil diperbarui")
-    load({ reset: true })
+    showToast("Produk berhasil diperbarui")
+    load()
   } catch (error) {
     masterEditError.value = statusMessage(error) ?? "Gagal update master product"
   } finally {
@@ -810,7 +803,7 @@ async function removeFromStore(productId: string) {
     await $fetch("/api/products/detach", { method: "POST", body: { product_id: productId } })
     const label = deleted ? `${deleted.brand} ${deleted.name} ${deleted.size}`.trim() : "Produk"
     showToast(`${label} berhasil dihapus dari toko`)
-    load({ reset: true })
+    await load()
   } catch (error) {
     items.value = snapshot
     removeError.value = statusMessage(error) ?? "Gagal menghapus produk dari toko"
@@ -855,7 +848,7 @@ async function submitStock(productId: string) {
     }
     cancelStock()
     showToast("Stok berhasil diperbarui")
-    load({ reset: true })
+    load()
   } catch (error) {
     stockError.value = statusMessage(error) ?? "Gagal adjust stok"
   } finally {
@@ -864,7 +857,7 @@ async function submitStock(productId: string) {
 }
 
 onMounted(async () => {
-  await load({ reset: true })
+  await load()
 })
 </script>
 
@@ -874,10 +867,10 @@ onMounted(async () => {
       <div class="row">
         <label class="field">
           <span>Cari</span>
-          <input v-model="q" class="mb-input" placeholder="SKU / brand / nama..." @keydown.enter.prevent="load({ reset: true })" />
+          <input v-model="q" class="mb-input" placeholder="SKU / brand / nama..." @keydown.enter.prevent="load()" />
         </label>
         <div class="rowActions">
-          <button class="mb-btn" :disabled="isLoading" @click="load({ reset: true })">{{ isLoading ? "Loading..." : "Search" }}</button>
+          <button class="mb-btn" :disabled="isLoading" @click="load()">{{ isLoading ? "Loading..." : "Search" }}</button>
           <button :class="priceEditMode ? 'mb-btnDanger' : 'mb-btn'" type="button" @click="priceEditMode ? cancelPriceEditMode() : startPriceEditMode()">
             {{ priceEditMode ? "Batal Edit Harga" : "Edit Harga" }}
           </button>
@@ -1230,6 +1223,17 @@ onMounted(async () => {
                               <span>SKU</span>
                               <input v-model="masterSku" class="mb-input" />
                             </label>
+                            <label class="field smallField">
+                              <span>Tipe Produk</span>
+                              <select v-model="masterProductType" class="mb-input">
+                                <option v-for="t in existingStoreTypes" :key="t" :value="t">{{ t }}</option>
+                                <option value="__custom__">+ Tipe baru...</option>
+                              </select>
+                            </label>
+                            <label v-if="masterProductType === '__custom__'" class="field smallField">
+                              <span>Tipe Baru</span>
+                              <input v-model="masterProductTypeCustom" class="mb-input" placeholder="Nama tipe baru" />
+                            </label>
                             <button
                               class="mb-btnPrimary"
                               type="button"
@@ -1282,26 +1286,7 @@ onMounted(async () => {
 
       <div v-else-if="!isLoading" class="empty">Tidak ada data.</div>
       <div v-if="items.length" class="paginationBar">
-        <div class="muted">Halaman {{ currentPage }} • {{ items.length }} item</div>
-        <div class="pager">
-          <button class="mb-btn" type="button" :disabled="isLoading || isLoadingMore || currentPage <= 1" @click="goPrevPage">
-            Prev
-          </button>
-          <label class="pageInput">
-            <span>Page</span>
-            <input
-              :value="currentPage"
-              class="mb-input"
-              type="number"
-              min="1"
-              step="1"
-              @change="goToPage(Number(($event.target as HTMLInputElement).value))"
-            />
-          </label>
-          <button class="mb-btn" type="button" :disabled="isLoading || isLoadingMore || !hasMore" @click="loadMore">
-            {{ isLoadingMore ? "Loading..." : "Next" }}
-          </button>
-        </div>
+        <div class="muted">{{ items.length }} produk</div>
       </div>
       <p v-if="removeError" class="error">{{ removeError }}</p>
     </section>
@@ -1466,22 +1451,6 @@ onMounted(async () => {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-}
-.pager {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-.pageInput {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: var(--mb-muted);
-}
-.pageInput .mb-input {
-  width: 90px;
 }
 .table {
   width: max-content;
