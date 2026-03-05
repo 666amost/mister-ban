@@ -1211,9 +1211,9 @@ onMounted(async () => {
           <thead>
             <tr>
               <th>SKU</th>
-              <th>Nama</th>
-              <th style="text-align: right">Sell</th>
-              <th style="text-align: right">Qty</th>
+              <th>Nama Produk</th>
+              <th style="text-align: right">Harga Jual</th>
+              <th style="text-align: right">Stok</th>
               <th style="width: 1%"></th>
             </tr>
           </thead>
@@ -1239,7 +1239,7 @@ onMounted(async () => {
                   </tr>
                   <template v-if="expandedTypes.has(`${group.key}||${typeGroup.type}`)">
                     <template v-for="i in typeGroup.rows" :key="i.product_id">
-                      <tr>
+                      <tr :class="{ rowActive: editingId === i.product_id || editingMasterId === i.product_id || stockingId === i.product_id || confirmDeleteId === i.product_id }">
                         <td class="mono">{{ i.sku }}</td>
                         <td>
                           <div class="strong">{{ i.name }}</div>
@@ -1261,105 +1261,168 @@ onMounted(async () => {
                         <td style="text-align: right">{{ i.qty_on_hand }}</td>
                         <td style="text-align: right">
                           <div class="btnGroup">
-                            <button class="mb-btn" type="button" :disabled="priceEditMode" @click="startEdit(i)">Harga</button>
-                            <button class="mb-btn" type="button" @click="startStock(i)">Stok</button>
-                            <button class="mb-btn" type="button" @click="startEditMaster(i)">Nama</button>
-                            <button class="mb-btn" type="button" :disabled="removingId === i.product_id" @click="promptDelete(i.product_id)">
-                              {{ removingId === i.product_id ? "Menghapus..." : "Hapus" }}
+                            <button
+                              class="mb-btn rowActionBtn"
+                              :class="{ rowActionActive: editingId === i.product_id }"
+                              type="button"
+                              :disabled="priceEditMode"
+                              title="Ubah harga jual produk ini"
+                              @click="editingId === i.product_id ? cancelEdit() : startEdit(i)"
+                            >Edit Harga</button>
+                            <button
+                              class="mb-btn rowActionBtn"
+                              :class="{ rowActionActive: stockingId === i.product_id }"
+                              type="button"
+                              title="Tambah atau kurangi stok produk ini"
+                              @click="stockingId === i.product_id ? cancelStock() : startStock(i)"
+                            >Ubah Stok</button>
+                            <button
+                              class="mb-btn rowActionBtn"
+                              :class="{ rowActionActive: editingMasterId === i.product_id }"
+                              type="button"
+                              title="Edit nama, ukuran, SKU, dan tipe produk ini"
+                              @click="editingMasterId === i.product_id ? cancelEditMaster() : startEditMaster(i)"
+                            >Edit Info</button>
+                            <button
+                              class="mb-btn rowActionBtn rowActionDanger"
+                              type="button"
+                              :disabled="removingId === i.product_id"
+                              title="Hapus produk ini dari toko"
+                              @click="confirmDeleteId === i.product_id ? cancelDelete() : promptDelete(i.product_id)"
+                            >
+                              {{ removingId === i.product_id ? "Menghapus..." : confirmDeleteId === i.product_id ? "Batal" : "Hapus" }}
                             </button>
                           </div>
                         </td>
                       </tr>
                       <tr v-if="confirmDeleteId === i.product_id">
-                        <td :colspan="5">
-                          <div class="editRow deleteConfirmRow">
-                            <span class="deleteConfirmLabel">Hapus <strong>{{ i.name }} {{ i.size }}</strong> dari toko?</span>
-                            <button class="mb-btnDanger" type="button" :disabled="removingId === i.product_id" @click="removeFromStore(i.product_id)">
-                              {{ removingId === i.product_id ? "Menghapus..." : "Ya, Hapus" }}
-                            </button>
-                            <button class="mb-btn" type="button" @click="cancelDelete">Batal</button>
+                        <td :colspan="5" class="inlinePanelCell">
+                          <div class="inlinePanel inlinePanelDanger">
+                            <div class="inlinePanelHeader">
+                              <span class="inlinePanelIcon">⚠</span>
+                              <span>Hapus produk dari toko</span>
+                            </div>
+                            <div class="inlinePanelBody">
+                              <p class="inlinePanelDesc">Apakah kamu yakin ingin menghapus <strong>{{ i.name }}{{ i.size ? ` — ${i.size}` : "" }}</strong> dari toko? Stok dan riwayat harga akan ikut terhapus.</p>
+                              <div class="inlinePanelActions">
+                                <button class="mb-btnDanger" type="button" :disabled="removingId === i.product_id" @click="removeFromStore(i.product_id)">
+                                  {{ removingId === i.product_id ? "Menghapus..." : "Ya, Hapus dari Toko" }}
+                                </button>
+                                <button class="mb-btn" type="button" @click="cancelDelete">Batal</button>
+                              </div>
+                            </div>
                           </div>
                         </td>
                       </tr>
                       <tr v-if="editingId === i.product_id && !priceEditMode">
-                        <td :colspan="5">
-                          <div class="editRow">
-                            <label class="field smallField">
-                              <span>Sell Price (Rp)</span>
-                              <input v-model.number="editSellPrice" class="mb-input" type="number" min="0" />
-                            </label>
-                            <button class="mb-btnPrimary" type="button" :disabled="editLoading" @click="saveEdit(i.product_id)">
-                              {{ editLoading ? "Saving..." : "Save" }}
-                            </button>
-                            <button class="mb-btn" type="button" :disabled="editLoading" @click="cancelEdit">Cancel</button>
-                            <span v-if="editError" class="errorInline">{{ editError }}</span>
+                        <td :colspan="5" class="inlinePanelCell">
+                          <div class="inlinePanel">
+                            <div class="inlinePanelHeader">
+                              <span>Edit Harga Jual</span>
+                              <span class="inlinePanelMeta">{{ i.name }}{{ i.size ? ` — ${i.size}` : "" }}</span>
+                            </div>
+                            <div class="inlinePanelBody">
+                              <div class="inlinePanelFields">
+                                <label class="field smallField">
+                                  <span>Harga Jual Baru (Rp)</span>
+                                  <input v-model.number="editSellPrice" class="mb-input" type="number" min="0" />
+                                  <span class="fieldHint">Sebelumnya: Rp {{ rupiah(i.sell_price) }}</span>
+                                </label>
+                              </div>
+                              <div class="inlinePanelActions">
+                                <button class="mb-btnPrimary" type="button" :disabled="editLoading" @click="saveEdit(i.product_id)">
+                                  {{ editLoading ? "Menyimpan..." : "Simpan Harga" }}
+                                </button>
+                                <button class="mb-btn" type="button" :disabled="editLoading" @click="cancelEdit">Batal</button>
+                                <span v-if="editError" class="errorInline">{{ editError }}</span>
+                              </div>
+                            </div>
                           </div>
                         </td>
                       </tr>
                       <tr v-if="editingMasterId === i.product_id">
-                        <td :colspan="5">
-                          <div class="editRow">
-                            <label class="field smallField">
-                              <span>Nama</span>
-                              <input v-model="masterName" class="mb-input" />
-                            </label>
-                            <label class="field smallField">
-                              <span>Size</span>
-                              <input v-model="masterSize" class="mb-input" />
-                            </label>
-                            <label class="field smallField">
-                              <span>SKU</span>
-                              <input v-model="masterSku" class="mb-input" />
-                            </label>
-                            <label class="field smallField">
-                              <span>Tipe Produk</span>
-                              <select v-model="masterProductType" class="mb-input">
-                                <option v-for="t in existingStoreTypes" :key="t" :value="t">{{ t }}</option>
-                                <option value="__custom__">+ Tipe baru...</option>
-                              </select>
-                            </label>
-                            <label v-if="masterProductType === '__custom__'" class="field smallField">
-                              <span>Tipe Baru</span>
-                              <input v-model="masterProductTypeCustom" class="mb-input" placeholder="Nama tipe baru" />
-                            </label>
-                            <button
-                              class="mb-btnPrimary"
-                              type="button"
-                              :disabled="masterEditLoading"
-                              @click="saveEditMaster(i.product_id)"
-                            >
-                              {{ masterEditLoading ? "Saving..." : "Save" }}
-                            </button>
-                            <button class="mb-btn" type="button" :disabled="masterEditLoading" @click="cancelEditMaster">
-                              Cancel
-                            </button>
-                            <span v-if="masterEditError" class="errorInline">{{ masterEditError }}</span>
+                        <td :colspan="5" class="inlinePanelCell">
+                          <div class="inlinePanel">
+                            <div class="inlinePanelHeader">
+                              <span>Edit Info Produk</span>
+                              <span class="inlinePanelMeta">{{ i.brand }} — {{ i.product_type }}</span>
+                            </div>
+                            <div class="inlinePanelBody">
+                              <div class="inlinePanelFields">
+                                <label class="field smallField">
+                                  <span>Nama Model</span>
+                                  <input v-model="masterName" class="mb-input" placeholder="Contoh: Victra S98 CT" />
+                                </label>
+                                <label class="field smallField">
+                                  <span>Ukuran / Varian</span>
+                                  <input v-model="masterSize" class="mb-input" placeholder="Contoh: 110/70-12, 1L..." />
+                                </label>
+                                <label class="field smallField">
+                                  <span>SKU</span>
+                                  <input v-model="masterSku" class="mb-input" />
+                                </label>
+                                <label class="field smallField">
+                                  <span>Tipe Produk</span>
+                                  <select v-model="masterProductType" class="mb-input">
+                                    <option v-for="t in existingStoreTypes" :key="t" :value="t">{{ t }}</option>
+                                    <option value="__custom__">+ Tipe baru...</option>
+                                  </select>
+                                </label>
+                                <label v-if="masterProductType === '__custom__'" class="field smallField">
+                                  <span>Nama Tipe Baru</span>
+                                  <input v-model="masterProductTypeCustom" class="mb-input" placeholder="Contoh: Oli Gardan" />
+                                </label>
+                              </div>
+                              <div class="inlinePanelActions">
+                                <button
+                                  class="mb-btnPrimary"
+                                  type="button"
+                                  :disabled="masterEditLoading"
+                                  @click="saveEditMaster(i.product_id)"
+                                >
+                                  {{ masterEditLoading ? "Menyimpan..." : "Simpan Info" }}
+                                </button>
+                                <button class="mb-btn" type="button" :disabled="masterEditLoading" @click="cancelEditMaster">
+                                  Batal
+                                </button>
+                                <span v-if="masterEditError" class="errorInline">{{ masterEditError }}</span>
+                              </div>
+                            </div>
                           </div>
                         </td>
                       </tr>
                       <tr v-if="stockingId === i.product_id">
-                        <td :colspan="5">
-                          <div class="editRow">
-                            <label class="field smallField">
-                              <span>Qty</span>
-                              <input v-model.number="stockQtyDelta" class="mb-input" type="number" step="1" placeholder="+10 atau -5" />
-                            </label>
-                            <label class="field smallField">
-                              <span title="Hanya berpengaruh saat tambah stok (Qty positif)">Harga Beli (Rp)</span>
-                              <input v-model.number="stockUnitCost" class="mb-input" type="number" min="0" step="1" />
-                            </label>
-                            <label class="field noteField">
-                              <span>Note</span>
-                              <input v-model="stockNote" class="mb-input" placeholder="Optional" />
-                            </label>
-                            <button class="mb-btnPrimary" type="button" :disabled="stockLoading" @click="submitStock(i.product_id)">
-                              {{ stockLoading ? "Saving..." : "Save" }}
-                            </button>
-                            <button class="mb-btn" type="button" :disabled="stockLoading" @click="cancelStock">Cancel</button>
-                            <span v-if="stockError" class="errorInline">{{ stockError }}</span>
-                          </div>
-                          <div class="hint">
-                            <strong>Harga Modal (Avg Cost):</strong> Saat tambah stok (+), modal dihitung ulang. Saat kurang stok (-), modal tetap.
+                        <td :colspan="5" class="inlinePanelCell">
+                          <div class="inlinePanel">
+                            <div class="inlinePanelHeader">
+                              <span>Ubah Stok</span>
+                              <span class="inlinePanelMeta">{{ i.name }}{{ i.size ? ` — ${i.size}` : "" }} &nbsp;·&nbsp; Stok saat ini: <strong>{{ i.qty_on_hand }}</strong></span>
+                            </div>
+                            <div class="inlinePanelBody">
+                              <div class="inlinePanelFields">
+                                <label class="field smallField">
+                                  <span>Perubahan Qty</span>
+                                  <input v-model.number="stockQtyDelta" class="mb-input" type="number" step="1" placeholder="Contoh: +10 atau -5" />
+                                  <span class="fieldHint">Positif = tambah stok, negatif = kurangi stok</span>
+                                </label>
+                                <label class="field smallField">
+                                  <span>Harga Beli / Unit (Rp)</span>
+                                  <input v-model.number="stockUnitCost" class="mb-input" type="number" min="0" step="1" />
+                                  <span class="fieldHint">Hanya berlaku saat menambah stok (+)</span>
+                                </label>
+                                <label class="field noteField">
+                                  <span>Catatan (opsional)</span>
+                                  <input v-model="stockNote" class="mb-input" placeholder="Contoh: Pembelian dari supplier X" />
+                                </label>
+                              </div>
+                              <div class="inlinePanelActions">
+                                <button class="mb-btnPrimary" type="button" :disabled="stockLoading" @click="submitStock(i.product_id)">
+                                  {{ stockLoading ? "Menyimpan..." : "Simpan Perubahan Stok" }}
+                                </button>
+                                <button class="mb-btn" type="button" :disabled="stockLoading" @click="cancelStock">Batal</button>
+                                <span v-if="stockError" class="errorInline">{{ stockError }}</span>
+                              </div>
+                            </div>
                           </div>
                         </td>
                       </tr>
@@ -1621,6 +1684,82 @@ th {
   align-items: end;
   flex-wrap: wrap;
   padding: 10px 0;
+}
+.rowActive td {
+  background: rgba(52, 199, 89, 0.04);
+}
+.rowActionBtn {
+  font-size: 12px;
+  white-space: nowrap;
+}
+.rowActionActive {
+  border-color: rgba(52, 199, 89, 0.8);
+  background: rgba(52, 199, 89, 0.1);
+}
+.rowActionDanger {
+  border-color: rgba(255, 59, 48, 0.4);
+  color: var(--mb-danger);
+}
+.rowActionDanger:hover {
+  background: rgba(255, 59, 48, 0.08);
+}
+.inlinePanelCell {
+  padding: 0 !important;
+  border-bottom: none !important;
+}
+.inlinePanel {
+  border-left: 3px solid rgba(52, 199, 89, 0.7);
+  background: rgba(52, 199, 89, 0.04);
+  border-bottom: 1px solid var(--mb-table-border);
+}
+.inlinePanelDanger {
+  border-left-color: rgba(255, 59, 48, 0.7);
+  background: rgba(255, 59, 48, 0.04);
+}
+.inlinePanelHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 12px;
+  font-weight: 700;
+}
+.inlinePanelIcon {
+  font-size: 14px;
+}
+.inlinePanelMeta {
+  font-weight: 400;
+  color: var(--mb-muted);
+}
+.inlinePanelBody {
+  padding: 12px 14px;
+}
+.inlinePanelFields {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: end;
+}
+.inlinePanelFields .field {
+  min-width: 0;
+}
+.inlinePanelActions {
+  margin-top: 12px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.inlinePanelDesc {
+  font-size: 13px;
+  margin: 0 0 12px;
+  color: var(--mb-text);
+}
+.fieldHint {
+  font-size: 11px;
+  color: var(--mb-muted);
+  margin-top: 2px;
 }
 .smallField {
   min-width: 240px;
