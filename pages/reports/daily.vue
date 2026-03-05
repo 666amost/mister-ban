@@ -24,7 +24,7 @@ type DailyExpense = {
   entries: number
 }
 
-type DailyInputType = "product" | "custom" | "expense"
+type DailyInputType = "product" | "custom" | "expense" | "discount"
 
 type DailyInput = {
   sale_id: string
@@ -62,6 +62,7 @@ type DailyReport = {
   custom_items: DailyCustomItem[]
   expenses: DailyExpense[]
   expense_total: number
+  discount_total: number
   inputs: DailyInput[]
 }
 
@@ -85,6 +86,7 @@ function formatTime(value: string) {
 function inputTypeLabel(value: DailyInputType) {
   if (value === "product") return "Produk"
   if (value === "custom") return "Custom"
+  if (value === "discount") return "Diskon"
   return "Pengeluaran"
 }
 
@@ -217,6 +219,11 @@ await load()
           <div class="label">Pengeluaran</div>
           <div class="value monoNumeric">Rp {{ rupiah(report.expense_total) }}</div>
           <div class="meta">{{ expenseRatio }} dari omzet</div>
+        </div>
+        <div v-if="report.discount_total > 0" class="sumItem">
+          <div class="label">Total Diskon</div>
+          <div class="value monoNumeric discountValue">-Rp {{ rupiah(report.discount_total) }}</div>
+          <div class="meta">Potongan harga ke pembeli</div>
         </div>
       </div>
 
@@ -357,9 +364,15 @@ await load()
                 <div>{{ item.item_name }}</div>
                 <div v-if="item.sku" class="itemMeta mono">{{ item.sku }}</div>
               </td>
-              <td class="alignRight">{{ item.qty }}</td>
-              <td class="alignRight">Rp {{ rupiah(item.unit_price) }}</td>
-              <td class="alignRight">Rp {{ rupiah(item.line_total) }}</td>
+              <td class="alignRight">{{ item.input_type === 'discount' ? '-' : item.qty }}</td>
+              <td class="alignRight">
+                <span v-if="item.input_type === 'discount'" class="discountAmount">-Rp {{ rupiah(item.unit_price) }}</span>
+                <template v-else>Rp {{ rupiah(item.unit_price) }}</template>
+              </td>
+              <td class="alignRight">
+                <span v-if="item.input_type === 'discount'" class="discountAmount">-Rp {{ rupiah(item.line_total) }}</span>
+                <template v-else>Rp {{ rupiah(item.line_total) }}</template>
+              </td>
             </tr>
           </tbody>
         </table>
@@ -509,6 +522,18 @@ th {
   background: var(--mb-badge-expense-bg);
   color: var(--mb-badge-expense-fg);
   border-color: var(--mb-badge-expense-border);
+}
+.typeBadge.discount {
+  background: var(--mb-badge-expense-bg);
+  color: var(--mb-danger);
+  border-color: var(--mb-badge-expense-border);
+}
+.discountValue {
+  color: var(--mb-danger);
+}
+.discountAmount {
+  color: var(--mb-danger);
+  font-variant-numeric: tabular-nums;
 }
 .methodBadge {
   display: inline-flex;

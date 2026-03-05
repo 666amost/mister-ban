@@ -526,12 +526,22 @@ watch(
 )
 
 watch(
+  () => createForm.product_type,
+  () => {
+    confirmDeleteType.value = false
+    deleteTypeError.value = null
+  },
+)
+
+watch(
   () => createForm.brand,
   async (val) => {
     const trimmed = val.trim()
     const lower = trimmed.toLowerCase()
     createForm.product_type = ""
     createTypeCustom.value = ""
+    confirmDeleteType.value = false
+    deleteTypeError.value = null
 
     const storeTypes = Array.from(
       new Set(
@@ -560,6 +570,30 @@ watch(
     }
   },
 )
+
+async function deleteCreateFormType() {
+  const brandLower = createForm.brand.trim().toLowerCase()
+  const brand = masterBrands.value.find((b) => b.name.toLowerCase() === brandLower)
+  if (!brand || !createForm.product_type || createForm.product_type === '__custom__') return
+  deleteTypeLoading.value = true
+  deleteTypeError.value = null
+  try {
+    await $fetch("/api/products/master/type", {
+      method: "DELETE",
+      query: { brand_id: brand.id, product_type: createForm.product_type },
+    })
+    const deletedType = createForm.product_type
+    createTypeSuggestions.value = createTypeSuggestions.value.filter((t) => t !== deletedType)
+    createForm.product_type = ""
+    confirmDeleteType.value = false
+    showToast(`Tipe "${deletedType}" dari ${brand.name} berhasil dihapus`)
+    await load()
+  } catch (error) {
+    deleteTypeError.value = statusMessage(error) ?? "Gagal menghapus tipe produk"
+  } finally {
+    deleteTypeLoading.value = false
+  }
+}
 
 function selectMaster(p: MasterProductRow) {
   selectedMaster.value = p
@@ -935,6 +969,29 @@ onMounted(async () => {
             style="margin-top: 4px"
             required
           />
+          <div
+            v-if="createTypeSuggestions.length > 0 && createForm.product_type && createForm.product_type !== '__custom__'"
+            class="deleteTypeBar"
+          >
+            <button
+              type="button"
+              class="mb-btn deleteTypeBtn"
+              :disabled="deleteTypeLoading"
+              @click="confirmDeleteType = !confirmDeleteType"
+            >
+              Hapus Tipe Ini
+            </button>
+          </div>
+          <div v-if="confirmDeleteType && createForm.product_type && createForm.product_type !== '__custom__' && addTab === 'new'" class="deleteTypeConfirm">
+            <span class="deleteConfirmLabel">Hapus tipe <strong>{{ createForm.product_type }}</strong> dari <strong>{{ createForm.brand }}</strong>?<br><small>Semua master produk dengan tipe ini akan dinonaktifkan.</small></span>
+            <div class="deleteTypeActions">
+              <button class="mb-btnDanger" type="button" :disabled="deleteTypeLoading" @click="deleteCreateFormType">
+                {{ deleteTypeLoading ? "Menghapus..." : "Ya, Hapus Tipe" }}
+              </button>
+              <button class="mb-btn" type="button" :disabled="deleteTypeLoading" @click="confirmDeleteType = false">Batal</button>
+            </div>
+            <p v-if="deleteTypeError" class="error">{{ deleteTypeError }}</p>
+          </div>
         </label>
         <label class="field">
           <span>Nama (model)</span>
@@ -1580,6 +1637,11 @@ th {
 .deleteConfirmLabel {
   font-size: 13px;
   color: var(--mb-danger);
+}
+.deleteTypeBar {
+  margin-top: 6px;
+  display: flex;
+  gap: 8px;
 }
 .deleteTypeBtn {
   border-color: rgba(255, 59, 48, 0.5);

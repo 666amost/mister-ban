@@ -215,6 +215,7 @@ export async function summarizeInventory(
             THEN 'OLI'
             WHEN LOWER(TRIM(b.name)) IN ('disc pad', 'disc')
                  OR UPPER(TRIM(p.product_type)) = 'SPAREPART'
+                 OR LOWER(TRIM(p.product_type)) IN ('laher', 'kampas', 'kampas rem', 'bearing', 'gear', 'rantai', 'busi', 'onderdil', 'spare part')
             THEN 'SPAREPART'
             WHEN LOWER(TRIM(b.name)) IN ('iml', 'cairan')
                  OR LOWER(p.name) LIKE '%cairan%'

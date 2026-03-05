@@ -69,6 +69,8 @@ export async function getStoresSummary({
           AND LOWER(TRIM(b.name)) NOT LIKE '%tube%'
           AND LOWER(p.name) NOT LIKE '%ban dalam%'
           AND LOWER(p.name) NOT LIKE '%tube%'
+          AND UPPER(TRIM(p.product_type)) NOT IN ('SPAREPART', 'OLI', 'CAIRAN')
+          AND LOWER(TRIM(p.product_type)) NOT IN ('laher', 'kampas', 'kampas rem', 'bearing', 'gear', 'rantai', 'busi', 'onderdil', 'spare part')
           THEN si.qty ELSE 0
         END), 0)::int AS qty_ban
         FROM sales s2
@@ -133,6 +135,8 @@ export async function getDailyReport({
           AND LOWER(TRIM(b.name)) NOT LIKE '%tube%'
           AND LOWER(p.name) NOT LIKE '%ban dalam%'
           AND LOWER(p.name) NOT LIKE '%tube%'
+          AND UPPER(TRIM(p.product_type)) NOT IN ('SPAREPART', 'OLI', 'CAIRAN')
+          AND LOWER(TRIM(p.product_type)) NOT IN ('laher', 'kampas', 'kampas rem', 'bearing', 'gear', 'rantai', 'busi', 'onderdil', 'spare part')
           THEN si.qty ELSE 0
         END), 0)::int AS ban_qty,
         COALESCE(SUM(CASE
@@ -143,6 +147,7 @@ export async function getDailyReport({
         COALESCE(SUM(CASE
           WHEN LOWER(TRIM(b.name)) IN ('disc pad', 'disc')
                OR UPPER(TRIM(p.product_type)) = 'SPAREPART'
+               OR LOWER(TRIM(p.product_type)) IN ('laher', 'kampas', 'kampas rem', 'bearing', 'gear', 'rantai', 'busi', 'onderdil', 'spare part')
           THEN si.qty ELSE 0
         END), 0)::int AS kampas_qty,
         COALESCE((
@@ -276,12 +281,19 @@ export async function getDailyReport({
     [storeId, date],
   );
 
+  const discountTotalRes = await db.query<{ discount_total: number }>(
+    `SELECT COALESCE(SUM(discount), 0)::int AS discount_total
+     FROM sales
+     WHERE store_id = $1 AND sale_date = $2::date`,
+    [storeId, date],
+  );
+
   const inputsRes = await db.query<{
     sale_id: string;
     created_at: string;
     customer_plate_no: string;
     payment_method: string;
-    input_type: "product" | "custom" | "expense";
+    input_type: "product" | "custom" | "expense" | "discount";
     sku: string | null;
     item_name: string;
     qty: number;
@@ -294,8 +306,10 @@ export async function getDailyReport({
           s.id,
           s.created_at,
           s.customer_plate_no,
+          COALESCE(s.discount, 0)::int AS sale_discount,
           COALESCE(
             NULLIF(pay.payment_method, ''),
+
             NULLIF(UPPER(COALESCE(s.payment_type, '')), ''),
             '-'
           ) AS payment_method
@@ -361,6 +375,22 @@ export async function getDailyReport({
           se.amount::int AS line_total
         FROM sales_expenses se
         JOIN base_sales s ON s.id = se.sale_id
+
+        UNION ALL
+
+        SELECT
+          s.id AS sale_id,
+          s.created_at,
+          s.customer_plate_no,
+          s.payment_method,
+          'discount'::text AS input_type,
+          NULL::text AS sku,
+          'Diskon'::text AS item_name,
+          1::int AS qty,
+          s.sale_discount AS unit_price,
+          s.sale_discount AS line_total
+        FROM base_sales s
+        WHERE s.sale_discount > 0
       ) entries
       ORDER BY created_at DESC, sale_id, input_type, item_name
     `,
@@ -394,6 +424,7 @@ export async function getDailyReport({
     custom_items: customRes.rows,
     expenses: expenseRes.rows,
     expense_total: expenseTotal,
+    discount_total: discountTotalRes.rows[0]?.discount_total ?? 0,
     inputs: inputsRes.rows,
   };
 }
