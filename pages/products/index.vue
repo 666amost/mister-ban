@@ -161,7 +161,27 @@ const derivedLoading = ref(false)
 const derivedError = ref<string | null>(null)
 
 const createTypeSuggestions = ref<string[]>([])
-const createTypeCustom = ref("")
+
+const filteredCreateTypeSuggestions = computed(() => {
+  const input = createForm.product_type.toLowerCase().trim()
+  if (!input) return createTypeSuggestions.value
+  return createTypeSuggestions.value.filter((t) => t.toLowerCase().includes(input))
+})
+
+const skuSlugPreview = computed(() => {
+  const base = [createForm.brand, createForm.name, createForm.size].map((s) => s.trim()).filter(Boolean).join(" ")
+  if (!base) return null
+  return (
+    base
+      .toLowerCase()
+      .normalize("NFKD")
+      .replace(/[^\w\s/-]+/g, "")
+      .trim()
+      .replace(/[\s/]+/g, "-")
+      .replace(/-+/g, "-")
+      .slice(0, 50) + "-XXXXXXXX"
+  )
+})
 
 const effectiveMasterType = computed(() =>
   masterType.value === "__new__" ? masterNewTypeInput.value.trim() : masterType.value,
@@ -394,16 +414,13 @@ function resetCreateForm() {
   createForm.initial_qty = 0
   createForm.initial_unit_cost = 0
   createForm.is_active = true
-  createTypeCustom.value = ""
 }
 
 async function createProduct() {
   createLoading.value = true
   createError.value = null
   try {
-    const resolvedType = createForm.product_type === "__custom__"
-      ? createTypeCustom.value.trim()
-      : createForm.product_type
+    const resolvedType = createForm.product_type.trim()
     if (!resolvedType) {
       createError.value = "Tipe Produk wajib diisi"
       createLoading.value = false
@@ -539,7 +556,6 @@ watch(
     const trimmed = val.trim()
     const lower = trimmed.toLowerCase()
     createForm.product_type = ""
-    createTypeCustom.value = ""
     confirmDeleteType.value = false
     deleteTypeError.value = null
 
@@ -574,15 +590,15 @@ watch(
 async function deleteCreateFormType() {
   const brandLower = createForm.brand.trim().toLowerCase()
   const brand = masterBrands.value.find((b) => b.name.toLowerCase() === brandLower)
-  if (!brand || !createForm.product_type || createForm.product_type === '__custom__') return
+  if (!brand || !createForm.product_type.trim()) return
   deleteTypeLoading.value = true
   deleteTypeError.value = null
   try {
     await $fetch("/api/products/master/type", {
       method: "DELETE",
-      query: { brand_id: brand.id, product_type: createForm.product_type },
+      query: { brand_id: brand.id, product_type: createForm.product_type.trim() },
     })
-    const deletedType = createForm.product_type
+    const deletedType = createForm.product_type.trim()
     createTypeSuggestions.value = createTypeSuggestions.value.filter((t) => t !== deletedType)
     createForm.product_type = ""
     confirmDeleteType.value = false
@@ -934,89 +950,104 @@ onMounted(async () => {
         </button>
       </div>
 
-      <form v-if="addTab === 'new'" class="form" @submit.prevent="createProduct">
-        <label class="field">
-          <span>Brand</span>
-          <input v-model="createForm.brand" list="brandSuggestions" class="mb-input" placeholder="Contoh: MAXXIS" required />
-          <datalist id="brandSuggestions">
-            <option v-for="b in allBrandSuggestions" :key="b" :value="b" />
-          </datalist>
-        </label>
-        <label class="field">
-          <span>Tipe Produk</span>
-          <select
-            v-if="createTypeSuggestions.length > 0"
-            v-model="createForm.product_type"
-            class="mb-input"
-            required
-          >
-            <option value="">-- Pilih Tipe --</option>
-            <option v-for="t in createTypeSuggestions" :key="t" :value="t">{{ t }}</option>
-            <option value="__custom__">+ Tambah tipe baru...</option>
-          </select>
-          <input
-            v-else
-            v-model="createForm.product_type"
-            class="mb-input"
-            placeholder="Contoh: BAN, M922, TUBETYPE"
-            required
-          />
-          <input
-            v-if="createForm.product_type === '__custom__'"
-            v-model="createTypeCustom"
-            class="mb-input"
-            placeholder="Ketik nama tipe baru..."
-            style="margin-top: 4px"
-            required
-          />
-          <div
-            v-if="createTypeSuggestions.length > 0 && createForm.product_type && createForm.product_type !== '__custom__'"
-            class="deleteTypeBar"
-          >
-            <button
-              type="button"
-              class="mb-btn deleteTypeBtn"
-              :disabled="deleteTypeLoading"
-              @click="confirmDeleteType = !confirmDeleteType"
-            >
-              Hapus Tipe Ini
-            </button>
+      <form v-if="addTab === 'new'" class="createForm" @submit.prevent="createProduct">
+        <div class="formSection">
+          <div class="formSectionTitle">Identitas Produk</div>
+          <div class="formSectionBody">
+            <label class="field">
+              <span>Brand <span class="required">*</span></span>
+              <input v-model="createForm.brand" list="brandSuggestions" class="mb-input" placeholder="Contoh: Maxxis, Aspira..." required />
+              <datalist id="brandSuggestions">
+                <option v-for="b in allBrandSuggestions" :key="b" :value="b" />
+              </datalist>
+            </label>
+            <label class="field">
+              <span>Tipe Produk <span class="required">*</span></span>
+              <input
+                v-model="createForm.product_type"
+                class="mb-input"
+                placeholder="Pilih dari chip di bawah atau ketik tipe baru..."
+                required
+              />
+              <div v-if="filteredCreateTypeSuggestions.length > 0" class="chipList">
+                <button
+                  v-for="t in filteredCreateTypeSuggestions"
+                  :key="t"
+                  type="button"
+                  class="chip"
+                  :class="{ active: createForm.product_type === t }"
+                  @click="createForm.product_type = createForm.product_type === t ? '' : t"
+                >{{ t }}</button>
+              </div>
+              <span
+                v-else-if="createForm.product_type.trim() && !createTypeSuggestions.includes(createForm.product_type.trim())"
+                class="typeNewBadge"
+              >Tipe baru: <strong>{{ createForm.product_type.trim() }}</strong></span>
+              <div
+                v-if="createTypeSuggestions.includes(createForm.product_type.trim()) && createForm.product_type.trim()"
+                class="deleteTypeBar"
+              >
+                <button
+                  type="button"
+                  class="mb-btn deleteTypeBtn"
+                  :disabled="deleteTypeLoading"
+                  @click="confirmDeleteType = !confirmDeleteType"
+                >
+                  Hapus Tipe Ini
+                </button>
+              </div>
+              <div v-if="confirmDeleteType && createTypeSuggestions.includes(createForm.product_type.trim()) && addTab === 'new'" class="deleteTypeConfirm">
+                <span class="deleteConfirmLabel">Hapus tipe <strong>{{ createForm.product_type.trim() }}</strong> dari <strong>{{ createForm.brand }}</strong>?<br><small>Semua master produk dengan tipe ini akan dinonaktifkan.</small></span>
+                <div class="deleteTypeActions">
+                  <button class="mb-btnDanger" type="button" :disabled="deleteTypeLoading" @click="deleteCreateFormType">
+                    {{ deleteTypeLoading ? "Menghapus..." : "Ya, Hapus Tipe" }}
+                  </button>
+                  <button class="mb-btn" type="button" :disabled="deleteTypeLoading" @click="confirmDeleteType = false">Batal</button>
+                </div>
+                <p v-if="deleteTypeError" class="error">{{ deleteTypeError }}</p>
+              </div>
+            </label>
+            <label class="field">
+              <span>Nama Model <span class="required">*</span></span>
+              <input v-model="createForm.name" class="mb-input" placeholder="Contoh: Victra S98 CT" required />
+            </label>
+            <label class="field">
+              <span>Ukuran / Varian</span>
+              <input v-model="createForm.size" class="mb-input" placeholder="Contoh: 110/70-12, 1L, Universal..." />
+            </label>
           </div>
-          <div v-if="confirmDeleteType && createForm.product_type && createForm.product_type !== '__custom__' && addTab === 'new'" class="deleteTypeConfirm">
-            <span class="deleteConfirmLabel">Hapus tipe <strong>{{ createForm.product_type }}</strong> dari <strong>{{ createForm.brand }}</strong>?<br><small>Semua master produk dengan tipe ini akan dinonaktifkan.</small></span>
-            <div class="deleteTypeActions">
-              <button class="mb-btnDanger" type="button" :disabled="deleteTypeLoading" @click="deleteCreateFormType">
-                {{ deleteTypeLoading ? "Menghapus..." : "Ya, Hapus Tipe" }}
-              </button>
-              <button class="mb-btn" type="button" :disabled="deleteTypeLoading" @click="confirmDeleteType = false">Batal</button>
-            </div>
-            <p v-if="deleteTypeError" class="error">{{ deleteTypeError }}</p>
+        </div>
+
+        <div class="formSection">
+          <div class="formSectionTitle">Harga &amp; Stok</div>
+          <div class="formSectionBody">
+            <label class="field">
+              <span>Harga Jual (Rp) <span class="required">*</span></span>
+              <input v-model.number="createForm.sell_price" class="mb-input" type="number" min="0" required />
+            </label>
+            <label class="field">
+              <span>Stok Awal</span>
+              <input v-model.number="createForm.initial_qty" class="mb-input" type="number" min="0" />
+            </label>
+            <label class="field">
+              <span title="Harga beli/modal per unit untuk stok awal">Harga Beli (Rp)</span>
+              <input v-model.number="createForm.initial_unit_cost" class="mb-input" type="number" min="0" />
+            </label>
           </div>
-        </label>
-        <label class="field">
-          <span>Nama (model)</span>
-          <input v-model="createForm.name" class="mb-input" placeholder="Contoh: Victra S98 CT" required />
-        </label>
-        <label class="field">
-          <span>Ukuran / Varian</span>
-          <input v-model="createForm.size" class="mb-input" placeholder="Contoh: 110/70-12, 1L, Universal..." />
-        </label>
-        <label class="field">
-          <span>Sell Price (Rp)</span>
-          <input v-model.number="createForm.sell_price" class="mb-input" type="number" min="0" required />
-        </label>
-        <label class="field">
-          <span>Stok Awal</span>
-          <input v-model.number="createForm.initial_qty" class="mb-input" type="number" min="0" />
-        </label>
-        <label class="field">
-          <span title="Harga beli/modal per unit untuk stok awal">Harga Beli (Rp)</span>
-          <input v-model.number="createForm.initial_unit_cost" class="mb-input" type="number" min="0" />
-        </label>
-        <label class="field">
-          <span>SKU (optional)</span>
-          <input v-model="createForm.sku" class="mb-input" placeholder="Kosongkan untuk auto-generate" />
-        </label>
+        </div>
+
+        <div class="formSection">
+          <div class="formSectionTitle">SKU <span class="fieldOptional">(opsional)</span></div>
+          <div class="formSectionBody skuSection">
+            <label class="field skuFullField">
+              <span>SKU</span>
+              <input v-model="createForm.sku" class="mb-input" placeholder="Kosongkan untuk auto-generate" />
+              <span v-if="skuSlugPreview && !createForm.sku.trim()" class="skuPreview">
+                Preview: <code>{{ skuSlugPreview }}</code>
+              </span>
+            </label>
+          </div>
+        </div>
 
         <div class="actions">
           <button class="mb-btnPrimary" type="submit" :disabled="createLoading">
@@ -1664,6 +1695,89 @@ th {
   display: flex;
   gap: 8px;
   align-items: center;
+}
+.createForm {
+  margin-top: 14px;
+  display: grid;
+  gap: 12px;
+}
+.formSection {
+  border: 1px solid var(--mb-border2);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.formSectionTitle {
+  padding: 8px 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid var(--mb-border2);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--mb-muted);
+}
+.formSectionBody {
+  padding: 14px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+.skuSection {
+  grid-template-columns: 1fr;
+}
+.skuFullField {
+  min-width: 0;
+}
+.chipList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.chip {
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 20px;
+  border: 1px solid var(--mb-border2);
+  background: var(--mb-surface2);
+  color: var(--mb-text);
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+  white-space: nowrap;
+}
+.chip:hover {
+  border-color: rgba(52, 199, 89, 0.6);
+}
+.chip.active {
+  border-color: rgba(52, 199, 89, 0.9);
+  background: rgba(52, 199, 89, 0.12);
+  box-shadow: 0 0 0 2px rgba(52, 199, 89, 0.18);
+}
+.typeNewBadge {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--mb-muted);
+}
+.typeNewBadge strong {
+  color: var(--mb-text);
+}
+.skuPreview {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--mb-muted);
+}
+.skuPreview code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  color: var(--mb-text);
+  opacity: 0.7;
+  font-size: 11px;
+}
+.fieldOptional {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--mb-muted);
 }
 </style>
 
