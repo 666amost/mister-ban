@@ -19,6 +19,8 @@ const stores = ref<Store[]>([]);
 const storeSummary = ref<StoreSummary[]>([]);
 const summaryMonth = ref(new Date().toISOString().slice(0, 7));
 const isSummaryLoading = ref(false);
+const isSummaryOpen = ref(false);
+const hasLoadedSummary = ref(false);
 const search = ref("");
 const selectedStoreId = ref("");
 const errorMessage = ref<string | null>(null);
@@ -57,11 +59,21 @@ async function loadSummary() {
   } catch {
     storeSummary.value = [];
   } finally {
+    hasLoadedSummary.value = true;
     isSummaryLoading.value = false;
   }
 }
 
-watch(summaryMonth, () => loadSummary());
+watch(summaryMonth, () => {
+  if (!hasLoadedSummary.value) return;
+  loadSummary();
+});
+
+watch(isSummaryOpen, (open) => {
+  if (open && !hasLoadedSummary.value) {
+    loadSummary();
+  }
+});
 
 onMounted(async () => {
   await me.refresh();
@@ -71,7 +83,7 @@ onMounted(async () => {
   }
   
   await storeContext.refresh();
-  await Promise.all([loadStores(), loadSummary()]);
+  await loadStores();
 });
 
 const filteredStores = computed(() => {
@@ -118,26 +130,6 @@ async function logout() {
         </template>
         <button class="mb-btn" @click="logout">Logout</button>
       </AppHeader>
-
-      <section class="mb-card card">
-        <div class="cardHead">
-          <div>
-            <h2 class="cardTitle">Perbandingan Toko</h2>
-            <p class="cardSub">
-              Ringkasan omzet, profit & transaksi semua toko.
-            </p>
-          </div>
-          <input
-            v-model="summaryMonth"
-            type="month"
-            class="mb-input monthPicker"
-          />
-        </div>
-        <div v-if="isSummaryLoading" class="chartLoading">
-          <MbSkeleton style="height: 160px" />
-        </div>
-        <StoreComparisonChart v-else :stores="storeSummary" />
-      </section>
 
       <section class="mb-card card">
       <div class="cardHead">
@@ -203,6 +195,50 @@ async function logout() {
 
       <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
       </section>
+
+      <section class="mb-card card">
+        <button
+          type="button"
+          class="summaryToggle"
+          :aria-expanded="isSummaryOpen"
+          aria-controls="store-summary-panel"
+          @click="isSummaryOpen = !isSummaryOpen"
+        >
+          <div>
+            <h2 class="cardTitle">Perbandingan Toko</h2>
+            <p class="cardSub">
+              Klik untuk lihat ringkasan omzet, profit & transaksi semua toko.
+            </p>
+          </div>
+          <span class="summaryToggleLabel">
+            {{ isSummaryOpen ? "Tutup" : "Buka" }}
+          </span>
+        </button>
+
+        <Transition name="collapse">
+          <div
+            v-if="isSummaryOpen"
+            id="store-summary-panel"
+            class="summaryContent"
+          >
+            <div class="cardHead">
+              <p class="cardSub">
+                Ringkasan omzet, profit & transaksi semua toko.
+              </p>
+              <input
+                v-model="summaryMonth"
+                type="month"
+                class="mb-input monthPicker"
+              />
+            </div>
+
+            <div v-if="isSummaryLoading" class="chartLoading">
+              <MbSkeleton style="height: 160px" />
+            </div>
+            <StoreComparisonChart v-else :stores="storeSummary" />
+          </div>
+        </Transition>
+      </section>
     </div>
   </main>
 </template>
@@ -230,6 +266,38 @@ async function logout() {
   margin: 6px 0 0;
   font-size: 13px;
   opacity: 0.85;
+}
+.summaryToggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-radius: 14px;
+  border: 1px solid var(--mb-border2);
+  background: var(--mb-surface2);
+  color: var(--mb-text);
+  text-align: left;
+  padding: 12px 14px;
+  cursor: pointer;
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+.summaryToggle:hover {
+  border-color: rgba(52, 199, 89, 0.55);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.08);
+}
+.summaryToggleLabel {
+  border-radius: 999px;
+  border: 1px solid var(--mb-border2);
+  padding: 7px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.summaryContent {
+  margin-top: 12px;
 }
 
 .controls {
@@ -316,5 +384,24 @@ async function logout() {
 
 .chartLoading {
   margin-top: 12px;
+}
+
+.collapse-enter-active,
+.collapse-leave-active {
+  transition:
+    max-height 180ms ease,
+    opacity 180ms ease;
+}
+.collapse-enter-from,
+.collapse-leave-to {
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+}
+.collapse-enter-to,
+.collapse-leave-from {
+  max-height: 580px;
+  opacity: 1;
+  overflow: hidden;
 }
 </style>
