@@ -79,11 +79,6 @@ function formatDate(iso: string | null): string {
     + d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })
 }
 
-function formatUser(email: string | null): string {
-  if (!email) return ""
-  return email
-}
-
 function normalizeText(value: string) {
   return value
     .toLowerCase()
@@ -427,7 +422,6 @@ onMounted(async () => {
                   <div v-if="me.user.value?.role === 'ADMIN' && i.last_adj_at" class="lastEditHint">
                     {{ i.last_adj_qty_delta !== null && i.last_adj_qty_delta > 0 ? '+' : '' }}{{ i.last_adj_qty_delta }} qty
                     • {{ formatDate(i.last_adj_at) }}
-                    <template v-if="i.last_adj_by"> · {{ formatUser(i.last_adj_by) }}</template>
                   </div>
                 </td>
                 <td v-if="me.user.value?.role === 'ADMIN'" style="text-align: right">
@@ -449,7 +443,6 @@ onMounted(async () => {
                     Rp {{ rupiah(i.sell_price ?? 0) }}
                     <div v-if="me.user.value?.role === 'ADMIN' && i.price_updated_at" class="lastEditHint">
                       {{ formatDate(i.price_updated_at) }}
-                      <template v-if="i.price_updated_by"> · {{ formatUser(i.price_updated_by) }}</template>
                     </div>
                   </template>
                 </td>
