@@ -235,11 +235,13 @@ export async function updateStoreProduct(
     productId,
     sellPrice,
     isActive,
+    updatedBy,
   }: {
     storeId: string;
     productId: string;
     sellPrice: number;
     isActive?: boolean;
+    updatedBy?: string;
   },
 ) {
   const nextStatus =
@@ -249,12 +251,14 @@ export async function updateStoreProduct(
       UPDATE store_products
       SET
         sell_price = $3,
-        status = COALESCE($4::text, status)
+        status = COALESCE($4::text, status),
+        sell_price_updated_at = now(),
+        sell_price_updated_by = $5::uuid
       WHERE store_id = $1
         AND product_id = $2
       RETURNING store_id, product_id, sell_price, (status = 'active') AS is_active
     `,
-    [storeId, productId, sellPrice, nextStatus],
+    [storeId, productId, sellPrice, nextStatus, updatedBy ?? null],
   );
   return rows[0] ?? null;
 }
@@ -289,17 +293,18 @@ export async function deactivateProductsByBrandAndType(
   brandId: string,
   productType: string,
 ): Promise<number> {
-  const { rowCount } = await db.query(
+  const { rows } = await db.query(
     `
       UPDATE products
       SET status = 'inactive'
       WHERE brand_id = $1
         AND product_type = $2
         AND status = 'active'
+      RETURNING id
     `,
     [brandId, productType],
   );
-  return rowCount ?? 0;
+  return rows.length;
 }
 
 export async function updateMasterProduct(

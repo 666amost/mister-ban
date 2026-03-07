@@ -25,6 +25,7 @@ export default defineEventHandler(async (event) => {
     productId: params.data.id,
     sellPrice: body.sell_price,
     isActive: body.is_active,
+    updatedBy: user.id,
   });
 
   return { item: updated };

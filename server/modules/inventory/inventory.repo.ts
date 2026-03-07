@@ -10,6 +10,11 @@ export type InventoryRow = {
   qty_on_hand: number;
   avg_unit_cost: number;
   sell_price: number | null;
+  last_adj_at: string | null;
+  last_adj_qty_delta: number | null;
+  last_adj_by: string | null;
+  price_updated_at: string | null;
+  price_updated_by: string | null;
 };
 
 export type InventorySummary = {
@@ -116,13 +121,29 @@ export async function listInventory(
         b.name AS brand,
         COALESCE(ib.qty_on_hand, 0) AS qty_on_hand,
         COALESCE(ib.avg_unit_cost, 0) AS avg_unit_cost,
-        sp.sell_price
+        sp.sell_price,
+        la.txn_at AS last_adj_at,
+        la.qty_delta AS last_adj_qty_delta,
+        u_adj.email AS last_adj_by,
+        sp.sell_price_updated_at AS price_updated_at,
+        u_price.email AS price_updated_by
       FROM store_products sp
       JOIN categorized_products cp ON cp.id = sp.product_id
       JOIN brands b ON b.id = cp.brand_id
       LEFT JOIN inventory_balances ib
         ON ib.store_id = sp.store_id
        AND ib.product_id = sp.product_id
+      LEFT JOIN LATERAL (
+        SELECT txn_at, qty_delta, created_by
+        FROM inventory_ledger
+        WHERE store_id = sp.store_id
+          AND product_id = sp.product_id
+          AND ref_type = 'MANUAL_ADJUST'
+        ORDER BY txn_at DESC
+        LIMIT 1
+      ) la ON true
+      LEFT JOIN users u_adj ON u_adj.id = la.created_by
+      LEFT JOIN users u_price ON u_price.id = sp.sell_price_updated_by
       WHERE sp.store_id = $1
         AND sp.status = 'active'
         AND sp.sell_price > 0

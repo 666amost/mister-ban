@@ -179,14 +179,16 @@ export async function updateStoreProductForStore({
   productId,
   sellPrice,
   isActive,
+  updatedBy,
 }: {
   storeId: string;
   productId: string;
   sellPrice: number;
   isActive?: boolean;
+  updatedBy?: string;
 }) {
   const updated = await tx(async (client) =>
-    updateStoreProduct(client, { storeId, productId, sellPrice, isActive }),
+    updateStoreProduct(client, { storeId, productId, sellPrice, isActive, updatedBy }),
   );
   if (!updated) throw badRequest("Produk tidak ditemukan di toko ini");
   return updated;

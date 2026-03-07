@@ -13,6 +13,11 @@ type InventoryRow = {
   qty_on_hand: number
   avg_unit_cost: number
   sell_price: number | null
+  last_adj_at: string | null
+  last_adj_qty_delta: number | null
+  last_adj_by: string | null
+  price_updated_at: string | null
+  price_updated_by: string | null
 }
 
 type InventorySummary = {
@@ -66,6 +71,19 @@ function formatNumber(value: number) {
   return value.toLocaleString("id-ID")
 }
 
+function formatDate(iso: string | null): string {
+  if (!iso) return ""
+  const d = new Date(iso)
+  return d.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "2-digit" })
+    + " "
+    + d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })
+}
+
+function formatUser(email: string | null): string {
+  if (!email) return ""
+  return email
+}
+
 function normalizeText(value: string) {
   return value
     .toLowerCase()
@@ -117,7 +135,7 @@ function cancelPriceEditMode() {
 }
 
 function syncPriceDraft(productId: string) {
-  const rawValue = priceDrafts.value[productId]
+  const rawValue = priceDrafts.value[productId] ?? 0
   const normalized = Number.isFinite(rawValue) ? Math.max(0, Math.trunc(rawValue)) : 0
   priceDrafts.value[productId] = normalized
   const original = items.value.find((i) => i.product_id === productId)?.sell_price ?? 0
@@ -404,7 +422,14 @@ onMounted(async () => {
                   <div class="strong">{{ productDisplayName(i.brand, i.name) }}</div>
                   <div class="muted">{{ i.size }}</div>
                 </td>
-                <td style="text-align: right">{{ i.qty_on_hand }}</td>
+                <td style="text-align: right">
+                  {{ i.qty_on_hand }}
+                  <div v-if="me.user.value?.role === 'ADMIN' && i.last_adj_at" class="lastEditHint">
+                    {{ i.last_adj_qty_delta !== null && i.last_adj_qty_delta > 0 ? '+' : '' }}{{ i.last_adj_qty_delta }} qty
+                    • {{ formatDate(i.last_adj_at) }}
+                    <template v-if="i.last_adj_by"> · {{ formatUser(i.last_adj_by) }}</template>
+                  </div>
+                </td>
                 <td v-if="me.user.value?.role === 'ADMIN'" style="text-align: right">
                   <template v-if="i.avg_unit_cost > 0">Rp {{ rupiah(i.avg_unit_cost) }}</template>
                   <template v-else>-</template>
@@ -420,7 +445,13 @@ onMounted(async () => {
                       @input="syncPriceDraft(i.product_id)"
                     />
                   </template>
-                  <template v-else>Rp {{ rupiah(i.sell_price ?? 0) }}</template>
+                  <template v-else>
+                    Rp {{ rupiah(i.sell_price ?? 0) }}
+                    <div v-if="me.user.value?.role === 'ADMIN' && i.price_updated_at" class="lastEditHint">
+                      {{ formatDate(i.price_updated_at) }}
+                      <template v-if="i.price_updated_by"> · {{ formatUser(i.price_updated_by) }}</template>
+                    </div>
+                  </template>
                 </td>
                 <td v-if="me.user.value?.role === 'ADMIN'" style="text-align: right">
                   <button class="mb-btn" type="button" :disabled="priceEditMode" @click="startAdjust(i)">Adjust</button>
@@ -521,6 +552,14 @@ onMounted(async () => {
   margin-top: 6px;
   font-size: 12px;
   color: var(--mb-muted);
+}
+.lastEditHint {
+  margin-top: 3px;
+  font-size: 11px;
+  color: rgba(52, 199, 89, 0.9);
+  font-weight: 400;
+  font-style: italic;
+  white-space: nowrap;
 }
 .tableWrap {
   margin-top: 12px;
