@@ -3,6 +3,7 @@ import { badRequest } from "../../utils/http";
 import { ensureBalances, lockBalances } from "../inventory/inventory.repo";
 import type { DbConn } from "../../db/conn";
 import { buildValuesPlaceholders } from "../../utils/sql";
+import { buildProductCategoryCaseSql } from "../../utils/product-category-sql";
 
 type SaleItemInput = { product_id: string; qty: number };
 type CustomItemInput = { item_name: string; qty: number; price: number };
@@ -10,6 +11,12 @@ type SalePaymentInput = { payment_type: string; amount: number };
 type SaleExpenseInput = { item_name: string; amount: number };
 
 let printedFirstAtColumnSupported: boolean | null = null;
+
+const salesProductCategorySql = buildProductCategoryCaseSql({
+  brandExpr: "b.name",
+  productNameExpr: "p.name",
+  productTypeExpr: "p.product_type",
+});
 
 async function hasPrintedFirstAtColumn(db: DbConn) {
   if (printedFirstAtColumnSupported !== null) return printedFirstAtColumnSupported;
@@ -364,45 +371,23 @@ export async function getSalesQtySummary({
 
   const { rows } = await db.query<SalesQtySummary>(
     `
+      WITH categorized_sales_items AS (
+        SELECT
+          si.qty,
+          ${salesProductCategorySql} AS category
+        FROM sales_items si
+        JOIN sales s ON s.id = si.sale_id
+        JOIN products p ON p.id = si.product_id
+        JOIN brands b ON b.id = p.brand_id
+        WHERE s.store_id = $1
+          ${dateFilter}
+      )
       SELECT
-        COALESCE(SUM(CASE
-          WHEN (
-            LOWER(TRIM(b.name)) LIKE '%zeneos%'
-            OR LOWER(TRIM(b.name)) LIKE '%irc%'
-            OR LOWER(TRIM(b.name)) LIKE '%aspira%'
-            OR LOWER(TRIM(b.name)) LIKE '%fdr%'
-            OR LOWER(TRIM(b.name)) LIKE '%swallow%'
-            OR LOWER(TRIM(b.name)) LIKE '%honda%'
-            OR LOWER(TRIM(b.name)) LIKE '%kingland%'
-            OR LOWER(TRIM(b.name)) LIKE '%michelin%'
-            OR LOWER(TRIM(b.name)) LIKE '%pirelli%'
-            OR LOWER(TRIM(b.name)) LIKE '%corsa%'
-            OR (LOWER(TRIM(b.name)) LIKE '%maxxis%' AND LOWER(TRIM(b.name)) NOT LIKE '%tube%')
-            OR UPPER(TRIM(p.product_type)) = 'BAN'
-          )
-          AND LOWER(TRIM(b.name)) NOT IN ('ban dalam', 'oli', 'disc pad', 'disc', 'iml', 'cairan')
-          AND LOWER(TRIM(b.name)) NOT LIKE '%tube%'
-          AND LOWER(p.name) NOT LIKE '%ban dalam%'
-          AND LOWER(p.name) NOT LIKE '%tube%'
-          THEN si.qty ELSE 0
-        END), 0)::int AS ban_qty,
-        COALESCE(SUM(CASE
-          WHEN LOWER(TRIM(b.name)) = 'oli'
-               OR UPPER(TRIM(p.product_type)) = 'OLI'
-          THEN si.qty ELSE 0
-        END), 0)::int AS oli_qty,
-        COALESCE(SUM(CASE
-          WHEN LOWER(TRIM(b.name)) IN ('disc pad', 'disc')
-               OR UPPER(TRIM(p.product_type)) = 'SPAREPART'
-          THEN si.qty ELSE 0
-        END), 0)::int AS kampas_qty,
-        COALESCE(SUM(si.qty), 0)::int AS total_qty
-      FROM sales_items si
-      JOIN sales s ON s.id = si.sale_id
-      JOIN products p ON p.id = si.product_id
-      JOIN brands b ON b.id = p.brand_id
-      WHERE s.store_id = $1
-        ${dateFilter}
+        COALESCE(SUM(CASE WHEN category = 'BAN' THEN qty ELSE 0 END), 0)::int AS ban_qty,
+        COALESCE(SUM(CASE WHEN category = 'OLI' THEN qty ELSE 0 END), 0)::int AS oli_qty,
+        COALESCE(SUM(CASE WHEN category = 'SPAREPART' THEN qty ELSE 0 END), 0)::int AS kampas_qty,
+        COALESCE(SUM(qty), 0)::int AS total_qty
+      FROM categorized_sales_items
     `,
     params,
   );

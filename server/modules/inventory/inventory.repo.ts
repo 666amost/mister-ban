@@ -1,4 +1,11 @@
 import type { DbConn } from "../../db/conn";
+import { buildProductCategoryCaseSql } from "../../utils/product-category-sql";
+
+const inventoryProductCategorySql = buildProductCategoryCaseSql({
+  brandExpr: "b.name",
+  productNameExpr: "p.name",
+  productTypeExpr: "p.product_type",
+});
 
 export type InventoryRow = {
   product_id: string;
@@ -90,24 +97,7 @@ export async function listInventory(
           p.size,
           p.product_type,
           p.brand_id,
-          CASE
-            WHEN LOWER(TRIM(b.name)) = 'oli'
-                 OR UPPER(TRIM(p.product_type)) = 'OLI'
-            THEN 'OLI'
-            WHEN LOWER(TRIM(b.name)) IN ('disc pad', 'disc')
-                 OR UPPER(TRIM(p.product_type)) = 'SPAREPART'
-            THEN 'SPAREPART'
-            WHEN LOWER(TRIM(b.name)) IN ('iml', 'cairan')
-                 OR LOWER(p.name) LIKE '%cairan%'
-                 OR LOWER(TRIM(p.product_type)) = 'cairan'
-            THEN 'CAIRAN'
-            WHEN LOWER(TRIM(b.name)) = 'ban dalam'
-                 OR LOWER(p.name) LIKE '%ban dalam%'
-                 OR LOWER(p.name) LIKE '%tube%'
-                 OR LOWER(TRIM(p.product_type)) LIKE 'tr%'
-            THEN 'BAN_DALAM'
-            ELSE 'BAN'
-          END AS category
+          ${inventoryProductCategorySql} AS category
         FROM products p
         JOIN brands b ON b.id = p.brand_id
         WHERE p.status = 'active'
@@ -230,25 +220,7 @@ export async function summarizeInventory(
       FROM (
         SELECT
           COALESCE(ib.qty_on_hand, 0) AS qty_on_hand,
-          CASE
-            WHEN LOWER(TRIM(b.name)) = 'oli'
-                 OR UPPER(TRIM(p.product_type)) = 'OLI'
-            THEN 'OLI'
-            WHEN LOWER(TRIM(b.name)) IN ('disc pad', 'disc')
-                 OR UPPER(TRIM(p.product_type)) = 'SPAREPART'
-                 OR LOWER(TRIM(p.product_type)) IN ('laher', 'kampas', 'kampas rem', 'bearing', 'gear', 'rantai', 'busi', 'onderdil', 'spare part')
-            THEN 'SPAREPART'
-            WHEN LOWER(TRIM(b.name)) IN ('iml', 'cairan')
-                 OR LOWER(p.name) LIKE '%cairan%'
-                 OR LOWER(TRIM(p.product_type)) = 'cairan'
-            THEN 'CAIRAN'
-            WHEN LOWER(TRIM(b.name)) = 'ban dalam'
-                 OR LOWER(p.name) LIKE '%ban dalam%'
-                 OR LOWER(p.name) LIKE '%tube%'
-                 OR LOWER(TRIM(p.product_type)) LIKE 'tr%'
-            THEN 'BAN_DALAM'
-            ELSE 'BAN'
-          END AS category
+        ${inventoryProductCategorySql} AS category
         FROM store_products sp
         JOIN products p ON p.id = sp.product_id
         JOIN brands b ON b.id = p.brand_id
