@@ -98,8 +98,24 @@ const defaultDailySummary = (): SalesDailySummary => ({
   credit: 0,
 })
 
+function todayIsoDate() {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Jakarta",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date())
+
+  const year = parts.find((part) => part.type === "year")?.value
+  const month = parts.find((part) => part.type === "month")?.value
+  const day = parts.find((part) => part.type === "day")?.value
+  if (!year || !month || !day) return new Date().toISOString().slice(0, 10)
+  return `${year}-${month}-${day}`
+}
+
 const me = useMe()
 
+const saleDate = ref(todayIsoDate())
 const plateNo = ref("")
 const paymentType = ref<PaymentType>("CASH")
 const isSplitPayment = ref(false)
@@ -148,6 +164,7 @@ const isExpenseOnly = computed(() => expenseOnlyMode.value)
 
 const editOpen = ref(false)
 const editSaleId = ref<string | null>(null)
+const editIsExpenseOnly = ref(false)
 const editSaleDate = ref("")
 const editPlateNo = ref("")
 const editPaymentType = ref<PaymentType>("CASH")
@@ -554,9 +571,11 @@ async function submit() {
       body: expenseOnly
         ? {
             expense_only: true,
+            sale_date: saleDate.value || undefined,
             expenses: expenses.value,
           }
         : {
+            sale_date: saleDate.value || undefined,
             plate_no: plateNo.value.trim(),
             ...(isSplitPayment.value ? { payments: payments.value } : { payment_type: paymentType.value }),
             items: selected.value.map((x) => ({ product_id: x.product.product_id, qty: x.qty })),
@@ -605,6 +624,7 @@ function closeSuccessSheet() {
 
 function openEditSale(s: SaleRow) {
   editSaleId.value = s.id
+  editIsExpenseOnly.value = isExpenseOnlySale(s)
   editSaleDate.value = s.sale_date
   editPlateNo.value = s.customer_plate_no
   const ps = (s.payments ?? []) as SalePaymentDetail[]
@@ -652,6 +672,7 @@ function openEditSale(s: SaleRow) {
 function closeEditSale() {
   editOpen.value = false
   editSaleId.value = null
+  editIsExpenseOnly.value = false
   editSaleDate.value = ""
   editSaving.value = false
   editError.value = null
@@ -793,6 +814,7 @@ const editPaymentTotal = computed(() => editPayments.value.reduce((sum, p) => su
 const editPaymentDiff = computed(() => editTotal.value - editPaymentTotal.value)
 
 const editExpenseTotal = computed(() => editExpenses.value.reduce((sum, e) => sum + (e.amount || 0), 0))
+const editBottomTotal = computed(() => (editIsExpenseOnly.value ? editExpenseTotal.value : editTotal.value))
 
 const editNewExpenseName = ref("")
 const editNewExpenseAmount = ref(0)
@@ -857,12 +879,18 @@ function removeEditExpense(idx: number) {
 
 async function saveEditSale() {
   if (!editSaleId.value) return
+  const expenseOnly = editIsExpenseOnly.value
   const plate = editPlateNo.value.trim()
-  if (!plate) {
+  if (expenseOnly) {
+    if (editExpenses.value.length === 0) {
+      editError.value = "Minimal 1 item pengeluaran"
+      return
+    }
+  } else if (!plate) {
     editError.value = "Plat nomor wajib diisi"
     return
   }
-  if (editIsSplitPayment.value) {
+  if (!expenseOnly && editIsSplitPayment.value) {
     const used = new Set<string>()
     for (const p of editPayments.value) {
       if (!p.payment_type) {
@@ -886,22 +914,27 @@ async function saveEditSale() {
   }
 
   const currentItems = editItems.value.map((i) => ({ product_id: i.product_id, qty: i.qty }))
-  const includeItems = !sameItems(editOriginalItems.value, currentItems)
+  const includeItems = !expenseOnly && !sameItems(editOriginalItems.value, currentItems)
 
   editSaving.value = true
   editError.value = null
   try {
     await $fetch(`/api/sales/${editSaleId.value}`, {
       method: "PATCH",
-      body: {
-        plate_no: plate,
-        sale_date: editSaleDate.value || undefined,
-        ...(editIsSplitPayment.value ? { payments: editPayments.value } : { payment_type: editPaymentType.value }),
-        discount: editDiscount.value,
-        items: includeItems ? currentItems : undefined,
-        custom_items: editCustomItems.value,
-        expenses: editExpenses.value,
-      },
+      body: expenseOnly
+        ? {
+            sale_date: editSaleDate.value || undefined,
+            expenses: editExpenses.value,
+          }
+        : {
+            plate_no: plate,
+            sale_date: editSaleDate.value || undefined,
+            ...(editIsSplitPayment.value ? { payments: editPayments.value } : { payment_type: editPaymentType.value }),
+            discount: editDiscount.value,
+            items: includeItems ? currentItems : undefined,
+            custom_items: editCustomItems.value,
+            expenses: editExpenses.value,
+          },
     })
     closeEditSale()
     await loadSales()
@@ -1134,6 +1167,17 @@ async function newTransaction() {
       </div>
 
       <div class="formSection">
+        <div class="formRow">
+          <label class="formField">
+            <span class="formLabel">Tanggal Transaksi</span>
+            <input
+              v-model="saleDate"
+              class="formInput"
+              type="date"
+            />
+          </label>
+        </div>
+
         <template v-if="!isExpenseOnly">
         <div class="formRow">
           <label class="formField">
@@ -1521,7 +1565,7 @@ async function newTransaction() {
             <div v-if="editSaleId" class="editSub">ID: {{ editSaleId.slice(0, 8) }}</div>
 
             <div class="formSection editForm">
-              <div class="searchSection editSearchSection">
+              <div v-if="!editIsExpenseOnly" class="searchSection editSearchSection">
                 <div class="searchWrapper">
                   <svg class="searchIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <circle cx="11" cy="11" r="8" />
@@ -1590,7 +1634,7 @@ async function newTransaction() {
                   />
                 </label>
               </div>
-              <div class="formRow">
+              <div v-if="!editIsExpenseOnly" class="formRow">
                 <label class="formField">
                   <span class="formLabel">Plat Nomor</span>
                   <input
@@ -1602,7 +1646,7 @@ async function newTransaction() {
                   />
                 </label>
               </div>
-              <div class="paymentHeader">
+              <div v-if="!editIsExpenseOnly" class="paymentHeader">
                 <span class="formLabel">Pembayaran</span>
                 <label class="splitToggle">
                   <input
@@ -1613,7 +1657,7 @@ async function newTransaction() {
                   <span>Split</span>
                 </label>
               </div>
-              <div v-if="!editIsSplitPayment" class="paymentGrid">
+              <div v-if="!editIsExpenseOnly && !editIsSplitPayment" class="paymentGrid">
                 <button
                   v-for="pt in ['CASH', 'QRIS', 'TRANSFER', 'DEBIT', 'CREDIT', 'TEMPO'] as const"
                   :key="pt"
@@ -1625,7 +1669,7 @@ async function newTransaction() {
                   {{ pt }}
                 </button>
               </div>
-              <div v-else class="splitPaymentBox">
+              <div v-else-if="!editIsExpenseOnly" class="splitPaymentBox">
                 <div v-for="(p, idx) in editPayments" :key="'edit-pay-' + idx" class="splitPaymentRow">
                   <select v-model="p.payment_type" class="formInput splitSelect">
                     <option v-for="pt in ['CASH', 'QRIS', 'TRANSFER', 'DEBIT', 'CREDIT', 'TEMPO'] as const" :key="pt" :value="pt">
@@ -1646,7 +1690,7 @@ async function newTransaction() {
                 </div>
               </div>
                
-              <div v-if="editItems.length" class="editItemsList">
+              <div v-if="!editIsExpenseOnly && editItems.length" class="editItemsList">
                 <div class="editItemsTitle">Item Produk</div>
                 <div v-for="(ei, idx) in editItems" :key="'ei-' + idx" class="editItemRow">
                   <span class="editItemName">{{ productDisplayName(ei.brand, ei.name) }} {{ ei.size }}</span>
@@ -1660,7 +1704,7 @@ async function newTransaction() {
                 </div>
               </div>
 
-              <div v-if="editCustomItems.length" class="editItemsList">
+              <div v-if="!editIsExpenseOnly && editCustomItems.length" class="editItemsList">
                 <div class="editItemsTitle">Item Custom</div>
                 <div v-for="(ec, idx) in editCustomItems" :key="'ec-' + idx" class="editItemRow">
                   <span class="editItemName">{{ ec.item_name }}</span>
@@ -1670,7 +1714,7 @@ async function newTransaction() {
                 </div>
               </div>
 
-              <div class="customItemSection editCustomSection">
+              <div v-if="!editIsExpenseOnly" class="customItemSection editCustomSection">
                 <button v-if="!showEditCustomForm" type="button" class="addCustomBtn" @click="showEditCustomForm = true">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M12 5v14M5 12h14" />
@@ -1724,7 +1768,7 @@ async function newTransaction() {
                 </div>
               </div>
 
-              <div class="adjustmentRow">
+              <div v-if="!editIsExpenseOnly" class="adjustmentRow">
                 <label class="formField formFieldSmall">
                   <span class="formLabel">Diskon</span>
                   <input v-model.number="editDiscount" class="formInput" type="number" min="0" placeholder="0" />
@@ -1732,8 +1776,8 @@ async function newTransaction() {
               </div>
 
               <div class="editTotalRow">
-                <span>Total: </span>
-                <strong>Rp {{ rupiah(editTotal) }}</strong>
+                <span>{{ editIsExpenseOnly ? "Total Pengeluaran:" : "Total:" }}</span>
+                <strong>Rp {{ rupiah(editBottomTotal) }}</strong>
               </div>
             </div>
 
@@ -1846,6 +1890,7 @@ async function newTransaction() {
   color: var(--mb-text);
   font-size: 16px;
   outline: none;
+  appearance: none;
   -webkit-appearance: none;
 }
 
@@ -2574,6 +2619,7 @@ async function newTransaction() {
   overflow: hidden;
   text-overflow: clip;
   display: -webkit-box;
+  line-clamp: 2;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
 }

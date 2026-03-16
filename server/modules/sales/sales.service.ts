@@ -877,7 +877,7 @@ export async function updateSaleFields({
         [saleId],
       );
       if (existingPayments.rows.length === 0) {
-        paymentRows = [{ payment_type: paymentTypeSummary, amount: newTotal }];
+        paymentRows = newTotal > 0 ? [{ payment_type: paymentTypeSummary, amount: newTotal }] : null;
       } else if (existingPayments.rows.length === 1) {
         const only = existingPayments.rows[0];
         if (!only) throw badRequest("Pembayaran tidak ditemukan");
