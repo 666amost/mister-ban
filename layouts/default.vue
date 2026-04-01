@@ -19,6 +19,7 @@ type IconName =
   | "products"
   | "suppliers"
   | "reports"
+  | "theme"
   | "users"
 
 type NavItem = {
@@ -41,6 +42,21 @@ type BottomItem = {
   to?: string
   kind: "link" | "menu"
 }
+
+type BottomOverflowItem =
+  | {
+      key: string
+      label: string
+      icon: IconName
+      kind: "link"
+      to: string
+    }
+  | {
+      key: string
+      label: string
+      icon: IconName
+      kind: "action"
+    }
 
 type ThemeMode = "system" | "dark" | "light"
 
@@ -100,19 +116,6 @@ const bottomItems = computed<BottomItem[]>(() => {
   return items
 })
 
-const bottomOverflowItems = computed<NavItem[]>(() => {
-  if (role.value !== "ADMIN") return []
-  return [
-    { to: "/products", label: "Products", icon: "products" },
-    { to: "/suppliers", label: "Suppliers", icon: "suppliers" },
-    { to: "/suppliers/invoices", label: "Supplier Invoices", icon: "suppliers" },
-    { to: "/reports/daily", label: "Daily Report", icon: "reports" },
-    { to: "/reports/monthly", label: "Monthly Report", icon: "reports" },
-    { to: "/admin/users", label: "Users", icon: "users" },
-    { to: "/select-store", label: "Ganti Toko", icon: "inventory" },
-  ]
-})
-
 const navQuery = ref("")
 
 const navCollapsed = ref<Record<string, boolean>>({})
@@ -127,6 +130,26 @@ const themeLabel = computed(() => {
   if (themeMode.value === "system") return "Tema: Auto"
   if (themeMode.value === "dark") return "Tema: Gelap"
   return "Tema: Terang"
+})
+
+const mobileThemeLabel = computed(() => {
+  if (themeMode.value === "system") return "Tema Auto"
+  if (themeMode.value === "dark") return "Tema Gelap"
+  return "Tema Terang"
+})
+
+const bottomOverflowItems = computed<BottomOverflowItem[]>(() => {
+  if (role.value !== "ADMIN") return []
+  return [
+    { key: "products", to: "/products", label: "Products", icon: "products", kind: "link" },
+    { key: "suppliers", to: "/suppliers", label: "Suppliers", icon: "suppliers", kind: "link" },
+    { key: "supplier-invoices", to: "/suppliers/invoices", label: "Supplier Invoices", icon: "suppliers", kind: "link" },
+    { key: "daily-report", to: "/reports/daily", label: "Daily Report", icon: "reports", kind: "link" },
+    { key: "monthly-report", to: "/reports/monthly", label: "Monthly Report", icon: "reports", kind: "link" },
+    { key: "users", to: "/admin/users", label: "Users", icon: "users", kind: "link" },
+    { key: "switch-store", to: "/select-store", label: "Ganti Toko", icon: "inventory", kind: "link" },
+    { key: "theme", label: mobileThemeLabel.value, icon: "theme", kind: "action" },
+  ]
 })
 
 function applyThemeMode(mode: ThemeMode) {
@@ -260,7 +283,9 @@ function isActive(path: string) {
 }
 
 function isBottomItemActive(item: BottomItem) {
-  if (item.kind === "menu") return bottomOverflowItems.value.some((entry) => isActive(entry.to))
+  if (item.kind === "menu") {
+    return bottomOverflowItems.value.some((entry) => entry.kind === "link" && isActive(entry.to))
+  }
   return item.to ? isActive(item.to) : false
 }
 
@@ -434,17 +459,27 @@ async function logout() {
             <button type="button" class="mb-bottomSheetClose" @click="closeMoreMenu">Tutup</button>
           </header>
           <div class="mb-bottomSheetGrid">
-            <NuxtLink
-              v-for="item in bottomOverflowItems"
-              :key="item.to"
-              class="mb-bottomSheetItem"
-              :class="{ active: isActive(item.to) }"
-              :to="item.to"
-              @click="closeMoreMenu"
-            >
-              <MbIcon class="mb-bottomSheetIcon" :name="item.icon" />
-              <span class="mb-bottomSheetLabel">{{ item.label }}</span>
-            </NuxtLink>
+            <template v-for="item in bottomOverflowItems" :key="item.key">
+              <NuxtLink
+                v-if="item.kind === 'link'"
+                class="mb-bottomSheetItem"
+                :class="{ active: isActive(item.to) }"
+                :to="item.to"
+                @click="closeMoreMenu"
+              >
+                <MbIcon class="mb-bottomSheetIcon" :name="item.icon" />
+                <span class="mb-bottomSheetLabel">{{ item.label }}</span>
+              </NuxtLink>
+              <button
+                v-else
+                type="button"
+                class="mb-bottomSheetItem mb-bottomSheetItemBtn"
+                @click="cycleThemeMode"
+              >
+                <MbIcon class="mb-bottomSheetIcon" :name="item.icon" />
+                <span class="mb-bottomSheetLabel">{{ item.label }}</span>
+              </button>
+            </template>
           </div>
         </section>
       </Transition>
@@ -549,6 +584,14 @@ async function logout() {
     color: var(--mb-text);
     font-size: 12px;
     font-weight: 700;
+  }
+
+  .mb-bottomSheetItemBtn {
+    width: 100%;
+    font: inherit;
+    line-height: inherit;
+    cursor: pointer;
+    text-align: left;
   }
 
   .mb-bottomSheetItem.active {

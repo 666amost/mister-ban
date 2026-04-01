@@ -15,16 +15,58 @@ export type StoreSummaryRow = {
   qty_ban: number;
 };
 
+type StoresSummaryParams =
+  | {
+      period: "day";
+      date: string;
+      month?: string;
+    }
+  | {
+      period: "month";
+      month: string;
+      date?: string;
+    };
+
+function addUtcDays(dateValue: string, days: number): string {
+  const date = new Date(`${dateValue}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function addUtcMonths(monthValue: string, months: number): string {
+  const date = new Date(`${monthValue}-01T00:00:00.000Z`);
+  date.setUTCMonth(date.getUTCMonth() + months);
+  return date.toISOString().slice(0, 10);
+}
+
+function resolveStoresSummaryRange(params: StoresSummaryParams): {
+  start: string;
+  end: string;
+} {
+  if (params.period === "day") {
+    return {
+      start: params.date,
+      end: addUtcDays(params.date, 1),
+    };
+  }
+
+  return {
+    start: `${params.month}-01`,
+    end: addUtcMonths(params.month, 1),
+  };
+}
+
 export async function getStoresSummary({
+  period,
+  date,
   month,
-}: {
-  month: string;
-}): Promise<StoreSummaryRow[]> {
+}: StoresSummaryParams): Promise<StoreSummaryRow[]> {
   const db = getPool();
-  const start = `${month}-01`;
-  const end = new Date(`${month}-01T00:00:00.000Z`);
-  end.setUTCMonth(end.getUTCMonth() + 1);
-  const endIso = end.toISOString().slice(0, 10);
+  const { start, end } = resolveStoresSummaryRange({
+    period,
+    date,
+    month,
+  } as StoresSummaryParams);
 
   const res = await db.query<StoreSummaryRow>(
     `
@@ -73,7 +115,7 @@ export async function getStoresSummary({
       ) ban ON true
       ORDER BY st.name
     `,
-    [start, endIso],
+    [start, end],
   );
 
   return res.rows;

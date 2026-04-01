@@ -184,6 +184,9 @@ const deleteSaleLabel = ref("")
 const deleteLoading = ref(false)
 const deleteError = ref<string | null>(null)
 
+const detailOpen = ref(false)
+const detailSale = ref<SaleRow | null>(null)
+
 const editSearch = ref("")
 const editSearchLoading = ref(false)
 const editSearchRan = ref(false)
@@ -251,6 +254,15 @@ function paymentLabel(sale: SaleRow) {
   return String(ps[0]?.payment_type ?? sale.payment_type)
 }
 
+function salePlateText(sale: SaleRow) {
+  return sale.customer_plate_no?.trim() || "Tanpa plat nomor"
+}
+
+function saleItemTitle(i: SaleItemDetail | CustomItemDetail) {
+  if (i.type === "custom") return i.item_name
+  return `${productDisplayName(i.brand, i.name)} ${i.size}`.replace(/\s+/g, " ").trim()
+}
+
 function isExpenseOnlySale(sale: SaleRow) {
   const hasProduct = (sale.items?.length ?? 0) > 0
   const hasCustom = (sale.custom_items?.length ?? 0) > 0
@@ -266,6 +278,18 @@ function saleDisplayTotal(sale: SaleRow) {
 
 function hhmm(value: string) {
   return new Date(value).toLocaleTimeString("id-ID", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "Asia/Jakarta",
+  })
+}
+
+function formatDateTime(value: string) {
+  return new Date(value).toLocaleString("id-ID", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
@@ -611,6 +635,21 @@ function openReceipt(saleId: string) {
   window.open(`/api/sales/${saleId}/receipt`, "_blank")
 }
 
+function openSaleDetail(sale: SaleRow) {
+  detailSale.value = sale
+  detailOpen.value = true
+}
+
+function closeSaleDetail() {
+  detailOpen.value = false
+  detailSale.value = null
+}
+
+function printSaleDetail() {
+  if (!detailSale.value) return
+  openReceipt(detailSale.value.id)
+}
+
 function printReceipt() {
   if (lastSaleId.value) {
     openReceipt(lastSaleId.value)
@@ -623,6 +662,7 @@ function closeSuccessSheet() {
 }
 
 function openEditSale(s: SaleRow) {
+  closeSaleDetail()
   editSaleId.value = s.id
   editIsExpenseOnly.value = isExpenseOnlySale(s)
   editSaleDate.value = s.sale_date
@@ -946,6 +986,7 @@ async function saveEditSale() {
 }
 
 function openDeleteConfirm(s: SaleRow) {
+  closeSaleDetail()
   deleteSaleId.value = s.id
   const preview = saleItemPreview(s, 1)
   deleteSaleLabel.value = preview.lines[0] ?? s.customer_plate_no ?? s.id.slice(0, 8)
@@ -981,6 +1022,19 @@ async function newTransaction() {
   await new Promise(resolve => setTimeout(resolve, 350))
   searchInputRef.value?.focus()
 }
+
+const detailLineItems = computed<(SaleItemDetail | CustomItemDetail)[]>(() => {
+  if (!detailSale.value) return []
+  return [...(detailSale.value.items ?? []), ...(detailSale.value.custom_items ?? [])]
+})
+
+const detailPayments = computed<SalePaymentDetail[]>(() => detailSale.value?.payments ?? [])
+const detailExpenses = computed<SaleExpenseDetail[]>(() => detailSale.value?.expenses ?? [])
+const detailExpenseTotal = computed(() => {
+  if (!detailSale.value) return 0
+  if (typeof detailSale.value.expense_total === "number") return detailSale.value.expense_total
+  return (detailSale.value.expenses ?? []).reduce((sum, expense) => sum + (expense.amount || 0), 0)
+})
 </script>
 
 <template>
@@ -1387,8 +1441,8 @@ async function newTransaction() {
           class="saleCard"
           role="button"
           tabindex="0"
-          @click="openReceipt(s.id)"
-          @keydown.enter.prevent="openReceipt(s.id)"
+          @click="openSaleDetail(s)"
+          @keydown.enter.prevent="openSaleDetail(s)"
         >
           <div class="saleInfo">
             <div v-if="salePreview(s).lines.length" class="saleItemsTop">
@@ -1398,13 +1452,13 @@ async function newTransaction() {
               <div v-if="salePreview(s).more" class="saleItemMoreTop">+{{ salePreview(s).more }} item</div>
             </div>
             <div v-else class="saleItemsTop">
-              <div class="saleItemLineTop">{{ isExpenseOnlySale(s) ? "Pengeluaran Saja" : s.customer_plate_no }}</div>
+              <div class="saleItemLineTop">{{ isExpenseOnlySale(s) ? "Pengeluaran Saja" : salePlateText(s) }}</div>
             </div>
             <div class="saleMeta">
-              <span class="salePlateBadge">{{ s.customer_plate_no }}</span>
+              <span class="salePlateBadge">{{ salePlateText(s) }}</span>
               <span class="saleDateBadge">{{ formatDate(s.sale_date) }}</span>
               <span class="saleTime">{{ hhmm(s.created_at) }} WIB</span>
-              <span class="salePayment">{{ paymentLabel(s) }}</span>
+              <span v-if="!isExpenseOnlySale(s)" class="salePayment">{{ paymentLabel(s) }}</span>
               <span v-if="isExpenseOnlySale(s)" class="saleExpenseOnly">Pengeluaran</span>
               <span v-if="s.discount > 0" class="saleDiscount">-{{ rupiah(s.discount) }}</span>
             </div>
@@ -1496,6 +1550,136 @@ async function newTransaction() {
         </template>
       </button>
     </div>
+
+    <Teleport to="body">
+      <Transition name="sheet">
+        <div v-if="detailOpen && detailSale" class="successOverlay" @click.self="closeSaleDetail">
+          <div class="detailSheet">
+            <div class="detailSheetHeader">
+              <div>
+                <div class="detailTitle">Detail Transaksi</div>
+                <div class="detailSub">ID: {{ detailSale.id.slice(0, 8) }}</div>
+              </div>
+              <button type="button" class="detailCloseBtn" aria-label="Tutup detail transaksi" @click="closeSaleDetail">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div class="detailMetaGrid">
+              <div class="detailMetaCard">
+                <span class="detailMetaLabel">Tanggal</span>
+                <strong>{{ formatDate(detailSale.sale_date) }}</strong>
+              </div>
+              <div class="detailMetaCard">
+                <span class="detailMetaLabel">Jam Input</span>
+                <strong>{{ hhmm(detailSale.created_at) }} WIB</strong>
+              </div>
+              <div class="detailMetaCard">
+                <span class="detailMetaLabel">Plat Nomor</span>
+                <strong>{{ salePlateText(detailSale) }}</strong>
+              </div>
+              <div class="detailMetaCard">
+                <span class="detailMetaLabel">Status</span>
+                <strong>{{ isExpenseOnlySale(detailSale) ? "Pengeluaran" : "Penjualan" }}</strong>
+              </div>
+            </div>
+
+            <div v-if="detailLineItems.length" class="detailBlock">
+              <div class="detailBlockTitle">Item</div>
+              <div v-for="(item, idx) in detailLineItems" :key="`${detailSale.id}-item-${idx}`" class="detailRow">
+                <div class="detailRowMain">
+                  <div class="detailRowTitle">{{ saleItemTitle(item) }}</div>
+                  <div class="detailRowMeta">{{ item.type === 'custom' ? 'Custom item' : 'Produk' }} • Qty {{ item.qty }}</div>
+                </div>
+                <div class="detailRowPrice">
+                  <div>Rp {{ rupiah(item.line_total) }}</div>
+                  <span>@ Rp {{ rupiah(item.price) }}</span>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="detailPayments.length" class="detailBlock">
+              <div class="detailBlockTitle">Pembayaran</div>
+              <div v-for="(payment, idx) in detailPayments" :key="`${detailSale.id}-payment-${idx}`" class="detailSimpleRow">
+                <span>{{ payment.payment_type }}</span>
+                <strong>Rp {{ rupiah(payment.amount) }}</strong>
+              </div>
+            </div>
+            <div v-else-if="!isExpenseOnlySale(detailSale)" class="detailBlock">
+              <div class="detailBlockTitle">Pembayaran</div>
+              <div class="detailSimpleRow">
+                <span>{{ detailSale.payment_type || 'Belum ada data' }}</span>
+              </div>
+            </div>
+
+            <div v-if="detailExpenses.length" class="detailBlock">
+              <div class="detailBlockTitle">Pengeluaran</div>
+              <div v-for="(expense, idx) in detailExpenses" :key="`${detailSale.id}-expense-${idx}`" class="detailSimpleRow detailSimpleRowDanger">
+                <span>{{ expense.item_name }}</span>
+                <strong>Rp {{ rupiah(expense.amount) }}</strong>
+              </div>
+            </div>
+
+            <div class="detailSummaryCard">
+              <div v-if="!isExpenseOnlySale(detailSale)" class="detailSummaryRow">
+                <span>Subtotal</span>
+                <strong>Rp {{ rupiah(detailSale.subtotal) }}</strong>
+              </div>
+              <div v-if="!isExpenseOnlySale(detailSale) && detailSale.discount > 0" class="detailSummaryRow detailSummaryRowDanger">
+                <span>Diskon</span>
+                <strong>-Rp {{ rupiah(detailSale.discount) }}</strong>
+              </div>
+              <div v-if="!isExpenseOnlySale(detailSale) && detailSale.service_fee > 0" class="detailSummaryRow">
+                <span>Service</span>
+                <strong>Rp {{ rupiah(detailSale.service_fee) }}</strong>
+              </div>
+              <div v-if="!isExpenseOnlySale(detailSale)" class="detailSummaryRow detailSummaryRowStrong">
+                <span>Total Transaksi</span>
+                <strong>Rp {{ rupiah(detailSale.total) }}</strong>
+              </div>
+              <div v-if="detailExpenseTotal > 0" class="detailSummaryRow" :class="{ detailSummaryRowStrong: isExpenseOnlySale(detailSale) }">
+                <span>{{ isExpenseOnlySale(detailSale) ? 'Total Pengeluaran' : 'Total Pengeluaran Tambahan' }}</span>
+                <strong>Rp {{ rupiah(detailExpenseTotal) }}</strong>
+              </div>
+              <div v-if="detailSale.printed_first_at" class="detailPrintInfo">
+                Sudah pernah dicetak: {{ formatDateTime(detailSale.printed_first_at) }} WIB
+              </div>
+            </div>
+
+            <div class="detailActions">
+              <button type="button" class="newTxBtn" @click="closeSaleDetail">Tutup</button>
+              <button type="button" class="printBtn" @click="printSaleDetail">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                </svg>
+                Cetak Struk
+              </button>
+            </div>
+
+            <div v-if="isAdmin" class="detailAdminActions">
+              <button type="button" class="editDetailBtn" @click="openEditSale(detailSale)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 20h9" />
+                  <path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4 12.5-12.5z" />
+                </svg>
+                Edit
+              </button>
+              <button type="button" class="deleteDetailBtn" @click="openDeleteConfirm(detailSale)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="3 6 5 6 21 6" />
+                  <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" />
+                  <path d="M10 11v6M14 11v6" />
+                  <path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" />
+                </svg>
+                Hapus
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
 
     <Teleport to="body">
       <Transition name="sheet">
@@ -2871,6 +3055,20 @@ async function newTransaction() {
     margin-top: 0;
   }
 
+  .detailMetaGrid,
+  .detailActions,
+  .detailAdminActions {
+    grid-template-columns: 1fr;
+  }
+
+  .detailRow {
+    grid-template-columns: 1fr;
+  }
+
+  .detailRowPrice {
+    text-align: left;
+  }
+
   .editSheet .searchInput {
     height: 44px;
     font-size: 14px;
@@ -3005,6 +3203,240 @@ async function newTransaction() {
   text-align: center;
 }
 
+.detailSheet {
+  width: 100%;
+  max-width: 460px;
+  max-height: 92vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 20px;
+  padding-bottom: max(24px, env(safe-area-inset-bottom));
+  background: var(--mb-surface);
+  border-radius: 24px 24px 0 0;
+}
+
+.detailSheetHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.detailTitle {
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.detailSub {
+  margin-top: 4px;
+  color: var(--mb-muted);
+  font-size: 12px;
+}
+
+.detailCloseBtn {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--mb-border2);
+  border-radius: 12px;
+  background: var(--mb-surface2);
+  color: var(--mb-text);
+  cursor: pointer;
+  flex: none;
+}
+
+.detailCloseBtn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.detailMetaGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.detailMetaCard {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid var(--mb-border2);
+  border-radius: 14px;
+  background: var(--mb-surface2);
+}
+
+.detailMetaLabel {
+  font-size: 11px;
+  color: var(--mb-muted);
+}
+
+.detailMetaCard strong {
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.detailBlock {
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid var(--mb-border2);
+  border-radius: 14px;
+  background: var(--mb-surface2);
+}
+
+.detailBlockTitle {
+  margin-bottom: 10px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--mb-muted);
+  letter-spacing: 0.2px;
+  text-transform: uppercase;
+}
+
+.detailRow {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--mb-border2);
+}
+
+.detailRow:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.detailRowMain {
+  min-width: 0;
+}
+
+.detailRowTitle {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.detailRowMeta {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--mb-muted);
+}
+
+.detailRowPrice {
+  text-align: right;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.detailRowPrice span {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--mb-muted);
+}
+
+.detailSimpleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--mb-border2);
+  font-size: 14px;
+}
+
+.detailSimpleRow:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.detailSimpleRowDanger strong {
+  color: var(--mb-danger);
+}
+
+.detailSummaryCard {
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid var(--mb-border2);
+  border-radius: 14px;
+  background: var(--mb-surface);
+}
+
+.detailSummaryRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  font-size: 14px;
+}
+
+.detailSummaryRowStrong {
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.detailSummaryRowDanger strong {
+  color: var(--mb-danger);
+}
+
+.detailPrintInfo {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--mb-border2);
+  font-size: 12px;
+  color: var(--mb-muted);
+}
+
+.detailActions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.detailAdminActions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.editDetailBtn,
+.deleteDetailBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 46px;
+  border-radius: 14px;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.editDetailBtn {
+  border: 1px solid var(--mb-border);
+  background: var(--mb-surface2);
+  color: var(--mb-text);
+}
+
+.deleteDetailBtn {
+  border: 1px solid rgba(215, 0, 21, 0.18);
+  background: rgba(215, 0, 21, 0.08);
+  color: var(--mb-danger);
+}
+
+.editDetailBtn svg,
+.deleteDetailBtn svg {
+  width: 16px;
+  height: 16px;
+}
+
 .editSheet {
   width: 100%;
   max-width: 420px;
@@ -3134,6 +3566,8 @@ async function newTransaction() {
 
 .sheet-enter-from .successSheet,
 .sheet-leave-to .successSheet,
+.sheet-enter-from .detailSheet,
+.sheet-leave-to .detailSheet,
 .sheet-enter-from .editSheet,
 .sheet-leave-to .editSheet {
   transform: translateY(100%);
@@ -3401,6 +3835,11 @@ async function newTransaction() {
   }
 
   .successSheet {
+    border-radius: 24px;
+    margin-bottom: 20px;
+  }
+
+  .detailSheet {
     border-radius: 24px;
     margin-bottom: 20px;
   }

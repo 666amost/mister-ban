@@ -12,7 +12,15 @@ type StoreSummary = {
 type MetricKey = "omzet" | "profit" | "qty_ban";
 type AnimPhase = "reset" | "grow";
 
-const props = defineProps<{ stores: StoreSummary[] }>();
+const props = withDefaults(
+  defineProps<{
+    stores: StoreSummary[];
+    emptyLabel?: string;
+  }>(),
+  {
+    emptyLabel: "Belum ada data penjualan pada periode ini.",
+  },
+);
 
 const activeMetric = ref<MetricKey>("omzet");
 const phase = ref<AnimPhase>("reset");
@@ -121,7 +129,7 @@ onMounted(() => triggerAnimation());
         <span class="barValue">{{ formatValue(activeMetric, store[activeMetric]) }}</span>
       </div>
     </div>
-    <div v-else class="emptyChart">Belum ada data penjualan bulan ini.</div>
+    <div v-else class="emptyChart">{{ props.emptyLabel }}</div>
   </div>
 </template>
 

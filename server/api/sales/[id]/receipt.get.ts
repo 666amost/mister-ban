@@ -209,66 +209,202 @@ export default defineEventHandler(async (event) => {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <title>Struk</title>
         <style>
-          :root { --w: 80mm; }
-          body { width: var(--w); margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-variant-numeric: tabular-nums; }
-          .wrap { padding: 10px; }
-          h1 { font-size: 16px; margin: 0 0 6px; text-align: center; }
-          .storeLine { font-size: 11px; text-align: center; line-height: 1.25; opacity: 0.85; }
-          .storeLine + .storeLine { margin-top: 2px; }
-          .meta { font-size: 12px; margin-bottom: 8px; }
-          table { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: fixed; }
-          th, td { padding: 4px 0; vertical-align: top; }
-          th { text-align: left; border-bottom: 1px dashed #000; font-weight: 700; }
-          th:not(:first-child), td:not(:first-child) { padding-left: 8px; }
+          :root {
+            --paper-width: 57mm;
+            --content-width: 49mm;
+          }
+          @page {
+            size: 58mm auto;
+            margin: 0;
+          }
+          html, body {
+            margin: 0;
+            padding: 0;
+            background: #ececec;
+            color: #000;
+            font-family: "Courier New", Courier, monospace;
+            font-variant-numeric: tabular-nums;
+          }
+          body {
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            padding: 12px 0 20px;
+          }
+          .sheet {
+            width: var(--paper-width);
+            background: #fff;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
+          }
+          .wrap {
+            width: var(--content-width);
+            margin: 0 auto;
+            padding: 3mm 0 4mm;
+          }
+          h1 {
+            font-size: 15px;
+            line-height: 1.2;
+            margin: 0 0 4px;
+            text-align: center;
+          }
+          .storeLine {
+            font-size: 10px;
+            text-align: center;
+            line-height: 1.25;
+          }
+          .storeLine + .storeLine {
+            margin-top: 1px;
+          }
+          .meta {
+            margin-top: 6px;
+            margin-bottom: 8px;
+            font-size: 10px;
+            line-height: 1.35;
+          }
+          .meta div + div {
+            margin-top: 1px;
+          }
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+            font-size: 10px;
+          }
+          th, td {
+            padding: 3px 0;
+            vertical-align: top;
+          }
+          th {
+            text-align: left;
+            border-bottom: 1px dashed #000;
+            font-weight: 700;
+          }
+          th:not(:first-child), td:not(:first-child) {
+            padding-left: 4px;
+          }
           th.qty, th.price, th.total,
-          td.qty, td.price, td.total { text-align: right; white-space: nowrap; }
-          th.qty, td.qty { width: 4ch; }
-          th.price, td.price { width: 10ch; }
-          th.total, td.total { width: 10ch; }
-          td.name { overflow-wrap: anywhere; word-break: break-word; }
-          .desc { font-weight: 700; }
-          .sum { border-top: 1px dashed #000; margin-top: 6px; padding-top: 6px; display: flex; justify-content: space-between; font-size: 12px; }
-          .adjustment { display: flex; justify-content: space-between; font-size: 11px; margin-top: 4px; }
-          .adjustment.discount { color: #c00; }
-          .footer { margin-top: 10px; font-size: 11px; text-align: center; line-height: 1.6; }
-          @media print { .no-print { display: none; } }
+          td.qty, td.price, td.total {
+            text-align: right;
+            white-space: nowrap;
+          }
+          th.qty, td.qty {
+            width: 3ch;
+          }
+          th.price, td.price,
+          th.total, td.total {
+            width: 8ch;
+          }
+          td.name {
+            overflow-wrap: anywhere;
+            word-break: break-word;
+          }
+          .desc {
+            font-weight: 700;
+            line-height: 1.25;
+          }
+          .adjustment {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+            margin-top: 4px;
+            font-size: 10px;
+          }
+          .adjustment.discount {
+            color: #b42318;
+          }
+          .sum {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+            margin-top: 6px;
+            padding-top: 6px;
+            border-top: 1px dashed #000;
+            font-size: 11px;
+            font-weight: 700;
+          }
+          .footer {
+            margin-top: 10px;
+            font-size: 10px;
+            text-align: center;
+            line-height: 1.45;
+          }
+          .actions {
+            margin-top: 12px;
+            display: flex;
+            justify-content: center;
+          }
+          .printAction {
+            min-width: 120px;
+            height: 38px;
+            border: none;
+            border-radius: 999px;
+            background: #111;
+            color: #fff;
+            font: inherit;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+          }
+          @media print {
+            html, body {
+              background: #fff;
+            }
+            body {
+              display: block;
+              min-height: auto;
+              padding: 0;
+            }
+            .sheet {
+              width: 58mm;
+              box-shadow: none;
+            }
+            .wrap {
+              width: 49mm;
+              padding: 2.5mm 0 3mm;
+            }
+            .no-print {
+              display: none !important;
+            }
+          }
         </style>
       </head>
       <body>
-        <div class="wrap">
-          <h1>${escapeHtml(storeName)}</h1>
-          ${storeLinesHtml}
-          <div class="meta">
-            <div>Tanggal: ${escapeHtml(formatSaleDate(detail.sale.sale_date))}</div>
-            <div>Plat: ${escapeHtml(String(detail.sale.customer_plate_no))}</div>
-            ${paymentsHtml}
-          </div>
-          <table>
-            <thead>
-              <tr>
-                <th class="item">Item</th>
-                <th class="qty">Qty</th>
-                <th class="price">Harga</th>
-                <th class="total">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${itemsHtml}
-              ${customItemsHtml}
-            </tbody>
-          </table>
-          ${adjustmentsHtml}
-          <div class="sum">
-            <div>Total</div>
-            <div>${rupiah(detail.sale.total)}</div>
-          </div>
-          <div class="footer">
-            <div>Terima kasih</div>
-            <div>Barang yang sudah dibeli tidak dapat dikembalikan</div>
-            ${instagramHtml}
-          </div>
-          <div class="no-print" style="margin-top:10px">
-            <button onclick="mbPrint()">Cetak</button>
+        <div class="sheet">
+          <div class="wrap">
+            <h1>${escapeHtml(storeName)}</h1>
+            ${storeLinesHtml}
+            <div class="meta">
+              <div>Tanggal: ${escapeHtml(formatSaleDate(detail.sale.sale_date))}</div>
+              <div>Plat: ${escapeHtml(String(detail.sale.customer_plate_no))}</div>
+              ${paymentsHtml}
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th class="item">Item</th>
+                  <th class="qty">Qty</th>
+                  <th class="price">Harga</th>
+                  <th class="total">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${itemsHtml}
+                ${customItemsHtml}
+              </tbody>
+            </table>
+            ${adjustmentsHtml}
+            <div class="sum">
+              <div>Total</div>
+              <div>${rupiah(detail.sale.total)}</div>
+            </div>
+            <div class="footer">
+              <div>Terima kasih</div>
+              <div>Barang yang sudah dibeli tidak dapat dikembalikan</div>
+              ${instagramHtml}
+            </div>
+            <div class="actions no-print">
+              <button class="printAction" onclick="mbPrint()">Cetak</button>
+            </div>
           </div>
         </div>
         <script>

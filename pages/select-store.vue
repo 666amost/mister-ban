@@ -11,16 +11,23 @@ type StoreSummary = {
   profit: number;
   qty_ban: number;
 };
+type SummaryTab = "day" | "month";
+type SummaryCache = Record<string, StoreSummary[]>;
 
 const me = useMe();
 const storeContext = useStoreContext();
 
 const stores = ref<Store[]>([]);
-const storeSummary = ref<StoreSummary[]>([]);
+const dailyStoreSummary = ref<StoreSummary[]>([]);
+const monthlyStoreSummary = ref<StoreSummary[]>([]);
+const dailySummaryCache = ref<SummaryCache>({});
+const monthlySummaryCache = ref<SummaryCache>({});
+const activeSummaryTab = ref<SummaryTab>("day");
+const summaryDate = ref(new Date().toISOString().slice(0, 10));
 const summaryMonth = ref(new Date().toISOString().slice(0, 7));
-const isSummaryLoading = ref(false);
+const isDailySummaryLoading = ref(false);
+const isMonthlySummaryLoading = ref(false);
 const isSummaryOpen = ref(false);
-const hasLoadedSummary = ref(false);
 const search = ref("");
 const selectedStoreId = ref("");
 const errorMessage = ref<string | null>(null);
@@ -48,30 +55,137 @@ async function loadStores() {
   }
 }
 
-async function loadSummary() {
-  isSummaryLoading.value = true;
+const activeSummaryStores = computed(() => {
+  if (activeSummaryTab.value === "day") {
+    return dailyStoreSummary.value;
+  }
+
+  return monthlyStoreSummary.value;
+});
+
+const activeSummaryLoading = computed(() => {
+  if (activeSummaryTab.value === "day") {
+    return isDailySummaryLoading.value;
+  }
+
+  return isMonthlySummaryLoading.value;
+});
+
+const activeSummaryDescription = computed(() => {
+  if (activeSummaryTab.value === "day") {
+    return "Ringkasan omzet, profit & transaksi semua toko pada tanggal terpilih.";
+  }
+
+  return "Ringkasan omzet, profit & transaksi semua toko pada bulan terpilih.";
+});
+
+const activeSummaryEmptyLabel = computed(() => {
+  if (activeSummaryTab.value === "day") {
+    return "Belum ada data penjualan pada tanggal ini.";
+  }
+
+  return "Belum ada data penjualan pada bulan ini.";
+});
+
+function getSummaryKey(tab: SummaryTab): string {
+  return tab === "day" ? summaryDate.value : summaryMonth.value;
+}
+
+function hasCachedSummary(tab: SummaryTab, key: string): boolean {
+  const cache = tab === "day" ? dailySummaryCache.value : monthlySummaryCache.value;
+  return Object.prototype.hasOwnProperty.call(cache, key);
+}
+
+function getCachedSummary(tab: SummaryTab, key: string): StoreSummary[] | null {
+  if (!hasCachedSummary(tab, key)) return null;
+  const cache = tab === "day" ? dailySummaryCache.value : monthlySummaryCache.value;
+  return cache[key] ?? null;
+}
+
+function applySummaryData(tab: SummaryTab, storesData: StoreSummary[]) {
+  if (tab === "day") {
+    dailyStoreSummary.value = storesData;
+    return;
+  }
+
+  monthlyStoreSummary.value = storesData;
+}
+
+function cacheSummaryData(tab: SummaryTab, key: string, storesData: StoreSummary[]) {
+  if (tab === "day") {
+    dailySummaryCache.value = {
+      ...dailySummaryCache.value,
+      [key]: storesData,
+    };
+    dailyStoreSummary.value = storesData;
+    return;
+  }
+
+  monthlySummaryCache.value = {
+    ...monthlySummaryCache.value,
+    [key]: storesData,
+  };
+  monthlyStoreSummary.value = storesData;
+}
+
+async function loadSummary(tab: SummaryTab) {
+  const key = getSummaryKey(tab);
+  const cachedSummary = getCachedSummary(tab, key);
+  if (cachedSummary) {
+    applySummaryData(tab, cachedSummary);
+    return;
+  }
+
+  if (tab === "day") {
+    isDailySummaryLoading.value = true;
+  } else {
+    isMonthlySummaryLoading.value = true;
+  }
+
   try {
     const res = await $fetch<{ stores: StoreSummary[] }>(
       "/api/reports/stores-summary",
-      { query: { month: summaryMonth.value } },
+      {
+        query:
+          tab === "day"
+            ? { period: "day", date: summaryDate.value }
+            : { period: "month", month: summaryMonth.value },
+      },
     );
-    storeSummary.value = res.stores;
+    cacheSummaryData(tab, key, res.stores);
   } catch {
-    storeSummary.value = [];
+    cacheSummaryData(tab, key, []);
   } finally {
-    hasLoadedSummary.value = true;
-    isSummaryLoading.value = false;
+    if (tab === "day") {
+      isDailySummaryLoading.value = false;
+    } else {
+      isMonthlySummaryLoading.value = false;
+    }
   }
 }
 
+async function ensureSummaryLoaded(tab: SummaryTab) {
+  await loadSummary(tab);
+}
+
+watch(summaryDate, () => {
+  if (!isSummaryOpen.value || activeSummaryTab.value !== "day") return;
+  loadSummary("day");
+});
+
 watch(summaryMonth, () => {
-  if (!hasLoadedSummary.value) return;
-  loadSummary();
+  if (!isSummaryOpen.value || activeSummaryTab.value !== "month") return;
+  loadSummary("month");
+});
+
+watch(activeSummaryTab, (tab) => {
+  if (!isSummaryOpen.value) return;
+  ensureSummaryLoaded(tab);
 });
 
 watch(isSummaryOpen, (open) => {
-  if (open && !hasLoadedSummary.value) {
-    loadSummary();
+  if (open) {
+    ensureSummaryLoaded(activeSummaryTab.value);
   }
 });
 
@@ -222,20 +336,55 @@ async function logout() {
             class="summaryContent"
           >
             <div class="cardHead">
-              <p class="cardSub">
-                Ringkasan omzet, profit & transaksi semua toko.
-              </p>
+              <div class="summaryPanelHead">
+                <div class="summaryTabs" role="tablist" aria-label="Periode ringkasan toko">
+                  <button
+                    type="button"
+                    class="summaryTab"
+                    :class="{ active: activeSummaryTab === 'day' }"
+                    role="tab"
+                    :aria-selected="activeSummaryTab === 'day'"
+                    @click="activeSummaryTab = 'day'"
+                  >
+                    Per Hari
+                  </button>
+                  <button
+                    type="button"
+                    class="summaryTab"
+                    :class="{ active: activeSummaryTab === 'month' }"
+                    role="tab"
+                    :aria-selected="activeSummaryTab === 'month'"
+                    @click="activeSummaryTab = 'month'"
+                  >
+                    Per Bulan
+                  </button>
+                </div>
+                <p class="cardSub">
+                  {{ activeSummaryDescription }}
+                </p>
+              </div>
               <input
+                v-if="activeSummaryTab === 'day'"
+                v-model="summaryDate"
+                type="date"
+                class="mb-input periodPicker"
+              />
+              <input
+                v-else
                 v-model="summaryMonth"
                 type="month"
-                class="mb-input monthPicker"
+                class="mb-input periodPicker"
               />
             </div>
 
-            <div v-if="isSummaryLoading" class="chartLoading">
+            <div v-if="activeSummaryLoading" class="chartLoading">
               <MbSkeleton style="height: 160px" />
             </div>
-            <StoreComparisonChart v-else :stores="storeSummary" />
+            <StoreComparisonChart
+              v-else
+              :stores="activeSummaryStores"
+              :empty-label="activeSummaryEmptyLabel"
+            />
           </div>
         </Transition>
       </section>
@@ -298,6 +447,42 @@ async function logout() {
 }
 .summaryContent {
   margin-top: 12px;
+}
+
+.summaryPanelHead {
+  display: grid;
+  gap: 10px;
+}
+
+.summaryTabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.summaryTab {
+  border-radius: 999px;
+  border: 1px solid var(--mb-border2);
+  background: var(--mb-surface2);
+  color: var(--mb-text);
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease,
+    transform 120ms ease;
+}
+
+.summaryTab:hover {
+  transform: translateY(-1px);
+  border-color: rgba(52, 199, 89, 0.5);
+}
+
+.summaryTab.active {
+  border-color: rgba(52, 199, 89, 0.85);
+  box-shadow: 0 0 0 2px rgba(52, 199, 89, 0.14);
 }
 
 .controls {
@@ -377,8 +562,8 @@ async function logout() {
   font-size: 12px;
 }
 
-.monthPicker {
-  max-width: 160px;
+.periodPicker {
+  max-width: 180px;
   font-size: 13px;
 }
 
@@ -403,5 +588,16 @@ async function logout() {
   max-height: 580px;
   opacity: 1;
   overflow: hidden;
+}
+
+@media (max-width: 640px) {
+  .cardHead {
+    flex-direction: column;
+  }
+
+  .periodPicker {
+    max-width: 100%;
+    width: 100%;
+  }
 }
 </style>
