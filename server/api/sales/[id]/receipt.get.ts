@@ -1,4 +1,4 @@
-import { createError, setHeader } from "h3";
+import { createError, getQuery, setHeader } from "h3";
 import { z } from "zod";
 import { getPool } from "../../../db/pool";
 import { requireUser } from "../../../modules/auth/session";
@@ -7,6 +7,7 @@ import { getSaleDetail } from "../../../modules/sales/sales.service";
 import { getStoreById } from "../../../modules/stores/stores.repo";
 
 const paramsSchema = z.object({ id: z.string().uuid() });
+const paperPresetSchema = z.enum(["57-roll", "58-continuous"]);
 
 function escapeHtml(value: string) {
   return value
@@ -127,6 +128,10 @@ export default defineEventHandler(async (event) => {
         .join("")
     : "";
   const saleId = params.data.id;
+  const query = getQuery(event);
+  const paperPreset = paperPresetSchema.safeParse(query.paper).success
+    ? paperPresetSchema.parse(query.paper)
+    : "57-roll";
 
   setHeader(event, "content-type", "text/html; charset=utf-8");
 
@@ -200,6 +205,17 @@ export default defineEventHandler(async (event) => {
       : `<div>Pembayaran: ${escapeHtml(String(payments[0]?.payment_type ?? detail.sale.payment_type))}</div>`;
   const instagram = storeInstagram(storeName, storeCity, storeAddress);
   const instagramHtml = instagram ? `<div>IG: ${escapeHtml(instagram)}</div>` : "";
+  const paperPresetMap = {
+    "57-roll": {
+      pageWidth: "57mm",
+      contentWidth: "49mm",
+    },
+    "58-continuous": {
+      pageWidth: "58mm",
+      contentWidth: "50mm",
+    },
+  } as const;
+  const activePaperPreset = paperPresetMap[paperPreset];
 
   return `
     <!doctype html>
@@ -208,14 +224,16 @@ export default defineEventHandler(async (event) => {
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <title>Struk</title>
+        <style id="page-size-style">
+          @page {
+            size: ${activePaperPreset.pageWidth} auto;
+            margin: 0;
+          }
+        </style>
         <style>
           :root {
-            --paper-width: 57mm;
-            --content-width: 49mm;
-          }
-          @page {
-            size: 58mm auto;
-            margin: 0;
+            --paper-width: ${activePaperPreset.pageWidth};
+            --content-width: ${activePaperPreset.contentWidth};
           }
           html, body {
             margin: 0;
@@ -355,11 +373,11 @@ export default defineEventHandler(async (event) => {
               padding: 0;
             }
             .sheet {
-              width: 58mm;
+              width: var(--paper-width);
               box-shadow: none;
             }
             .wrap {
-              width: 49mm;
+              width: var(--content-width);
               padding: 2.5mm 0 3mm;
             }
             .no-print {

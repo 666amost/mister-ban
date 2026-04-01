@@ -6,6 +6,28 @@ const reportProductCategorySql = buildProductCategoryCaseSql({
   productNameExpr: "p.name",
   productTypeExpr: "p.product_type",
 });
+const monthlyNormalizedBrandSql = "LOWER(TRIM(COALESCE(b.name, '')))";
+const monthlyOliGardanSql = `
+  (
+    (
+      ${monthlyNormalizedBrandSql} = 'oli'
+      AND (
+        LOWER(COALESCE(p.sku, '')) LIKE '%gardan%'
+        OR LOWER(COALESCE(p.size, '')) LIKE '%gardan%'
+      )
+    )
+    OR LOWER(COALESCE(b.name, '')) LIKE '%oli gardan%'
+  )
+`;
+const monthlyCanonicalBrandSql = `
+  CASE
+    WHEN ${monthlyOliGardanSql} THEN 'Oli Gardan'
+    WHEN ${monthlyNormalizedBrandSql} LIKE 'maxxis%' THEN 'Maxxis'
+    WHEN ${monthlyNormalizedBrandSql} = 'victra' OR ${monthlyNormalizedBrandSql} LIKE 'victra %' THEN 'Maxxis'
+    WHEN TRIM(COALESCE(b.name, '')) = '' THEN 'Lainnya'
+    ELSE TRIM(b.name)
+  END
+`;
 
 export type StoreSummaryRow = {
   store_id: string;
@@ -37,6 +59,16 @@ function addUtcMonths(monthValue: string, months: number): string {
   const date = new Date(`${monthValue}-01T00:00:00.000Z`);
   date.setUTCMonth(date.getUTCMonth() + months);
   return date.toISOString().slice(0, 10);
+}
+
+function resolveMonthlyRange(month: string): {
+  start: string;
+  end: string;
+} {
+  return {
+    start: `${month}-01`,
+    end: addUtcMonths(month, 1),
+  };
 }
 
 function resolveStoresSummaryRange(params: StoresSummaryParams): {
@@ -444,10 +476,7 @@ export async function getMonthlyReport({
   month: string;
 }) {
   const db = getPool();
-  const start = `${month}-01`;
-  const end = new Date(`${month}-01T00:00:00.000Z`);
-  end.setUTCMonth(end.getUTCMonth() + 1);
-  const endIso = end.toISOString().slice(0, 10);
+  const { start, end: endIso } = resolveMonthlyRange(month);
 
   const totalsRes = await db.query<{ omzet: number; transactions: number }>(
     `
@@ -707,5 +736,80 @@ export async function getMonthlyReport({
     top_skus: topRes.rows,
     brand_transactions: brandTransactionsRes.rows,
     expenses: expenseRes.rows,
+  };
+}
+
+export async function getMonthlyBrandDetail({
+  storeId,
+  month,
+  brand,
+}: {
+  storeId: string;
+  month: string;
+  brand: string;
+}) {
+  const db = getPool();
+  const { start, end: endIso } = resolveMonthlyRange(month);
+
+  const detailRes = await db.query<{
+    sku: string;
+    name: string;
+    size: string;
+    brand: string;
+    qty: number;
+    revenue: number;
+    transactions: number;
+    sale_dates_csv: string;
+  }>(
+    `
+      SELECT
+        COALESCE(p.sku, '') AS sku,
+        p.name,
+        COALESCE(p.size, '') AS size,
+        COALESCE(NULLIF(TRIM(b.name), ''), 'Lainnya') AS brand,
+        COALESCE(SUM(si.qty), 0)::int AS qty,
+        COALESCE(SUM(si.line_total), 0)::int AS revenue,
+        COUNT(DISTINCT s.id)::int AS transactions,
+        COALESCE(
+          STRING_AGG(DISTINCT TO_CHAR(s.sale_date, 'YYYY-MM-DD'), ',' ORDER BY TO_CHAR(s.sale_date, 'YYYY-MM-DD')),
+          ''
+        ) AS sale_dates_csv
+      FROM sales_items si
+      JOIN sales s ON s.id = si.sale_id
+      JOIN products p ON p.id = si.product_id
+      JOIN brands b ON b.id = p.brand_id
+      WHERE s.store_id = $1
+        AND s.sale_date >= $2::date
+        AND s.sale_date < $3::date
+        AND ${monthlyCanonicalBrandSql} = $4
+      GROUP BY p.id, p.sku, p.name, p.size, b.name
+      ORDER BY qty DESC, revenue DESC, brand, p.name, p.size, p.sku
+    `,
+    [storeId, start, endIso, brand],
+  );
+
+  const qty = detailRes.rows.reduce((sum, item) => sum + item.qty, 0);
+  const revenue = detailRes.rows.reduce((sum, item) => sum + item.revenue, 0);
+  const items = detailRes.rows.map((item) => ({
+    sku: item.sku,
+    name: item.name,
+    size: item.size,
+    brand: item.brand,
+    qty: item.qty,
+    revenue: item.revenue,
+    transactions: item.transactions,
+    sale_dates: item.sale_dates_csv
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean),
+  }));
+
+  return {
+    brand,
+    month,
+    qty,
+    revenue,
+    sku_count: items.length,
+    items,
   };
 }

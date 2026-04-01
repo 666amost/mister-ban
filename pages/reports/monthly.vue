@@ -25,6 +25,26 @@ type MonthlyBrandTransaction = {
   qty: number
 }
 
+type MonthlyBrandDetailItem = {
+  sku: string
+  name: string
+  size: string
+  brand: string
+  qty: number
+  revenue: number
+  transactions: number
+  sale_dates: string[]
+}
+
+type MonthlyBrandDetail = {
+  brand: string
+  month: string
+  qty: number
+  revenue: number
+  sku_count: number
+  items: MonthlyBrandDetailItem[]
+}
+
 type MonthlyExpense = {
   item_name: string
   amount: number
@@ -55,7 +75,16 @@ const report = ref<MonthlyReport | null>(null)
 const isLoading = ref(false)
 const errorMessage = ref<string | null>(null)
 const isExpenseDetailOpen = ref(false)
+const isBrandDetailOpen = ref(false)
+const isBrandDetailLoading = ref(false)
+const brandDetailErrorMessage = ref<string | null>(null)
+const activeBrandDetailLabel = ref<string | null>(null)
+const brandDetail = ref<MonthlyBrandDetail | null>(null)
+const brandDetailCache = ref<Record<string, MonthlyBrandDetail>>({})
+const brandDetailSearch = ref("")
+const brandDetailDate = ref("")
 const requestFetch = import.meta.server ? useRequestFetch() : $fetch
+let brandDetailRequestId = 0
 
 function rupiah(value: number) {
   return value.toLocaleString("id-ID")
@@ -134,11 +163,91 @@ const totalBrandQty = computed(() => {
   return regularQty + oliGardanQty
 })
 
+const isAnyDetailOpen = computed(() => {
+  return isExpenseDetailOpen.value || isBrandDetailOpen.value
+})
+
 function brandShare(qty: number) {
   return formatPercent(qty, totalBrandQty.value)
 }
 
+function productLabel(name: string, size: string) {
+  return [name, size].filter(Boolean).join(" ")
+}
+
+function displaySku(sku: string) {
+  return sku.trim() || "-"
+}
+
+function formatShortDate(value: string) {
+  if (!value) return "-"
+  return new Date(`${value}T00:00:00.000Z`).toLocaleDateString("id-ID", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  })
+}
+
+function formatDateList(values: string[]) {
+  if (!values.length) return "-"
+  return values.map((value) => formatShortDate(value)).join(", ")
+}
+
+function resolveMonthDateEnd(monthValue: string) {
+  const date = new Date(`${monthValue}-01T00:00:00.000Z`)
+  date.setUTCMonth(date.getUTCMonth() + 1)
+  date.setUTCDate(0)
+  return date.toISOString().slice(0, 10)
+}
+
+function brandDetailCacheKey(reportMonth: string, brand: string) {
+  return `${reportMonth}::${brand.toLowerCase()}`
+}
+
+const brandDetailDateMin = computed(() => {
+  const reportMonth = brandDetail.value?.month ?? report.value?.month
+  if (!reportMonth) return ""
+  return `${reportMonth}-01`
+})
+
+const brandDetailDateMax = computed(() => {
+  const reportMonth = brandDetail.value?.month ?? report.value?.month
+  if (!reportMonth) return ""
+  return resolveMonthDateEnd(reportMonth)
+})
+
+const filteredBrandDetailItems = computed(() => {
+  const items = brandDetail.value?.items ?? []
+  const query = brandDetailSearch.value.trim().toLowerCase()
+  const date = brandDetailDate.value
+
+  return items.filter((item) => {
+    const matchesDate = !date || item.sale_dates.includes(date)
+    if (!matchesDate) return false
+    if (!query) return true
+
+    const haystack = [item.brand, item.sku, item.name, item.size]
+      .join(" ")
+      .toLowerCase()
+    return haystack.includes(query)
+  })
+})
+
+const filteredBrandDetailSummary = computed(() => {
+  const items = filteredBrandDetailItems.value
+  return {
+    skuCount: items.length,
+    qty: items.reduce((sum, item) => sum + item.qty, 0),
+    revenue: items.reduce((sum, item) => sum + item.revenue, 0),
+  }
+})
+
+const hasBrandDetailFilter = computed(() => {
+  return Boolean(brandDetailSearch.value.trim() || brandDetailDate.value)
+})
+
 function openExpenseDetail() {
+  closeBrandDetail()
   isExpenseDetailOpen.value = true
 }
 
@@ -146,15 +255,85 @@ function closeExpenseDetail() {
   isExpenseDetailOpen.value = false
 }
 
-function handleWindowKeydown(event: KeyboardEvent) {
-  if (event.key === "Escape" && isExpenseDetailOpen.value) {
+function closeBrandDetail() {
+  brandDetailRequestId += 1
+  isBrandDetailOpen.value = false
+  isBrandDetailLoading.value = false
+  brandDetailErrorMessage.value = null
+  activeBrandDetailLabel.value = null
+  brandDetail.value = null
+  brandDetailSearch.value = ""
+  brandDetailDate.value = ""
+}
+
+async function openBrandDetail(brand: string) {
+  const reportMonth = report.value?.month
+  if (!reportMonth) return
+
+  const requestId = ++brandDetailRequestId
+  isExpenseDetailOpen.value = false
+  isBrandDetailOpen.value = true
+  isBrandDetailLoading.value = false
+  brandDetailErrorMessage.value = null
+  activeBrandDetailLabel.value = brand
+  brandDetailSearch.value = ""
+  brandDetailDate.value = ""
+
+  const cacheKey = brandDetailCacheKey(reportMonth, brand)
+  const cached = brandDetailCache.value[cacheKey]
+  if (cached) {
+    brandDetail.value = cached
+    return
+  }
+
+  brandDetail.value = null
+  isBrandDetailLoading.value = true
+  try {
+    const res = await requestFetch<{ detail: MonthlyBrandDetail }>("/api/reports/monthly", {
+      query: { month: reportMonth, brand },
+    })
+    if (requestId !== brandDetailRequestId) return
+
+    brandDetail.value = res.detail
+    brandDetailCache.value = {
+      ...brandDetailCache.value,
+      [cacheKey]: res.detail,
+    }
+  } catch (error) {
+    if (requestId !== brandDetailRequestId) return
+    brandDetailErrorMessage.value = statusMessage(error) ?? "Gagal memuat detail merk"
+  } finally {
+    if (requestId === brandDetailRequestId) {
+      isBrandDetailLoading.value = false
+    }
+  }
+}
+
+function resetBrandDetailFilter() {
+  brandDetailSearch.value = ""
+  brandDetailDate.value = ""
+}
+
+function closeActiveDetail() {
+  if (isBrandDetailOpen.value) {
+    closeBrandDetail()
+    return
+  }
+
+  if (isExpenseDetailOpen.value) {
     closeExpenseDetail()
+  }
+}
+
+function handleWindowKeydown(event: KeyboardEvent) {
+  if (event.key === "Escape") {
+    closeActiveDetail()
   }
 }
 
 if (import.meta.client) {
   watch(
-    isExpenseDetailOpen,
+    isAnyDetailOpen,
     (open) => {
       document.body.style.overflow = open ? "hidden" : ""
     },
@@ -179,7 +358,9 @@ async function load() {
   try {
     const res = await requestFetch<{ report: MonthlyReport }>("/api/reports/monthly", { query: { month: month.value } })
     report.value = res.report
-    isExpenseDetailOpen.value = false
+    brandDetailCache.value = {}
+    closeExpenseDetail()
+    closeBrandDetail()
   } catch (error) {
     errorMessage.value = statusMessage(error) ?? "Gagal memuat report"
   } finally {
@@ -258,19 +439,38 @@ await load()
           <div
             v-for="(item, index) in groupedBrandTransactions"
             :key="item.brand"
-            class="sumItem brandItem"
+            class="sumItem brandItem sumItemClickable"
+            role="button"
+            tabindex="0"
+            @click="openBrandDetail(item.brand)"
+            @keydown.enter.prevent="openBrandDetail(item.brand)"
+            @keydown.space.prevent="openBrandDetail(item.brand)"
           >
             <div class="labelRow">
               <div class="label">{{ item.brand }}</div>
-              <span class="rankBadge">#{{ index + 1 }}</span>
+              <div class="itemActions">
+                <span class="actionLink" aria-hidden="true">Detail</span>
+                <span class="rankBadge">#{{ index + 1 }}</span>
+              </div>
             </div>
             <div class="value qtyValue monoNumeric">{{ item.qty }} pcs</div>
             <div class="meta">{{ brandShare(item.qty) }} dari total transaksi merk</div>
           </div>
-          <div v-if="report && report.oli_gardan_qty > 0" class="sumItem brandItem">
+          <div
+            v-if="report && report.oli_gardan_qty > 0"
+            class="sumItem brandItem sumItemClickable"
+            role="button"
+            tabindex="0"
+            @click="openBrandDetail('Oli Gardan')"
+            @keydown.enter.prevent="openBrandDetail('Oli Gardan')"
+            @keydown.space.prevent="openBrandDetail('Oli Gardan')"
+          >
             <div class="labelRow">
               <div class="label">Oli Gardan</div>
-              <span class="rankBadge">#{{ groupedBrandTransactions.length + 1 }}</span>
+              <div class="itemActions">
+                <span class="actionLink" aria-hidden="true">Detail</span>
+                <span class="rankBadge">#{{ groupedBrandTransactions.length + 1 }}</span>
+              </div>
             </div>
             <div class="value qtyValue monoNumeric">{{ report.oli_gardan_qty }} pcs</div>
             <div class="meta">{{ brandShare(report.oli_gardan_qty) }} dari total transaksi merk</div>
@@ -310,6 +510,92 @@ await load()
               </div>
             </div>
             <div v-else class="emptyState">Tidak ada pengeluaran di bulan ini</div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <Teleport to="body">
+      <Transition name="expense-modal">
+        <div v-if="isBrandDetailOpen" class="modalBackdrop" @click.self="closeBrandDetail">
+          <div class="modalCard" role="dialog" aria-modal="true" aria-labelledby="brand-detail-title">
+            <div class="modalHeader">
+              <div class="modalTitleBlock">
+                <div id="brand-detail-title" class="sectionTitle sectionTitleNoMargin">
+                  Detail Merk {{ brandDetail?.brand ?? activeBrandDetailLabel ?? "-" }}
+                </div>
+                <div v-if="brandDetail" class="modalMetaText">
+                  {{ brandDetail.sku_count }} SKU • {{ brandDetail.qty }} pcs • Rp {{ rupiah(brandDetail.revenue) }}
+                </div>
+              </div>
+              <button class="mb-btn modalCloseBtn" type="button" @click="closeBrandDetail">Tutup</button>
+            </div>
+            <div v-if="isBrandDetailLoading" class="emptyState">Memuat detail merk...</div>
+            <div v-else-if="brandDetailErrorMessage" class="emptyState">{{ brandDetailErrorMessage }}</div>
+            <div v-else-if="brandDetail?.items?.length" class="modalBody">
+              <div class="modalToolbar">
+                <label class="field modalField modalSearchField">
+                  <span>Cari SKU / produk / merk asli</span>
+                  <input
+                    v-model="brandDetailSearch"
+                    class="mb-input"
+                    type="text"
+                    placeholder="Cari SKU / produk / merk asli..."
+                  />
+                </label>
+                <label class="field modalField modalDateField">
+                  <span>Filter Tanggal</span>
+                  <input
+                    v-model="brandDetailDate"
+                    class="mb-input"
+                    type="date"
+                    :min="brandDetailDateMin"
+                    :max="brandDetailDateMax"
+                  />
+                </label>
+                <button
+                  v-if="hasBrandDetailFilter"
+                  class="mb-btn modalResetBtn"
+                  type="button"
+                  @click="resetBrandDetailFilter"
+                >
+                  Reset Filter
+                </button>
+              </div>
+              <div class="modalMetaText modalFilterSummary">
+                Menampilkan {{ filteredBrandDetailSummary.skuCount }} / {{ brandDetail.sku_count }} SKU
+                • {{ filteredBrandDetailSummary.qty }} pcs
+                • Rp {{ rupiah(filteredBrandDetailSummary.revenue) }}
+              </div>
+              <div v-if="filteredBrandDetailItems.length" class="tableWrap modalTableWrap">
+                <table class="table">
+                  <thead>
+                    <tr>
+                      <th>Merk Asli</th>
+                      <th>SKU</th>
+                      <th>Produk</th>
+                      <th>Tanggal Input</th>
+                      <th class="alignRight">Transaksi</th>
+                      <th class="alignRight">Qty</th>
+                      <th class="alignRight">Revenue</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="(item, index) in filteredBrandDetailItems" :key="`${item.brand}-${item.sku}-${item.name}-${item.size}-${index}`">
+                      <td>{{ item.brand }}</td>
+                      <td class="mono">{{ displaySku(item.sku) }}</td>
+                      <td>{{ productLabel(item.name, item.size) }}</td>
+                      <td class="dateCell">{{ formatDateList(item.sale_dates) }}</td>
+                      <td class="alignRight monoNumeric">{{ item.transactions }}</td>
+                      <td class="alignRight monoNumeric">{{ item.qty }}</td>
+                      <td class="alignRight monoNumeric">Rp {{ rupiah(item.revenue) }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div v-else class="emptyState">Tidak ada item yang cocok dengan pencarian atau filter tanggal</div>
+            </div>
+            <div v-else class="emptyState">Tidak ada detail produk untuk merk ini di bulan tersebut</div>
           </div>
         </div>
       </Transition>
@@ -413,6 +699,14 @@ await load()
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+}
+.itemActions {
+  min-width: 0;
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
 }
 .rankBadge {
   display: inline-flex;
@@ -534,15 +828,56 @@ th {
   justify-content: space-between;
   gap: 10px;
 }
+.modalTitleBlock {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: grid;
+  gap: 4px;
+}
+.modalMetaText {
+  color: var(--mb-muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+.modalToolbar {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.modalField {
+  min-width: 0;
+}
+.modalSearchField {
+  flex: 1 1 280px;
+}
+.modalDateField {
+  flex: 0 1 180px;
+}
+.modalResetBtn {
+  padding: 8px 12px;
+}
+.modalFilterSummary {
+  margin-top: -4px;
+}
 .modalBody {
   min-height: 0;
   flex: 1;
+  display: grid;
+  gap: 10px;
 }
 .modalTableWrap {
   margin-top: 0;
   max-height: calc(88vh - 120px);
   overflow-y: auto;
   overflow-x: auto;
+}
+.dateCell {
+  min-width: 180px;
+  white-space: normal;
+  color: var(--mb-muted);
+  font-size: 12px;
+  line-height: 1.4;
 }
 .modalCloseBtn {
   padding: 6px 12px;
@@ -594,8 +929,26 @@ th {
     flex: 1 1 auto;
   }
 
-  .sumItemClickable .actionLink {
+  .sumItemClickable:not(.brandItem) .actionLink {
     margin-left: auto;
+    min-width: 48px;
+    height: 22px;
+    padding: 0 8px;
+  }
+
+  .brandItem .labelRow {
+    flex-wrap: wrap;
+    gap: 6px 8px;
+    align-items: flex-start;
+  }
+
+  .brandItem .itemActions {
+    width: 100%;
+    margin-left: 0;
+    justify-content: space-between;
+  }
+
+  .brandItem .actionLink {
     min-width: 48px;
     height: 22px;
     padding: 0 8px;
@@ -604,6 +957,23 @@ th {
   .modalCard {
     max-height: 92vh;
     padding: 12px;
+  }
+
+  .modalHeader {
+    align-items: flex-start;
+  }
+
+  .modalToolbar {
+    align-items: stretch;
+  }
+
+  .modalSearchField,
+  .modalDateField {
+    flex-basis: 100%;
+  }
+
+  .modalResetBtn {
+    width: 100%;
   }
 
   .modalTableWrap {
