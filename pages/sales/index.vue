@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted } from "vue"
+import { nextTick, onBeforeUnmount, onMounted } from "vue"
 
 type ProductItem = {
   product_id: string
@@ -64,6 +64,17 @@ type CustomItem = { item_name: string; qty: number; price: number }
 type PaymentType = "CASH" | "TRANSFER" | "QRIS" | "DEBIT" | "CREDIT" | "TEMPO"
 type ExpenseItem = { item_name: string; amount: number }
 type PaymentItem = { payment_type: PaymentType; amount: number }
+type InputMode = "sale" | "expense" | "receipt"
+type StockReceiptItem = { item_name: string; qty: number; unit_label: string }
+type StockReceiptRow = {
+  id: string
+  receipt_date: string
+  created_at: string
+  total_qty: number
+  entry_count: number
+  items: StockReceiptItem[]
+}
+type StockReceiptParseResult = { items: StockReceiptItem[]; errors: string[] }
 
 type SalesQtySummary = {
   ban_qty: number
@@ -123,6 +134,7 @@ const payments = ref<PaymentItem[]>([])
 const discount = ref(0)
 const customItems = ref<CustomItem[]>([])
 const expenses = ref<ExpenseItem[]>([])
+const stockReceiptRawInput = ref("")
 
 const newCustomName = ref("")
 const newCustomQty = ref(1)
@@ -142,6 +154,7 @@ const dropdownOpen = ref(false)
 
 const salesLoading = ref(false)
 const sales = ref<SaleRow[]>([])
+const stockReceipts = ref<StockReceiptRow[]>([])
 const qtySummary = ref<SalesQtySummary>({ ban_qty: 0, oli_qty: 0, kampas_qty: 0, total_qty: 0 })
 const dailySummary = ref<SalesDailySummary>(defaultDailySummary())
 const historyQuery = ref("")
@@ -155,12 +168,36 @@ const lastSaleId = ref<string | null>(null)
 const isInitialLoad = ref(true)
 const activeTab = ref<"input" | "history">("input")
 const showSuccessSheet = ref(false)
+const inputModeSheetOpen = ref(false)
 
+const inputTabButtonRef = ref<HTMLButtonElement | null>(null)
+const inputModeActiveTrigger = ref<HTMLElement | null>(null)
 const searchInputRef = ref<HTMLInputElement | null>(null)
+const stockReceiptInputRef = ref<HTMLTextAreaElement | null>(null)
+const inputModePopoverStyle = ref<Record<string, string>>({})
 
 const isAdmin = computed(() => me.user.value?.role === "ADMIN")
 const expenseOnlyMode = ref(false)
 const isExpenseOnly = computed(() => expenseOnlyMode.value)
+const stockReceiptMode = ref(false)
+const isStockReceiptOnly = computed(() => stockReceiptMode.value)
+const isStandardSale = computed(() => !expenseOnlyMode.value && !stockReceiptMode.value)
+const currentInputMode = computed<InputMode>(() => {
+  if (isStockReceiptOnly.value) return "receipt"
+  if (isExpenseOnly.value) return "expense"
+  return "sale"
+})
+const currentInputModeText = computed(() => {
+  if (currentInputMode.value === "expense") return "Input Pengeluaran"
+  if (currentInputMode.value === "receipt") return "Input Barang Masuk"
+  return "Input Sales"
+})
+const stockReceiptPlaceholder = [
+  "Contoh:",
+  "15 pcs Maxxis",
+  "1 pcs Oli",
+  "10 ban Swallow",
+].join("\n")
 
 const editOpen = ref(false)
 const editSaleId = ref<string | null>(null)
@@ -183,6 +220,12 @@ const deleteSaleId = ref<string | null>(null)
 const deleteSaleLabel = ref("")
 const deleteLoading = ref(false)
 const deleteError = ref<string | null>(null)
+
+const deleteStockReceiptConfirmOpen = ref(false)
+const deleteStockReceiptId = ref<string | null>(null)
+const deleteStockReceiptLabel = ref("")
+const deleteStockReceiptLoading = ref(false)
+const deleteStockReceiptError = ref<string | null>(null)
 
 const detailOpen = ref(false)
 const detailSale = ref<SaleRow | null>(null)
@@ -211,6 +254,65 @@ function normalizeText(value: string) {
     .replace(/[^a-z0-9]+/g, " ")
     .trim()
     .replace(/\s+/g, " ")
+}
+
+function normalizeStockReceiptUnitLabel(value: string) {
+  const unit = value.trim().toLowerCase()
+  if (!unit) return "pcs"
+  if (["pc", "pcs", "piece", "pieces"].includes(unit)) return "pcs"
+  return unit
+}
+
+function parseStockReceiptInput(value: string): StockReceiptParseResult {
+  const grouped = new Map<string, StockReceiptItem>()
+  const errors: string[] = []
+  const lines = value.split(/\r?\n/)
+  const supportedUnits = new Set(["pc", "pcs", "piece", "pieces", "ban", "botol", "dus", "unit"])
+
+  lines.forEach((rawLine, index) => {
+    const line = rawLine.trim()
+    if (!line) return
+
+    const cleaned = line.replace(/^[=+]+\s*/, "")
+    const tokens = cleaned.split(/\s+/)
+    const qty = Number(tokens[0] ?? "")
+    if (!Number.isInteger(qty) || qty <= 0) {
+      errors.push(`Baris ${index + 1}: qty harus angka bulat lebih dari 0`)
+      return
+    }
+
+    let startIndex = 1
+    let unitLabel = "pcs"
+    const candidateUnit = (tokens[1] ?? "").toLowerCase()
+    if (supportedUnits.has(candidateUnit)) {
+      unitLabel = normalizeStockReceiptUnitLabel(candidateUnit)
+      startIndex = 2
+    }
+
+    const itemName = tokens.slice(startIndex).join(" ").trim().replace(/\s+/g, " ")
+    if (!itemName) {
+      errors.push(`Baris ${index + 1}: nama barang wajib diisi`)
+      return
+    }
+
+    const key = `${itemName.toLowerCase()}::${unitLabel}`
+    const existing = grouped.get(key)
+    if (existing) {
+      existing.qty += qty
+      return
+    }
+
+    grouped.set(key, {
+      item_name: itemName,
+      qty,
+      unit_label: unitLabel,
+    })
+  })
+
+  return {
+    items: Array.from(grouped.values()),
+    errors,
+  }
 }
 
 function productDisplayName(brand: string, name: string) {
@@ -326,6 +428,20 @@ function salePreview(s: SaleRow) {
   return salePreviewById.value.get(s.id) ?? { lines: [], more: 0 }
 }
 
+function stockReceiptDeleteLabel(receipt: StockReceiptRow) {
+  const firstItem = receipt.items[0]
+  const baseLabel = firstItem
+    ? `${firstItem.qty} ${firstItem.unit_label} ${firstItem.item_name}`
+    : `Barang masuk ${formatDate(receipt.receipt_date)}`
+
+  return `${baseLabel} • ${formatDate(receipt.receipt_date)} ${hhmm(receipt.created_at)} WIB`
+}
+
+const parsedStockReceipt = computed<StockReceiptParseResult>(() => parseStockReceiptInput(stockReceiptRawInput.value))
+const parsedStockReceiptItems = computed<StockReceiptItem[]>(() => parsedStockReceipt.value.items)
+const stockReceiptParseErrors = computed<string[]>(() => parsedStockReceipt.value.errors)
+const stockReceiptTotalQty = computed(() => parsedStockReceiptItems.value.reduce((sum, item) => sum + item.qty, 0))
+
 async function runSearch() {
   searchLoading.value = true
   errorMessage.value = null
@@ -419,13 +535,20 @@ async function loadSales() {
     if (isAdmin.value && searchAllDates.value) {
       query.all_dates = "true"
     }
-    const res = await $fetch<{ items: SaleRow[]; qty_summary: SalesQtySummary; daily_summary?: SalesDailySummary }>("/api/sales", {
-      query,
-      headers: { Accept: 'application/json' },
-    })
-    sales.value = res.items
-    qtySummary.value = res.qty_summary ?? { ban_qty: 0, oli_qty: 0, kampas_qty: 0, total_qty: 0 }
-    dailySummary.value = res.daily_summary ?? defaultDailySummary()
+    const [salesRes, stockReceiptRes] = await Promise.all([
+      $fetch<{ items: SaleRow[]; qty_summary: SalesQtySummary; daily_summary?: SalesDailySummary }>("/api/sales", {
+        query,
+        headers: { Accept: 'application/json' },
+      }),
+      $fetch<{ items: StockReceiptRow[] }>("/api/sales/stock-receipts", {
+        query,
+        headers: { Accept: 'application/json' },
+      }),
+    ])
+    sales.value = salesRes.items
+    stockReceipts.value = stockReceiptRes.items
+    qtySummary.value = salesRes.qty_summary ?? { ban_qty: 0, oli_qty: 0, kampas_qty: 0, total_qty: 0 }
+    dailySummary.value = salesRes.daily_summary ?? defaultDailySummary()
   } catch (error) {
     errorMessage.value = statusMessage(error) ?? "Gagal memuat sales"
     console.error('Sales load error:', error)
@@ -437,6 +560,18 @@ async function loadSales() {
 
 onMounted(async () => {
   await loadSales()
+})
+
+onMounted(() => {
+  if (!import.meta.client) return
+  window.addEventListener("resize", syncInputModePopoverPosition)
+  window.addEventListener("scroll", syncInputModePopoverPosition, true)
+})
+
+onBeforeUnmount(() => {
+  if (!import.meta.client) return
+  window.removeEventListener("resize", syncInputModePopoverPosition)
+  window.removeEventListener("scroll", syncInputModePopoverPosition, true)
 })
 
 let historyDebounceTimer: ReturnType<typeof setTimeout> | null = null
@@ -461,9 +596,16 @@ const paymentTotal = computed(() => payments.value.reduce((sum, p) => sum + (p.a
 const paymentDiff = computed(() => totalPreview.value - paymentTotal.value)
 
 const expenseTotal = computed(() => expenses.value.reduce((sum, e) => sum + (e.amount || 0), 0))
-const bottomTotal = computed(() => (isExpenseOnly.value ? expenseTotal.value : totalPreview.value))
+const bottomValueText = computed(() => {
+  if (isStockReceiptOnly.value) return `${stockReceiptTotalQty.value} qty`
+  if (isExpenseOnly.value) return `Rp ${rupiah(expenseTotal.value)}`
+  return `Rp ${rupiah(totalPreview.value)}`
+})
 const submitDisabled = computed(() => {
   if (submitLoading.value) return true
+  if (isStockReceiptOnly.value) {
+    return parsedStockReceiptItems.value.length === 0 || stockReceiptParseErrors.value.length > 0
+  }
   if (isExpenseOnly.value) return expenses.value.length === 0
   if (!plateNo.value.trim()) return true
   if (selected.value.length === 0 && customItems.value.length === 0) return true
@@ -489,21 +631,73 @@ function onSplitPaymentToggle(e: Event) {
   else disableSplitPayment()
 }
 
-function onExpenseOnlyToggle(e: Event) {
-  const checked = (e.target as HTMLInputElement | null)?.checked ?? false
-  expenseOnlyMode.value = checked
+function setInputMode(mode: InputMode) {
   errorMessage.value = null
+  dropdownOpen.value = false
+  products.value = []
+  expenseOnlyMode.value = mode === "expense"
+  stockReceiptMode.value = mode === "receipt"
+}
 
-  if (checked) {
-    search.value = ""
-    products.value = []
-    dropdownOpen.value = false
-    selected.value = []
-    customItems.value = []
-    discount.value = 0
-    showCustomForm.value = false
-    disableSplitPayment()
+function closeInputModeSheet() {
+  inputModeSheetOpen.value = false
+}
+
+function updateInputModePopoverPosition() {
+  if (!import.meta.client) return
+
+  const trigger = inputModeActiveTrigger.value ?? inputTabButtonRef.value
+  const maxWidth = Math.min(360, window.innerWidth - 24)
+  if (!trigger) {
+    inputModePopoverStyle.value = {
+      top: "72px",
+      left: "12px",
+      width: `${maxWidth}px`,
+      "--mode-popover-origin-x": "28px",
+    }
+    return
   }
+
+  const rect = trigger.getBoundingClientRect()
+  const maxLeft = Math.max(12, window.innerWidth - maxWidth - 12)
+  const left = Math.min(Math.max(12, rect.left), maxLeft)
+  const originX = Math.min(Math.max(20, rect.left - left + rect.width / 2), maxWidth - 20)
+
+  inputModePopoverStyle.value = {
+    top: `${rect.bottom + 10}px`,
+    left: `${left}px`,
+    width: `${maxWidth}px`,
+    "--mode-popover-origin-x": `${originX}px`,
+  }
+}
+
+async function openInputModeSheet(event?: MouseEvent) {
+  activeTab.value = "input"
+  inputModeSheetOpen.value = true
+  if (event?.currentTarget instanceof HTMLElement) {
+    inputModeActiveTrigger.value = event.currentTarget
+  }
+  await nextTick()
+  updateInputModePopoverPosition()
+}
+
+async function selectInputMode(mode: InputMode) {
+  setInputMode(mode)
+  closeInputModeSheet()
+
+  await nextTick()
+  if (mode === "sale") {
+    searchInputRef.value?.focus()
+    return
+  }
+  if (mode === "receipt") {
+    stockReceiptInputRef.value?.focus()
+  }
+}
+
+function syncInputModePopoverPosition() {
+  if (!inputModeSheetOpen.value) return
+  updateInputModePopoverPosition()
 }
 
 function addPaymentRow() {
@@ -548,7 +742,41 @@ function removeExpense(idx: number) {
 async function submit() {
   errorMessage.value = null
   lastSaleId.value = null
+  if (isStockReceiptOnly.value) {
+    if (stockReceiptParseErrors.value.length > 0) {
+      errorMessage.value = stockReceiptParseErrors.value[0] ?? "Format barang masuk tidak valid"
+      return
+    }
+    if (parsedStockReceiptItems.value.length === 0) {
+      errorMessage.value = "Minimal 1 baris barang masuk"
+      return
+    }
+  }
+
   const expenseOnly = isExpenseOnly.value
+
+  if (isStockReceiptOnly.value) {
+    submitLoading.value = true
+    try {
+      await $fetch<{ receipt_id: string }>("/api/sales/stock-receipts", {
+        method: "POST",
+        body: {
+          receipt_date: saleDate.value || undefined,
+          items: parsedStockReceiptItems.value,
+        },
+      })
+      stockReceiptRawInput.value = ""
+      historyQuery.value = ""
+      lastHistoryQuery.value = ""
+      activeTab.value = "history"
+      await loadSales()
+    } catch (error) {
+      errorMessage.value = statusMessage(error) ?? "Gagal simpan barang masuk"
+    } finally {
+      submitLoading.value = false
+    }
+    return
+  }
 
   if (expenseOnly) {
     if (expenses.value.length === 0) {
@@ -1001,6 +1229,20 @@ function closeDeleteConfirm() {
   deleteError.value = null
 }
 
+function openDeleteStockReceiptConfirm(receipt: StockReceiptRow) {
+  deleteStockReceiptId.value = receipt.id
+  deleteStockReceiptLabel.value = stockReceiptDeleteLabel(receipt)
+  deleteStockReceiptError.value = null
+  deleteStockReceiptConfirmOpen.value = true
+}
+
+function closeDeleteStockReceiptConfirm() {
+  deleteStockReceiptConfirmOpen.value = false
+  deleteStockReceiptId.value = null
+  deleteStockReceiptLoading.value = false
+  deleteStockReceiptError.value = null
+}
+
 async function confirmDelete() {
   if (!deleteSaleId.value) return
   deleteLoading.value = true
@@ -1013,6 +1255,24 @@ async function confirmDelete() {
     deleteError.value = statusMessage(error) ?? "Gagal menghapus transaksi"
   } finally {
     deleteLoading.value = false
+  }
+}
+
+async function confirmDeleteStockReceipt() {
+  if (!deleteStockReceiptId.value) return
+  deleteStockReceiptLoading.value = true
+  deleteStockReceiptError.value = null
+  try {
+    await $fetch("/api/sales/stock-receipts", {
+      method: "DELETE",
+      query: { id: deleteStockReceiptId.value },
+    })
+    closeDeleteStockReceiptConfirm()
+    await loadSales()
+  } catch (error) {
+    deleteStockReceiptError.value = statusMessage(error) ?? "Gagal menghapus barang masuk"
+  } finally {
+    deleteStockReceiptLoading.value = false
   }
 }
 
@@ -1041,9 +1301,10 @@ const detailExpenseTotal = computed(() => {
   <div class="salesPage">
     <div class="mobileTabBar">
       <button 
+        ref="inputTabButtonRef"
         class="tabBtn" 
         :class="{ active: activeTab === 'input' }" 
-        @click="activeTab = 'input'"
+        @click="openInputModeSheet($event)"
       >
         <svg class="tabIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M12 5v14M5 12h14" />
@@ -1053,7 +1314,7 @@ const detailExpenseTotal = computed(() => {
       <button 
         class="tabBtn" 
         :class="{ active: activeTab === 'history' }" 
-        @click="activeTab = 'history'"
+        @click="activeTab = 'history'; closeInputModeSheet()"
       >
         <svg class="tabIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -1063,19 +1324,48 @@ const detailExpenseTotal = computed(() => {
     </div>
 
     <div class="tabContent" :class="{ hidden: activeTab !== 'input' }">
-      <div class="modeSection">
-        <label class="splitToggle">
-          <input
-            type="checkbox"
-            :checked="expenseOnlyMode"
-            @change="onExpenseOnlyToggle"
-          />
-          <span>Input pengeluaran saja</span>
-        </label>
-        <span v-if="isExpenseOnly" class="modeHint">Mode ini tanpa SKU, plat nomor, dan pembayaran.</span>
+      <div class="inputModeBar">
+        <button type="button" class="inputModeChip" @click="openInputModeSheet($event)">{{ currentInputModeText }}</button>
       </div>
 
-      <div v-if="!isExpenseOnly" class="searchSection">
+      <div v-if="isStockReceiptOnly" class="stockReceiptSection">
+        <div class="stockReceiptHeader">
+          <div>
+            <div class="stockReceiptTitle">Barang Masuk Harian</div>
+            <div class="stockReceiptMeta">Satu baris satu item. Tanda = opsional dan qty yang sama akan dijumlahkan otomatis.</div>
+          </div>
+          <div class="stockReceiptMeta strong">{{ parsedStockReceiptItems.length }} baris valid • {{ stockReceiptTotalQty }} qty</div>
+        </div>
+        <textarea
+          ref="stockReceiptInputRef"
+          v-model="stockReceiptRawInput"
+          class="formInput stockReceiptTextarea"
+          :placeholder="stockReceiptPlaceholder"
+        />
+        <div v-if="stockReceiptParseErrors.length" class="stockReceiptErrorList">
+          <div v-for="message in stockReceiptParseErrors" :key="message" class="stockReceiptErrorItem">
+            {{ message }}
+          </div>
+        </div>
+        <div v-else-if="parsedStockReceiptItems.length" class="stockReceiptPreview">
+          <div class="stockReceiptPreviewHeader">
+            <span>Siap Disimpan</span>
+            <span>{{ stockReceiptTotalQty }} qty</span>
+          </div>
+          <div class="stockReceiptPreviewList">
+            <div
+              v-for="(item, index) in parsedStockReceiptItems"
+              :key="`${item.item_name}-${item.unit_label}-${index}`"
+              class="stockReceiptPreviewRow"
+            >
+              <span class="stockReceiptPreviewQty">{{ item.qty }} {{ item.unit_label }}</span>
+              <span class="stockReceiptPreviewName">{{ item.item_name }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="isStandardSale" class="searchSection">
         <div class="searchWrapper">
           <svg class="searchIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="11" cy="11" r="8" />
@@ -1140,7 +1430,7 @@ const detailExpenseTotal = computed(() => {
         </div>
       </div>
 
-      <div v-if="!isExpenseOnly && (selected.length || customItems.length)" class="cartSection">
+      <div v-if="isStandardSale && (selected.length || customItems.length)" class="cartSection">
         <div class="cartHeader">
           <span class="cartTitle">Item Transaksi</span>
           <span class="cartBadge">{{ itemCount }} item</span>
@@ -1189,7 +1479,7 @@ const detailExpenseTotal = computed(() => {
         </div>
       </div>
 
-      <div v-else-if="!isExpenseOnly" class="emptyState">
+      <div v-else-if="isStandardSale" class="emptyState">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
           <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
         </svg>
@@ -1197,7 +1487,7 @@ const detailExpenseTotal = computed(() => {
         <span class="emptyHint">Cari produk untuk ditambahkan ke transaksi</span>
       </div>
 
-      <div v-if="!isExpenseOnly" class="customItemSection">
+      <div v-if="isStandardSale" class="customItemSection">
         <button v-if="!showCustomForm" type="button" class="addCustomBtn" @click="showCustomForm = true">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M12 5v14M5 12h14" />
@@ -1223,7 +1513,7 @@ const detailExpenseTotal = computed(() => {
       <div class="formSection">
         <div class="formRow">
           <label class="formField">
-            <span class="formLabel">Tanggal Transaksi</span>
+            <span class="formLabel">{{ isStockReceiptOnly ? "Tanggal Barang Masuk" : "Tanggal Transaksi" }}</span>
             <input
               v-model="saleDate"
               class="formInput"
@@ -1232,7 +1522,7 @@ const detailExpenseTotal = computed(() => {
           </label>
         </div>
 
-        <template v-if="!isExpenseOnly">
+        <template v-if="isStandardSale">
         <div class="formRow">
           <label class="formField">
             <span class="formLabel">Plat Nomor</span>
@@ -1295,7 +1585,7 @@ const detailExpenseTotal = computed(() => {
         </div>
         </template>
 
-        <div class="expenseSection">
+        <div v-if="!isStockReceiptOnly" class="expenseSection">
           <div class="expenseHeader">
             <span class="formLabel">Pengeluaran</span>
             <span v-if="expenseTotal > 0" class="expenseTotal">Rp {{ rupiah(expenseTotal) }}</span>
@@ -1369,7 +1659,7 @@ const detailExpenseTotal = computed(() => {
             class="historySearchInput"
             type="search"
             inputmode="search"
-            placeholder="Cari plat nomor / item..."
+            placeholder="Cari plat nomor / item / barang masuk..."
             @keydown.enter.prevent="lastHistoryQuery = historyQuery.trim(); loadSales()"
           />
           <button
@@ -1426,6 +1716,50 @@ const detailExpenseTotal = computed(() => {
           <div class="dailySumItem">
             <span class="dailySumLabel">Kredit</span>
             <span class="dailySumValue">Rp {{ rupiah(dailySummary.credit) }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="stockReceipts.length" class="stockReceiptHistorySection">
+        <div class="stockReceiptHistoryHeader">
+          <span class="stockReceiptHistoryTitle">{{ searchAllDates ? 'Barang Masuk' : 'Barang Masuk Hari Ini' }}</span>
+          <span class="stockReceiptHistoryMeta">{{ stockReceipts.length }} input</span>
+        </div>
+        <div class="stockReceiptHistoryList">
+          <div v-for="receipt in stockReceipts" :key="receipt.id" class="stockReceiptCard">
+            <div class="stockReceiptCardHeader">
+              <div class="stockReceiptBadgeRow">
+                <span class="stockReceiptBadge">Barang Masuk</span>
+                <span class="saleDateBadge">{{ formatDate(receipt.receipt_date) }}</span>
+                <span class="saleTime">{{ hhmm(receipt.created_at) }} WIB</span>
+              </div>
+              <div class="stockReceiptCardActions">
+                <div class="stockReceiptCardTotal">{{ receipt.total_qty }} qty</div>
+                <button
+                  v-if="isAdmin"
+                  type="button"
+                  class="stockReceiptDeleteBtn"
+                  @click.stop="openDeleteStockReceiptConfirm(receipt)"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" />
+                    <path d="M10 11v6M14 11v6" />
+                    <path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" />
+                  </svg>
+                  <span>Hapus</span>
+                </button>
+              </div>
+            </div>
+            <div class="stockReceiptCardItems">
+              <div
+                v-for="(item, index) in receipt.items"
+                :key="`${receipt.id}-${item.item_name}-${item.unit_label}-${index}`"
+                class="stockReceiptItemLine"
+              >
+                {{ item.qty }} {{ item.unit_label }} {{ item.item_name }}
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -1519,7 +1853,7 @@ const detailExpenseTotal = computed(() => {
         </div>
       </div>
 
-      <div v-else class="emptyHistory">
+      <div v-else-if="stockReceipts.length === 0" class="emptyHistory">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
           <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
         </svg>
@@ -1530,8 +1864,8 @@ const detailExpenseTotal = computed(() => {
 
     <div v-if="activeTab === 'input'" class="bottomBar">
       <div class="totalSection">
-        <span class="totalLabel">{{ isExpenseOnly ? "Total Pengeluaran" : "Total" }}</span>
-        <span class="totalValue">Rp {{ rupiah(bottomTotal) }}</span>
+        <span class="totalLabel">{{ isStockReceiptOnly ? "Total Qty" : isExpenseOnly ? "Total Pengeluaran" : "Total" }}</span>
+        <span class="totalValue">{{ bottomValueText }}</span>
       </div>
       <button 
         :class="['submitBtn', { 'is-loading': submitLoading }]"
@@ -1546,10 +1880,83 @@ const detailExpenseTotal = computed(() => {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
             <path d="M5 13l4 4L19 7" />
           </svg>
-          <span>{{ isExpenseOnly ? "Simpan Pengeluaran" : "Simpan" }}</span>
+          <span>Simpan</span>
         </template>
       </button>
     </div>
+
+    <Teleport to="body">
+      <Transition name="mode-popover">
+        <div v-if="inputModeSheetOpen" class="inputModePopoverOverlay" @click.self="closeInputModeSheet">
+          <div class="inputModePopover" :style="inputModePopoverStyle" @click.stop>
+            <div class="inputModeSheetHeader">
+              <div>
+                <div class="inputModeSheetTitle">Pilih Jenis Input</div>
+                <div class="inputModeSheetSub">Pilih mode yang ingin dibuka.</div>
+              </div>
+              <button type="button" class="detailCloseBtn" aria-label="Tutup pilihan jenis input" @click="closeInputModeSheet">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div class="modeGrid">
+              <button
+                type="button"
+                class="modeCard"
+                :class="{ active: currentInputMode === 'sale' }"
+                @click="selectInputMode('sale')"
+              >
+                <span class="modeCardIcon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 5v14M5 12h14" />
+                  </svg>
+                </span>
+                <span class="modeCardContent">
+                  <span class="modeCardTitle">Input Sales</span>
+                  <span class="modeCardDesc">Transaksi barang keluar, jasa, dan pembayaran.</span>
+                </span>
+              </button>
+              <button
+                type="button"
+                class="modeCard"
+                :class="{ active: currentInputMode === 'expense' }"
+                @click="selectInputMode('expense')"
+              >
+                <span class="modeCardIcon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 19V5M5 12l7-7 7 7" />
+                    <path d="M3 19h18" />
+                  </svg>
+                </span>
+                <span class="modeCardContent">
+                  <span class="modeCardTitle">Input Pengeluaran</span>
+                  <span class="modeCardDesc">Biaya operasional tanpa SKU dan tanpa plat nomor.</span>
+                </span>
+              </button>
+              <button
+                type="button"
+                class="modeCard"
+                :class="{ active: currentInputMode === 'receipt' }"
+                @click="selectInputMode('receipt')"
+              >
+                <span class="modeCardIcon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10" />
+                    <path d="M12 12v5M9.5 14.5L12 17l2.5-2.5" />
+                  </svg>
+                </span>
+                <span class="modeCardContent">
+                  <span class="modeCardTitle">Input Barang Masuk</span>
+                  <span class="modeCardDesc">Log barang masuk harian dengan format teks cepat.</span>
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
 
     <Teleport to="body">
       <Transition name="sheet">
@@ -1730,6 +2137,48 @@ const detailExpenseTotal = computed(() => {
               <button type="button" class="newTxBtn" :disabled="deleteLoading" @click="closeDeleteConfirm">Batal</button>
               <button type="button" class="deleteConfirmBtn" :disabled="deleteLoading" @click="confirmDelete">
                 <template v-if="deleteLoading">
+                  <div class="spinner light" />
+                  <span>Menghapus...</span>
+                </template>
+                <template v-else>Ya, Hapus</template>
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <Teleport to="body">
+      <Transition name="sheet">
+        <div v-if="deleteStockReceiptConfirmOpen" class="successOverlay" @click.self="closeDeleteStockReceiptConfirm">
+          <div class="deleteSheet">
+            <div class="deleteSheetIcon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="3 6 5 6 21 6" />
+                <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" />
+                <path d="M10 11v6M14 11v6" />
+                <path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" />
+              </svg>
+            </div>
+            <div class="deleteSheetTitle">Hapus Barang Masuk?</div>
+            <div class="deleteSheetSub">{{ deleteStockReceiptLabel }}</div>
+            <p v-if="deleteStockReceiptError" class="errorMsg">{{ deleteStockReceiptError }}</p>
+            <div class="deleteSheetActions">
+              <button
+                type="button"
+                class="newTxBtn"
+                :disabled="deleteStockReceiptLoading"
+                @click="closeDeleteStockReceiptConfirm"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                class="deleteConfirmBtn"
+                :disabled="deleteStockReceiptLoading"
+                @click="confirmDeleteStockReceipt"
+              >
+                <template v-if="deleteStockReceiptLoading">
                   <div class="spinner light" />
                   <span>Menghapus...</span>
                 </template>
@@ -2479,17 +2928,255 @@ const detailExpenseTotal = computed(() => {
   accent-color: var(--mb-accent);
 }
 
-.modeSection {
-  display: grid;
-  gap: 6px;
+.inputModeBar {
+  display: flex;
+  align-items: center;
   margin-bottom: 12px;
-  padding: 10px 12px;
+  min-height: 20px;
+}
+
+.inputModeChip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(52, 199, 89, 0.24);
+  background: rgba(52, 199, 89, 0.1);
+  color: var(--mb-accent);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.inputModeChip:active {
+  transform: scale(0.98);
+}
+
+.modeGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.modeCard {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 12px;
+  min-height: 72px;
+  padding: 12px 14px;
   border: 1px solid var(--mb-border2);
-  border-radius: 12px;
+  border-radius: 16px;
+  background: var(--mb-surface);
+  color: var(--mb-text);
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s ease;
+}
+
+.modeCard:active {
+  transform: scale(0.99);
+}
+
+.modeCard.active {
+  border-color: rgba(52, 199, 89, 0.35);
+  background: linear-gradient(180deg, rgba(52, 199, 89, 0.18), rgba(52, 199, 89, 0.08));
+  box-shadow: inset 0 0 0 1px rgba(52, 199, 89, 0.18);
+}
+
+.modeCardIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  border: 1px solid var(--mb-border2);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--mb-muted);
+}
+
+.modeCard.active .modeCardIcon {
+  border-color: rgba(52, 199, 89, 0.3);
+  color: var(--mb-accent);
+  background: rgba(52, 199, 89, 0.12);
+}
+
+.modeCardIcon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.modeCardContent {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.modeCardTitle {
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.modeCardDesc {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--mb-muted);
+}
+
+.stockReceiptSection {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 14px;
+  border: 1px solid var(--mb-border2);
+  border-radius: 16px;
   background: var(--mb-surface2);
 }
 
-.modeHint {
+.stockReceiptHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.stockReceiptTitle {
+  font-weight: 800;
+  font-size: 15px;
+}
+
+.stockReceiptMeta {
+  font-size: 12px;
+  color: var(--mb-muted);
+}
+
+.stockReceiptMeta.strong {
+  font-weight: 700;
+  color: var(--mb-text);
+}
+
+.stockReceiptTextarea {
+  min-height: 168px;
+  height: auto;
+  padding: 14px;
+  text-transform: none;
+  line-height: 1.55;
+  font-size: 15px;
+  font-family: "Consolas", "SFMono-Regular", "Liberation Mono", monospace;
+  resize: vertical;
+}
+
+.stockReceiptTextarea::placeholder {
+  color: rgba(255, 255, 255, 0.38);
+  text-transform: none;
+}
+
+.stockReceiptErrorList {
+  display: grid;
+  gap: 8px;
+}
+
+.stockReceiptErrorItem {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(215, 0, 21, 0.2);
+  background: rgba(215, 0, 21, 0.08);
+  color: var(--mb-danger);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.stockReceiptPreview {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(52, 199, 89, 0.24);
+  border-radius: 14px;
+  background: rgba(52, 199, 89, 0.08);
+}
+
+.stockReceiptPreviewHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--mb-accent);
+}
+
+.stockReceiptPreviewList {
+  display: grid;
+  gap: 8px;
+}
+
+.stockReceiptPreviewRow {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  gap: 10px;
+}
+
+.stockReceiptPreviewQty {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: rgba(52, 199, 89, 0.14);
+  color: var(--mb-accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.stockReceiptPreviewName {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.inputModePopoverOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 220;
+  background: transparent;
+}
+
+.inputModePopover {
+  position: fixed;
+  width: min(360px, calc(100vw - 24px));
+  max-height: min(78vh, 560px);
+  overflow-y: auto;
+  padding: 18px;
+  border: 1px solid var(--mb-border2);
+  border-radius: 20px;
+  background: var(--mb-surface);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
+  transform-origin: var(--mode-popover-origin-x, 28px) 0;
+  display: grid;
+  gap: 16px;
+}
+
+.inputModeSheetHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.inputModeSheetTitle {
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.inputModeSheetSub {
+  margin-top: 4px;
   font-size: 12px;
   color: var(--mb-muted);
 }
@@ -2675,6 +3362,113 @@ const detailExpenseTotal = computed(() => {
   letter-spacing: 0.2px;
 }
 
+
+.stockReceiptHistorySection {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.stockReceiptHistoryHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.stockReceiptHistoryTitle {
+  font-weight: 800;
+  font-size: 16px;
+}
+
+.stockReceiptHistoryMeta {
+  font-size: 12px;
+  color: var(--mb-muted);
+}
+
+.stockReceiptHistoryList {
+  display: grid;
+  gap: 10px;
+}
+
+.stockReceiptCard {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--mb-border2);
+  border-radius: 14px;
+  background: var(--mb-surface);
+}
+
+.stockReceiptCardHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.stockReceiptCardActions {
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+}
+
+.stockReceiptBadgeRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.stockReceiptBadge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: rgba(52, 199, 89, 0.14);
+  color: var(--mb-accent);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.stockReceiptCardTotal {
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.stockReceiptDeleteBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid rgba(215, 0, 21, 0.18);
+  border-radius: 999px;
+  background: rgba(215, 0, 21, 0.08);
+  color: var(--mb-danger);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.stockReceiptDeleteBtn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.stockReceiptCardItems {
+  display: grid;
+  gap: 6px;
+}
+
+.stockReceiptItemLine {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.35;
+}
 .dailySumValue {
   display: block;
   font-size: 15px;
@@ -3136,6 +3930,9 @@ const detailExpenseTotal = computed(() => {
   display: block;
   font-size: 12px;
   color: var(--mb-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .totalValue {
@@ -3571,6 +4368,27 @@ const detailExpenseTotal = computed(() => {
 .sheet-enter-from .editSheet,
 .sheet-leave-to .editSheet {
   transform: translateY(100%);
+}
+
+.mode-popover-enter-active,
+.mode-popover-leave-active {
+  transition: opacity 0.18s ease;
+}
+
+.mode-popover-enter-active .inputModePopover,
+.mode-popover-leave-active .inputModePopover {
+  transition: transform 0.18s ease, opacity 0.18s ease;
+}
+
+.mode-popover-enter-from,
+.mode-popover-leave-to {
+  opacity: 0;
+}
+
+.mode-popover-enter-from .inputModePopover,
+.mode-popover-leave-to .inputModePopover {
+  opacity: 0;
+  transform: translateY(-8px) scale(0.96);
 }
 
 .customItemSection {

@@ -51,6 +51,19 @@ type MonthlyExpense = {
   entries: number
 }
 
+type MonthlyStockReceiptItem = {
+  item_name: string
+  qty: number
+  unit_label: string
+}
+
+type MonthlyStockReceiptDay = {
+  receipt_date: string
+  total_qty: number
+  receipt_count: number
+  items: MonthlyStockReceiptItem[]
+}
+
 type MonthlyPaymentSummary = {
   cash: number
   non_cash: number
@@ -63,6 +76,9 @@ type MonthlyReport = {
   transactions: number
   payment_summary: MonthlyPaymentSummary
   expense_total: number
+  stock_receipt_total_qty: number
+  stock_receipt_total_receipts: number
+  stock_receipt_daily?: MonthlyStockReceiptDay[]
   oli_gardan_qty: number
   daily?: MonthlyDaily[]
   top_skus?: MonthlyTopSku[]
@@ -75,6 +91,7 @@ const report = ref<MonthlyReport | null>(null)
 const isLoading = ref(false)
 const errorMessage = ref<string | null>(null)
 const isExpenseDetailOpen = ref(false)
+const isStockReceiptDetailOpen = ref(false)
 const isBrandDetailOpen = ref(false)
 const isBrandDetailLoading = ref(false)
 const brandDetailErrorMessage = ref<string | null>(null)
@@ -141,6 +158,8 @@ const paymentTotal = computed(() => {
   return cash + nonCash
 })
 
+const stockReceiptDayCount = computed(() => report.value?.stock_receipt_daily?.length ?? 0)
+
 const groupedBrandTransactions = computed(() => {
   const brands = report.value?.brand_transactions ?? []
   const grouped = new Map<string, number>()
@@ -164,7 +183,7 @@ const totalBrandQty = computed(() => {
 })
 
 const isAnyDetailOpen = computed(() => {
-  return isExpenseDetailOpen.value || isBrandDetailOpen.value
+  return isExpenseDetailOpen.value || isStockReceiptDetailOpen.value || isBrandDetailOpen.value
 })
 
 function brandShare(qty: number) {
@@ -191,6 +210,13 @@ function formatShortDate(value: string) {
 function formatDateList(values: string[]) {
   if (!values.length) return "-"
   return values.map((value) => formatShortDate(value)).join(", ")
+}
+
+function formatStockReceiptItems(items: MonthlyStockReceiptItem[]) {
+  if (!items.length) return "-"
+  return items
+    .map((item) => `${item.item_name} ${item.qty} ${item.unit_label}`)
+    .join(", ")
 }
 
 function resolveMonthDateEnd(monthValue: string) {
@@ -248,11 +274,22 @@ const hasBrandDetailFilter = computed(() => {
 
 function openExpenseDetail() {
   closeBrandDetail()
+  closeStockReceiptDetail()
   isExpenseDetailOpen.value = true
 }
 
 function closeExpenseDetail() {
   isExpenseDetailOpen.value = false
+}
+
+function openStockReceiptDetail() {
+  closeBrandDetail()
+  closeExpenseDetail()
+  isStockReceiptDetailOpen.value = true
+}
+
+function closeStockReceiptDetail() {
+  isStockReceiptDetailOpen.value = false
 }
 
 function closeBrandDetail() {
@@ -272,6 +309,7 @@ async function openBrandDetail(brand: string) {
 
   const requestId = ++brandDetailRequestId
   isExpenseDetailOpen.value = false
+  isStockReceiptDetailOpen.value = false
   isBrandDetailOpen.value = true
   isBrandDetailLoading.value = false
   brandDetailErrorMessage.value = null
@@ -322,6 +360,11 @@ function closeActiveDetail() {
 
   if (isExpenseDetailOpen.value) {
     closeExpenseDetail()
+    return
+  }
+
+  if (isStockReceiptDetailOpen.value) {
+    closeStockReceiptDetail()
   }
 }
 
@@ -360,6 +403,7 @@ async function load() {
     report.value = res.report
     brandDetailCache.value = {}
     closeExpenseDetail()
+    closeStockReceiptDetail()
     closeBrandDetail()
   } catch (error) {
     errorMessage.value = statusMessage(error) ?? "Gagal memuat report"
@@ -412,6 +456,21 @@ await load()
           </div>
           <div class="value monoNumeric">Rp {{ rupiah(report.expense_total) }}</div>
           <div class="meta">{{ expenseRatio }} dari omzet</div>
+        </div>
+        <div
+          class="sumItem sumItemClickable"
+          role="button"
+          tabindex="0"
+          @click="openStockReceiptDetail"
+          @keydown.enter.prevent="openStockReceiptDetail"
+          @keydown.space.prevent="openStockReceiptDetail"
+        >
+          <div class="labelRow">
+            <div class="label">Barang Masuk</div>
+            <span class="actionLink" aria-hidden="true">Detail</span>
+          </div>
+          <div class="value monoNumeric">{{ report.stock_receipt_total_qty }} qty</div>
+          <div class="meta">{{ report.stock_receipt_total_receipts }} input • {{ stockReceiptDayCount }} tanggal</div>
         </div>
       </div>
 
@@ -510,6 +569,47 @@ await load()
               </div>
             </div>
             <div v-else class="emptyState">Tidak ada pengeluaran di bulan ini</div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <Teleport to="body">
+      <Transition name="expense-modal">
+        <div v-if="report && isStockReceiptDetailOpen" class="modalBackdrop" @click.self="closeStockReceiptDetail">
+          <div class="modalCard" role="dialog" aria-modal="true" aria-labelledby="stock-receipt-detail-title">
+            <div class="modalHeader">
+              <div class="modalTitleBlock">
+                <div id="stock-receipt-detail-title" class="sectionTitle sectionTitleNoMargin">Detail Barang Masuk</div>
+                <div class="modalMetaText">
+                  {{ report.stock_receipt_total_receipts }} input • {{ report.stock_receipt_total_qty }} qty
+                </div>
+              </div>
+              <button class="mb-btn modalCloseBtn" type="button" @click="closeStockReceiptDetail">Tutup</button>
+            </div>
+            <div v-if="report.stock_receipt_daily?.length" class="modalBody">
+              <div class="tableWrap modalTableWrap">
+                <table class="table">
+                  <thead>
+                    <tr>
+                      <th>Tanggal</th>
+                      <th class="alignRight">Jumlah Input</th>
+                      <th class="alignRight">Qty</th>
+                      <th>Detail</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="day in report.stock_receipt_daily" :key="day.receipt_date">
+                      <td>{{ formatShortDate(day.receipt_date) }}</td>
+                      <td class="alignRight monoNumeric">{{ day.receipt_count }}</td>
+                      <td class="alignRight monoNumeric">{{ day.total_qty }}</td>
+                      <td class="stockReceiptDetailCell">{{ formatStockReceiptItems(day.items) }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div v-else class="emptyState">Tidak ada barang masuk di bulan ini</div>
           </div>
         </div>
       </Transition>
@@ -874,6 +974,13 @@ th {
 }
 .dateCell {
   min-width: 180px;
+  white-space: normal;
+  color: var(--mb-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.stockReceiptDetailCell {
+  min-width: 240px;
   white-space: normal;
   color: var(--mb-muted);
   font-size: 12px;

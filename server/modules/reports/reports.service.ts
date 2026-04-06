@@ -1,5 +1,6 @@
 import { getPool } from "../../db/pool";
 import { buildProductCategoryCaseSql } from "../../utils/product-category-sql";
+import { getMonthlyStockReceiptSummary } from "../stock-receipts/stock-receipts.service";
 
 const reportProductCategorySql = buildProductCategoryCaseSql({
   brandExpr: "b.name",
@@ -715,6 +716,12 @@ export async function getMonthlyReport({
     [storeId, start, endIso],
   );
 
+  const stockReceiptSummary = await getMonthlyStockReceiptSummary({
+    storeId,
+    start,
+    end: endIso,
+  });
+
   const paymentSummary = paymentSummaryRes.rows[0] ?? {
     cash: 0,
     non_cash: 0,
@@ -731,6 +738,9 @@ export async function getMonthlyReport({
     transactions: totalsRes.rows[0]?.transactions ?? 0,
     payment_summary: paymentSummary,
     expense_total: expenseTotalRes.rows[0]?.expense_total ?? 0,
+    stock_receipt_total_qty: stockReceiptSummary.total_qty,
+    stock_receipt_total_receipts: stockReceiptSummary.total_receipts,
+    stock_receipt_daily: stockReceiptSummary.daily,
     oli_gardan_qty: oliGardanTransactionsRes.rows[0]?.qty ?? 0,
     daily,
     top_skus: topRes.rows,
