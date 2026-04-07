@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useRequestFetch } from '#app'
+import { onBeforeUnmount, onMounted } from 'vue'
 
 definePageMeta({ middleware: "admin" })
 
@@ -22,6 +23,19 @@ type DailyExpense = {
   item_name: string
   amount: number
   entries: number
+}
+
+type DailyStockReceiptItem = {
+  item_name: string
+  qty: number
+  unit_label: string
+}
+
+type DailyStockReceiptDay = {
+  receipt_date: string
+  total_qty: number
+  receipt_count: number
+  items: DailyStockReceiptItem[]
 }
 
 type DailyInputType = "product" | "custom" | "expense" | "discount"
@@ -57,6 +71,9 @@ type DailyReport = {
   profit: number
   transactions: number
   payment_summary: DailyPaymentSummary
+  stock_receipt_total_qty: number
+  stock_receipt_total_receipts: number
+  stock_receipt_daily?: DailyStockReceiptDay[]
   qty_breakdown?: DailyQtyBreakdown
   top_skus: DailyTopSku[]
   custom_items: DailyCustomItem[]
@@ -70,6 +87,7 @@ const date = ref(new Date().toISOString().slice(0, 10))
 const report = ref<DailyReport | null>(null)
 const isLoading = ref(false)
 const errorMessage = ref<string | null>(null)
+const isStockReceiptDetailOpen = ref(false)
 const requestFetch = import.meta.server ? useRequestFetch() : $fetch
 
 function rupiah(value: number) {
@@ -80,6 +98,15 @@ function formatTime(value: string) {
   return new Date(value).toLocaleTimeString("id-ID", {
     hour: "2-digit",
     minute: "2-digit",
+  })
+}
+
+function formatShortDate(value: string) {
+  if (!value) return "-"
+  return new Date(`${value}T00:00:00.000Z`).toLocaleDateString("id-ID", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
   })
 }
 
@@ -166,10 +193,54 @@ const paymentTotal = computed(() => {
   return cash + nonCash
 })
 
+const stockReceiptDayCount = computed(() => report.value?.stock_receipt_daily?.length ?? 0)
+
 const totalQty = computed(() => {
   const breakdown = report.value?.qty_breakdown
   if (!breakdown) return 0
   return breakdown.ban_qty + breakdown.oli_qty + breakdown.kampas_qty + breakdown.custom_qty
+})
+
+function formatStockReceiptItems(items: DailyStockReceiptItem[]) {
+  if (!items.length) return "-"
+  return items
+    .map((item) => `${item.item_name} ${item.qty} ${item.unit_label}`)
+    .join(", ")
+}
+
+function openStockReceiptDetail() {
+  isStockReceiptDetailOpen.value = true
+}
+
+function closeStockReceiptDetail() {
+  isStockReceiptDetailOpen.value = false
+}
+
+function handleWindowKeydown(event: KeyboardEvent) {
+  if (event.key === "Escape") {
+    closeStockReceiptDetail()
+  }
+}
+
+if (import.meta.client) {
+  watch(
+    isStockReceiptDetailOpen,
+    (open) => {
+      document.body.style.overflow = open ? "hidden" : ""
+    },
+    { immediate: true },
+  )
+}
+
+onMounted(() => {
+  window.addEventListener("keydown", handleWindowKeydown)
+})
+
+onBeforeUnmount(() => {
+  if (import.meta.client) {
+    document.body.style.overflow = ""
+  }
+  window.removeEventListener("keydown", handleWindowKeydown)
 })
 
 async function load() {
@@ -219,6 +290,21 @@ await load()
           <div class="label">Pengeluaran</div>
           <div class="value monoNumeric">Rp {{ rupiah(report.expense_total) }}</div>
           <div class="meta">{{ expenseRatio }} dari omzet</div>
+        </div>
+        <div
+          class="sumItem sumItemClickable"
+          role="button"
+          tabindex="0"
+          @click="openStockReceiptDetail"
+          @keydown.enter.prevent="openStockReceiptDetail"
+          @keydown.space.prevent="openStockReceiptDetail"
+        >
+          <div class="labelRow">
+            <div class="label">Barang Masuk</div>
+            <span class="actionLink" aria-hidden="true">Detail</span>
+          </div>
+          <div class="value monoNumeric">{{ report.stock_receipt_total_qty }} qty</div>
+          <div class="meta">{{ report.stock_receipt_total_receipts }} input • {{ stockReceiptDayCount }} tanggal</div>
         </div>
         <div v-if="report.discount_total > 0" class="sumItem">
           <div class="label">Total Diskon</div>
@@ -378,6 +464,47 @@ await load()
         </table>
       </div>
 
+      <Teleport to="body">
+        <Transition name="expense-modal">
+          <div v-if="report && isStockReceiptDetailOpen" class="modalBackdrop" @click.self="closeStockReceiptDetail">
+            <div class="modalCard" role="dialog" aria-modal="true" aria-labelledby="stock-receipt-detail-title">
+              <div class="modalHeader">
+                <div class="modalTitleBlock">
+                  <div id="stock-receipt-detail-title" class="sectionTitle sectionTitleNoMargin">Detail Barang Masuk</div>
+                  <div class="modalMetaText">
+                    {{ report.stock_receipt_total_receipts }} input • {{ report.stock_receipt_total_qty }} qty
+                  </div>
+                </div>
+                <button class="mb-btn modalCloseBtn" type="button" @click="closeStockReceiptDetail">Tutup</button>
+              </div>
+              <div v-if="report.stock_receipt_daily?.length" class="modalBody">
+                <div class="tableWrap modalTableWrap">
+                  <table class="table">
+                    <thead>
+                      <tr>
+                        <th>Tanggal</th>
+                        <th class="alignRight">Jumlah Input</th>
+                        <th class="alignRight">Qty</th>
+                        <th>Detail</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="day in report.stock_receipt_daily" :key="day.receipt_date">
+                        <td>{{ formatShortDate(day.receipt_date) }}</td>
+                        <td class="alignRight monoNumeric">{{ day.receipt_count }}</td>
+                        <td class="alignRight monoNumeric">{{ day.total_qty }}</td>
+                        <td class="stockReceiptDetailCell">{{ formatStockReceiptItems(day.items) }}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div v-else class="emptyState">Tidak ada barang masuk di tanggal ini</div>
+            </div>
+          </div>
+        </Transition>
+      </Teleport>
+
       <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
     </section>
   </div>
@@ -460,6 +587,37 @@ await load()
 .monoNumeric {
   font-variant-numeric: tabular-nums;
 }
+.labelRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.actionLink {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 42px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid var(--mb-border2);
+  background: var(--mb-surface);
+  color: var(--mb-accent);
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.2px;
+  user-select: none;
+  box-shadow: inset 0 0 0 1px var(--mb-accent-outline);
+}
+.sumItemClickable {
+  cursor: pointer;
+}
+.sumItemClickable:focus-visible {
+  outline: 2px solid var(--mb-accent);
+  outline-offset: 2px;
+}
 .tableWrap {
   margin-top: 14px;
   width: 100%;
@@ -471,6 +629,9 @@ await load()
 .sectionTitle {
   margin-bottom: 8px;
   font-weight: 800;
+}
+.sectionTitleNoMargin {
+  margin: 0;
 }
 .table {
   width: max-content;
@@ -498,6 +659,14 @@ th {
 }
 .itemMeta {
   color: var(--mb-muted);
+}
+.emptyState {
+  padding: 12px;
+  border: 1px dashed var(--mb-border2);
+  border-radius: 14px;
+  background: var(--mb-surface2);
+  color: var(--mb-muted);
+  font-size: 12px;
 }
 .typeBadge {
   display: inline-flex;
@@ -565,10 +734,98 @@ th {
   color: var(--mb-muted);
   border-color: var(--mb-border2);
 }
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.5);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  z-index: 999;
+}
+.modalCard {
+  width: min(820px, 100%);
+  max-height: 88vh;
+  overflow: hidden;
+  border: 1px solid var(--mb-border2);
+  border-radius: 16px;
+  background: var(--mb-surface);
+  box-shadow:
+    0 24px 60px rgba(15, 23, 42, 0.24),
+    0 8px 20px rgba(15, 23, 42, 0.14);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.modalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.modalTitleBlock {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: grid;
+  gap: 4px;
+}
+.modalMetaText {
+  color: var(--mb-muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+.modalBody {
+  min-height: 0;
+  flex: 1;
+  display: grid;
+  gap: 10px;
+}
+.modalTableWrap {
+  margin-top: 0;
+  max-height: calc(88vh - 120px);
+  overflow-y: auto;
+  overflow-x: auto;
+}
+.stockReceiptDetailCell {
+  min-width: 240px;
+  white-space: normal;
+  color: var(--mb-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.modalCloseBtn {
+  padding: 6px 12px;
+}
 .error {
   margin: 12px 0 0;
   color: var(--mb-danger);
   font-size: 12px;
+}
+
+.expense-modal-enter-active,
+.expense-modal-leave-active {
+  transition: opacity 180ms ease;
+}
+
+.expense-modal-enter-active .modalCard,
+.expense-modal-leave-active .modalCard {
+  transition:
+    transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    opacity 220ms ease;
+}
+
+.expense-modal-enter-from,
+.expense-modal-leave-to {
+  opacity: 0;
+}
+
+.expense-modal-enter-from .modalCard,
+.expense-modal-leave-to .modalCard {
+  opacity: 0;
+  transform: translateY(12px) scale(0.98);
 }
 
 @media (max-width: 900px) {
@@ -585,12 +842,52 @@ th {
   .sumItem {
     padding: 12px;
   }
+
+  .sumItemClickable .labelRow {
+    flex-wrap: wrap;
+    gap: 4px 8px;
+    align-items: flex-start;
+  }
+
+  .sumItemClickable .labelRow .label {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .sumItemClickable .actionLink {
+    margin-left: auto;
+    min-width: 48px;
+    height: 22px;
+    padding: 0 8px;
+  }
+
+  .modalCard {
+    max-height: 92vh;
+    padding: 12px;
+  }
+
+  .modalHeader {
+    align-items: flex-start;
+  }
+
+  .modalTableWrap {
+    max-height: calc(92vh - 108px);
+  }
 }
 
 @media (max-width: 560px) {
   .summary.reportSummary,
   .summary.paymentSummary {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .expense-modal-enter-active,
+  .expense-modal-leave-active,
+  .expense-modal-enter-active .modalCard,
+  .expense-modal-leave-active .modalCard {
+    transition: none;
   }
 }
 </style>

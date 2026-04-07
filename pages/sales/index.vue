@@ -441,6 +441,11 @@ const parsedStockReceipt = computed<StockReceiptParseResult>(() => parseStockRec
 const parsedStockReceiptItems = computed<StockReceiptItem[]>(() => parsedStockReceipt.value.items)
 const stockReceiptParseErrors = computed<string[]>(() => parsedStockReceipt.value.errors)
 const stockReceiptTotalQty = computed(() => parsedStockReceiptItems.value.reduce((sum, item) => sum + item.qty, 0))
+const stockReceiptHistorySummary = computed(() => ({
+  totalQty: stockReceipts.value.reduce((sum, receipt) => sum + receipt.total_qty, 0),
+  totalReceipts: stockReceipts.value.length,
+}))
+const stockReceiptSummaryTitle = computed(() => searchAllDates.value ? "Barang Masuk" : "Barang Masuk Hari Ini")
 
 async function runSearch() {
   searchLoading.value = true
@@ -1682,6 +1687,11 @@ const detailExpenseTotal = computed(() => {
             <span class="dailySumValue">{{ qtySummary.ban_qty }}</span>
           </div>
           <div class="dailySumItem">
+            <span class="dailySumLabel">{{ stockReceiptSummaryTitle }}</span>
+            <span class="dailySumValue">{{ stockReceiptHistorySummary.totalQty }} qty</span>
+            <span class="dailySumMeta">{{ stockReceiptHistorySummary.totalReceipts }} input</span>
+          </div>
+          <div class="dailySumItem">
             <span class="dailySumLabel">Total Transaksi</span>
             <span class="dailySumValue">{{ dailySummary.total_transactions }}</span>
           </div>
@@ -1722,8 +1732,7 @@ const detailExpenseTotal = computed(() => {
 
       <div v-if="stockReceipts.length" class="stockReceiptHistorySection">
         <div class="stockReceiptHistoryHeader">
-          <span class="stockReceiptHistoryTitle">{{ searchAllDates ? 'Barang Masuk' : 'Barang Masuk Hari Ini' }}</span>
-          <span class="stockReceiptHistoryMeta">{{ stockReceipts.length }} input</span>
+          <span class="stockReceiptHistoryTitle">Detail Barang Masuk</span>
         </div>
         <div class="stockReceiptHistoryList">
           <div v-for="receipt in stockReceipts" :key="receipt.id" class="stockReceiptCard">
@@ -3360,6 +3369,13 @@ const detailExpenseTotal = computed(() => {
   font-size: 11px;
   color: var(--mb-muted);
   letter-spacing: 0.2px;
+}
+
+.dailySumMeta {
+  display: block;
+  font-size: 11px;
+  color: var(--mb-muted);
+  line-height: 1.35;
 }
 
 

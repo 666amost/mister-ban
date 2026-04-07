@@ -452,6 +452,11 @@ export async function getDailyReport({
     kampas_qty: 0,
     custom_qty: 0,
   };
+  const stockReceiptSummary = await getMonthlyStockReceiptSummary({
+    storeId,
+    start: date,
+    end: addUtcDays(date, 1),
+  });
 
   return {
     date,
@@ -459,6 +464,9 @@ export async function getDailyReport({
     profit: profitRes.rows[0]?.profit ?? 0,
     transactions: totalsRes.rows[0]?.transactions ?? 0,
     payment_summary: paymentSummary,
+    stock_receipt_total_qty: stockReceiptSummary.total_qty,
+    stock_receipt_total_receipts: stockReceiptSummary.total_receipts,
+    stock_receipt_daily: stockReceiptSummary.daily,
     qty_breakdown: qtyBreakdown,
     top_skus: topRes.rows,
     custom_items: customRes.rows,
