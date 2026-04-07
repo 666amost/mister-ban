@@ -435,13 +435,21 @@ export default defineEventHandler(async (event) => {
               margin: 0;
               white-space: pre;
               font-family: "Courier New", Courier, monospace;
-              font-size: 9px;
-              line-height: 1.28;
+              font-size: 10px;
+              line-height: 1.3;
               font-weight: 700;
               letter-spacing: 0;
               color: #000;
-              width: max-content;
-              max-width: none;
+              width: 100%;
+              max-width: 100%;
+            }
+            @media screen {
+              .plainReceipt {
+                font-size: 9px;
+                line-height: 1.28;
+                width: max-content;
+                max-width: none;
+              }
             }
             .actions {
               margin-top: 12px;
@@ -482,6 +490,10 @@ export default defineEventHandler(async (event) => {
               .plainReceipt {
                 font-weight: 700;
                 -webkit-text-stroke: 0.15px #000;
+                font-size: 10px;
+                line-height: 1.3;
+                width: 100%;
+                max-width: 100%;
               }
               body {
                 display: block;
