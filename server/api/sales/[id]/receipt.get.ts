@@ -1,4 +1,4 @@
-import { createError, getQuery, setHeader } from "h3";
+import { createError, getHeader, getQuery, setHeader } from "h3";
 import { z } from "zod";
 import { getPool } from "../../../db/pool";
 import { requireUser } from "../../../modules/auth/session";
@@ -8,6 +8,7 @@ import { getStoreById } from "../../../modules/stores/stores.repo";
 
 const paramsSchema = z.object({ id: z.string().uuid() });
 const paperPresetSchema = z.enum(["57-roll", "58-continuous"]);
+const renderModeSchema = z.enum(["html", "plain"]);
 
 function escapeHtml(value: string) {
   return value
@@ -100,6 +101,85 @@ function formatSaleDate(value: unknown) {
   return String(value);
 }
 
+function wrapReceiptText(value: string, width: number) {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (!normalized) return [""];
+
+  const words = normalized.split(" ");
+  const lines: string[] = [];
+  let current = "";
+
+  const pushChunkedWord = (word: string) => {
+    let remaining = word;
+    while (remaining.length > width) {
+      lines.push(remaining.slice(0, width));
+      remaining = remaining.slice(width);
+    }
+    current = remaining;
+  };
+
+  for (const word of words) {
+    if (!word) continue;
+
+    if (word.length > width) {
+      if (current) {
+        lines.push(current);
+        current = "";
+      }
+      pushChunkedWord(word);
+      continue;
+    }
+
+    if (!current) {
+      current = word;
+      continue;
+    }
+
+    const next = `${current} ${word}`;
+    if (next.length <= width) {
+      current = next;
+      continue;
+    }
+
+    lines.push(current);
+    current = word;
+  }
+
+  if (current) lines.push(current);
+  return lines;
+}
+
+function centerReceiptText(value: string, width: number) {
+  return wrapReceiptText(value, width).map((line) => {
+    const leftPad = Math.max(0, Math.floor((width - line.length) / 2));
+    return `${" ".repeat(leftPad)}${line}`;
+  });
+}
+
+function padReceiptRight(value: string, width: number) {
+  if (value.length >= width) return value.slice(0, width);
+  return `${value}${" ".repeat(width - value.length)}`;
+}
+
+function alignReceiptPair(left: string, right: string, width: number) {
+  if (!right) return left;
+  if (left.length + right.length >= width) return `${left} ${right}`;
+  return `${left}${" ".repeat(width - left.length - right.length)}${right}`;
+}
+
+function buildPlainReceiptItemLines(name: string, qtyValue: string, totalValue: string, width: number) {
+  const qtyWidth = 3;
+  const totalWidth = 8;
+  const nameWidth = width - qtyWidth - totalWidth - 2;
+  const wrappedName = wrapReceiptText(name, nameWidth);
+
+  return wrappedName.map((line, index) => {
+    const qtyCell = index === 0 ? qtyValue.padStart(qtyWidth, " ") : " ".repeat(qtyWidth);
+    const totalCell = index === 0 ? totalValue.padStart(totalWidth, " ") : " ".repeat(totalWidth);
+    return `${padReceiptRight(line, nameWidth)} ${qtyCell} ${totalCell}`;
+  });
+}
+
 export default defineEventHandler(async (event) => {
   const user = await requireUser(event);
   const storeId = resolveStoreId(event, user);
@@ -132,6 +212,12 @@ export default defineEventHandler(async (event) => {
   const paperPreset = paperPresetSchema.safeParse(query.paper).success
     ? paperPresetSchema.parse(query.paper)
     : "57-roll";
+  const userAgent = getHeader(event, "user-agent") ?? "";
+  const renderMode = renderModeSchema.safeParse(query.render).success
+    ? renderModeSchema.parse(query.render)
+    : /android/i.test(userAgent)
+      ? "plain"
+      : "html";
 
   setHeader(event, "content-type", "text/html; charset=utf-8");
 
@@ -162,9 +248,34 @@ export default defineEventHandler(async (event) => {
   const discount = (detail.sale.discount ?? 0) as number;
   const payments = (detail.payments ?? []) as PaymentRow[];
 
+  const paperPresetMap = {
+    "57-roll": {
+      pageWidth: "57mm",
+      contentWidth: "44mm",
+    },
+    "58-continuous": {
+      pageWidth: "58mm",
+      contentWidth: "50mm",
+    },
+  } as const;
+  const activePaperPreset = paperPresetMap[paperPreset];
+  const isNarrow = paperPreset === "57-roll";
+
   const itemsHtml = items
     .map((i) => {
       const itemName = escapeHtml(productReceiptName(i.brand, i.name, i.size));
+      if (isNarrow) {
+        return `
+        <tr>
+          <td class="name">
+            <div class="desc">${itemName}</div>
+            <div class="unit-price">${rupiah(i.sell_price)}</div>
+          </td>
+          <td class="qty">${qty(i.qty)}</td>
+          <td class="total">${rupiah(i.line_total)}</td>
+        </tr>
+      `;
+      }
       return `
         <tr>
           <td class="name">
@@ -179,8 +290,20 @@ export default defineEventHandler(async (event) => {
     .join("");
 
   const customItemsHtml = customItems
-    .map(
-      (ci) => `
+    .map((ci) => {
+      if (isNarrow) {
+        return `
+        <tr>
+          <td class="name">
+            <div class="desc">${escapeHtml(ci.item_name)}</div>
+            <div class="unit-price">${rupiah(ci.price)}</div>
+          </td>
+          <td class="qty">${qty(ci.qty)}</td>
+          <td class="total">${rupiah(ci.line_total)}</td>
+        </tr>
+      `;
+      }
+      return `
         <tr>
           <td class="name">
             <div class="desc">${escapeHtml(ci.item_name)}</div>
@@ -189,9 +312,13 @@ export default defineEventHandler(async (event) => {
           <td class="price">${rupiah(ci.price)}</td>
           <td class="total">${rupiah(ci.line_total)}</td>
         </tr>
-      `,
-    )
+      `;
+    })
     .join("");
+
+  const tableHeaderHtml = isNarrow
+    ? `<tr><th class="item">Item</th><th class="qty">Qty</th><th class="total">Total</th></tr>`
+    : `<tr><th class="item">Item</th><th class="qty">Qty</th><th class="price">Harga</th><th class="total">Total</th></tr>`;
 
   const adjustmentsHtml = discount > 0 ? `<div class="adjustment discount"><span>Diskon</span><span>- ${rupiah(discount)}</span></div>` : "";
   const paymentsHtml =
@@ -205,17 +332,175 @@ export default defineEventHandler(async (event) => {
       : `<div>Pembayaran: ${escapeHtml(String(payments[0]?.payment_type ?? detail.sale.payment_type))}</div>`;
   const instagram = storeInstagram(storeName, storeCity, storeAddress);
   const instagramHtml = instagram ? `<div>IG: ${escapeHtml(instagram)}</div>` : "";
-  const paperPresetMap = {
-    "57-roll": {
-      pageWidth: "57mm",
-      contentWidth: "49mm",
-    },
-    "58-continuous": {
-      pageWidth: "58mm",
-      contentWidth: "50mm",
-    },
-  } as const;
-  const activePaperPreset = paperPresetMap[paperPreset];
+
+  const plainReceiptWidth = paperPreset === "57-roll" ? 32 : 36;
+  const plainQtyWidth = 3;
+  const plainTotalWidth = 8;
+  const plainNameWidth = plainReceiptWidth - plainQtyWidth - plainTotalWidth - 2;
+  const plainLines = [
+    ...centerReceiptText(storeName, plainReceiptWidth),
+    ...storeLines.flatMap((line) => centerReceiptText(line, plainReceiptWidth)),
+    "",
+    ...wrapReceiptText(`Tanggal: ${formatSaleDate(detail.sale.sale_date)}`, plainReceiptWidth),
+    ...wrapReceiptText(`Plat: ${String(detail.sale.customer_plate_no)}`, plainReceiptWidth),
+    ...(payments.length > 1
+      ? ["Pembayaran:", ...payments.map((payment) => alignReceiptPair(String(payment.payment_type), rupiah(payment.amount), plainReceiptWidth))]
+      : wrapReceiptText(`Pembayaran: ${String(payments[0]?.payment_type ?? detail.sale.payment_type)}`, plainReceiptWidth)),
+    "",
+    `${padReceiptRight("Item", plainNameWidth)} ${"Qty".padStart(plainQtyWidth, " ")} ${"Total".padStart(plainTotalWidth, " ")}`,
+    "-".repeat(plainReceiptWidth),
+    ...items.flatMap((item) => [
+      ...buildPlainReceiptItemLines(productReceiptName(item.brand, item.name, item.size), qty(item.qty), rupiah(item.line_total), plainReceiptWidth),
+      ...wrapReceiptText(`@ ${rupiah(item.sell_price)}`, plainNameWidth).map((line) => `  ${line}`),
+      "",
+    ]),
+    ...customItems.flatMap((item) => [
+      ...buildPlainReceiptItemLines(item.item_name, qty(item.qty), rupiah(item.line_total), plainReceiptWidth),
+      ...wrapReceiptText(`@ ${rupiah(item.price)}`, plainNameWidth).map((line) => `  ${line}`),
+      "",
+    ]),
+    ...(discount > 0 ? [alignReceiptPair("Diskon", `- ${rupiah(discount)}`, plainReceiptWidth)] : []),
+    "-".repeat(plainReceiptWidth),
+    alignReceiptPair("Total", rupiah(detail.sale.total), plainReceiptWidth),
+    "",
+    ...centerReceiptText("Terima kasih", plainReceiptWidth),
+    ...centerReceiptText("Barang yang sudah dibeli tidak dapat dikembalikan", plainReceiptWidth),
+    ...(instagram ? centerReceiptText(`IG: ${instagram}`, plainReceiptWidth) : []),
+  ];
+  const plainReceiptText = plainLines.join("\n").replace(/\n{3,}/g, "\n\n");
+
+  if (renderMode === "plain") {
+    return `
+      <!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+          <title>Struk</title>
+          <style id="page-size-style">
+            @page {
+              size: ${activePaperPreset.pageWidth} auto;
+              margin: 0;
+            }
+          </style>
+          <style>
+            :root {
+              --paper-width: ${activePaperPreset.pageWidth};
+              --content-width: ${activePaperPreset.contentWidth};
+            }
+            html, body {
+              margin: 0;
+              padding: 0;
+              background: #ececec;
+              color: #000;
+              font-family: ui-monospace, "Roboto Mono", "Noto Sans Mono", "DejaVu Sans Mono", monospace;
+              font-variant-numeric: tabular-nums;
+            }
+            body {
+              min-height: 100vh;
+              display: flex;
+              justify-content: center;
+              padding: 12px 0 20px;
+            }
+            .sheet {
+              width: var(--paper-width);
+              background: #fff;
+              box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
+            }
+            .wrap {
+              width: var(--content-width);
+              margin: 0 auto;
+              padding: 3mm 0 4mm;
+            }
+            .plainReceipt {
+              margin: 0;
+              white-space: pre;
+              font: inherit;
+              font-size: 11px;
+              line-height: 1.32;
+              font-weight: 700;
+              letter-spacing: 0;
+              color: #000;
+            }
+            .actions {
+              margin-top: 12px;
+              display: flex;
+              justify-content: center;
+            }
+            .printAction {
+              min-width: 120px;
+              height: 38px;
+              border: none;
+              border-radius: 999px;
+              background: #111;
+              color: #fff;
+              font: inherit;
+              font-size: 12px;
+              font-weight: 700;
+              cursor: pointer;
+            }
+            @media print {
+              html, body {
+                background: #fff;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+                color-adjust: exact;
+                font-family: ui-monospace, "Roboto Mono", "Noto Sans Mono", "DejaVu Sans Mono", monospace;
+              }
+              * {
+                -webkit-font-smoothing: none;
+                -moz-osx-font-smoothing: unset;
+                font-smooth: never;
+                text-rendering: optimizeSpeed;
+                color: #000 !important;
+                border-color: #000 !important;
+                box-shadow: none !important;
+                opacity: 1 !important;
+              }
+              .plainReceipt {
+                font-weight: 700;
+                -webkit-text-stroke: 0.15px #000;
+              }
+              body {
+                display: block;
+                min-height: auto;
+                padding: 0;
+              }
+              .sheet {
+                width: var(--paper-width);
+                box-shadow: none;
+              }
+              .wrap {
+                width: var(--content-width);
+                padding: 2.5mm 0 3mm;
+              }
+              .no-print {
+                display: none !important;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="sheet">
+            <div class="wrap">
+              <pre class="plainReceipt">${escapeHtml(plainReceiptText)}</pre>
+              <div class="actions no-print">
+                <button class="printAction" onclick="mbPrint()">Cetak</button>
+              </div>
+            </div>
+          </div>
+          <script>
+            async function mbPrint() {
+              try {
+                await fetch(${JSON.stringify(`/api/sales/${saleId}/printed`)}, { method: "POST" });
+              } catch {}
+              window.print();
+            }
+          </script>
+        </body>
+      </html>
+    `;
+  }
 
   return `
     <!doctype html>
@@ -240,7 +525,7 @@ export default defineEventHandler(async (event) => {
             padding: 0;
             background: #ececec;
             color: #000;
-            font-family: "Courier New", Courier, monospace;
+            font-family: ui-monospace, "Roboto Mono", "Noto Sans Mono", "DejaVu Sans Mono", monospace;
             font-variant-numeric: tabular-nums;
           }
           body {
@@ -266,9 +551,10 @@ export default defineEventHandler(async (event) => {
             text-align: center;
           }
           .storeLine {
-            font-size: 10px;
+            font-size: 11px;
             text-align: center;
-            line-height: 1.25;
+            line-height: 1.3;
+            color: #000;
           }
           .storeLine + .storeLine {
             margin-top: 1px;
@@ -276,8 +562,9 @@ export default defineEventHandler(async (event) => {
           .meta {
             margin-top: 6px;
             margin-bottom: 8px;
-            font-size: 10px;
-            line-height: 1.35;
+            font-size: 11px;
+            line-height: 1.3;
+            color: #000;
           }
           .meta div + div {
             margin-top: 1px;
@@ -286,7 +573,7 @@ export default defineEventHandler(async (event) => {
             width: 100%;
             border-collapse: collapse;
             table-layout: fixed;
-            font-size: 10px;
+            font-size: 11px;
           }
           th, td {
             padding: 3px 0;
@@ -317,15 +604,23 @@ export default defineEventHandler(async (event) => {
             word-break: break-word;
           }
           .desc {
-            font-weight: 700;
+            font-weight: 600;
             line-height: 1.25;
+            color: #000;
+          }
+          .unit-price {
+            font-size: 10px;
+            color: #000;
+            line-height: 1.2;
+            margin-top: 1px;
           }
           .adjustment {
             display: flex;
             justify-content: space-between;
             gap: 8px;
             margin-top: 4px;
-            font-size: 10px;
+            font-size: 11px;
+            color: #000;
           }
           .adjustment.discount {
             color: #b42318;
@@ -342,9 +637,10 @@ export default defineEventHandler(async (event) => {
           }
           .footer {
             margin-top: 10px;
-            font-size: 10px;
+            font-size: 11px;
             text-align: center;
-            line-height: 1.45;
+            line-height: 1.35;
+            color: #000;
           }
           .actions {
             margin-top: 12px;
@@ -366,6 +662,36 @@ export default defineEventHandler(async (event) => {
           @media print {
             html, body {
               background: #fff;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+              color-adjust: exact;
+            }
+            * {
+              -webkit-font-smoothing: none;
+              -moz-osx-font-smoothing: unset;
+              font-smooth: never;
+              text-rendering: optimizeSpeed;
+              color: #000 !important;
+              border-color: #000 !important;
+              box-shadow: none !important;
+              opacity: 1 !important;
+            }
+            html, body {
+              font-family: ui-monospace, "Roboto Mono", "Noto Sans Mono", "DejaVu Sans Mono", monospace;
+            }
+            .storeLine,
+            h1,
+            .meta,
+            table,
+            th,
+            td,
+            .desc,
+            .sum,
+            .unit-price,
+            .adjustment,
+            .footer {
+              font-weight: 700;
+              -webkit-text-stroke: 0.15px #000;
             }
             body {
               display: block;
@@ -398,12 +724,7 @@ export default defineEventHandler(async (event) => {
             </div>
             <table>
               <thead>
-                <tr>
-                  <th class="item">Item</th>
-                  <th class="qty">Qty</th>
-                  <th class="price">Harga</th>
-                  <th class="total">Total</th>
-                </tr>
+                ${tableHeaderHtml}
               </thead>
               <tbody>
                 ${itemsHtml}
