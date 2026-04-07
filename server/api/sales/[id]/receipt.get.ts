@@ -333,7 +333,8 @@ export default defineEventHandler(async (event) => {
   const instagram = storeInstagram(storeName, storeCity, storeAddress);
   const instagramHtml = instagram ? `<div>IG: ${escapeHtml(instagram)}</div>` : "";
 
-  const plainReceiptWidth = paperPreset === "57-roll" ? 32 : 36;
+  const plainContentWidth = paperPreset === "57-roll" ? "40mm" : "46mm";
+  const plainReceiptWidth = paperPreset === "57-roll" ? 30 : 34;
   const plainQtyWidth = 3;
   const plainTotalWidth = 8;
   const plainNameWidth = plainReceiptWidth - plainQtyWidth - plainTotalWidth - 2;
@@ -351,12 +352,12 @@ export default defineEventHandler(async (event) => {
     "-".repeat(plainReceiptWidth),
     ...items.flatMap((item) => [
       ...buildPlainReceiptItemLines(productReceiptName(item.brand, item.name, item.size), qty(item.qty), rupiah(item.line_total), plainReceiptWidth),
-      ...wrapReceiptText(`@ ${rupiah(item.sell_price)}`, plainNameWidth).map((line) => `  ${line}`),
+      ...wrapReceiptText(rupiah(item.sell_price), plainNameWidth).map((line) => `  ${line}`),
       "",
     ]),
     ...customItems.flatMap((item) => [
       ...buildPlainReceiptItemLines(item.item_name, qty(item.qty), rupiah(item.line_total), plainReceiptWidth),
-      ...wrapReceiptText(`@ ${rupiah(item.price)}`, plainNameWidth).map((line) => `  ${line}`),
+      ...wrapReceiptText(rupiah(item.price), plainNameWidth).map((line) => `  ${line}`),
       "",
     ]),
     ...(discount > 0 ? [alignReceiptPair("Diskon", `- ${rupiah(discount)}`, plainReceiptWidth)] : []),
@@ -386,7 +387,7 @@ export default defineEventHandler(async (event) => {
           <style>
             :root {
               --paper-width: ${activePaperPreset.pageWidth};
-              --content-width: ${activePaperPreset.contentWidth};
+              --content-width: ${plainContentWidth};
             }
             html, body {
               margin: 0;
@@ -410,14 +411,15 @@ export default defineEventHandler(async (event) => {
             .wrap {
               width: var(--content-width);
               margin: 0 auto;
-              padding: 3mm 0 4mm;
+              box-sizing: border-box;
+              padding: 3mm 1mm 4mm;
             }
             .plainReceipt {
               margin: 0;
               white-space: pre;
               font: inherit;
-              font-size: 11px;
-              line-height: 1.32;
+              font-size: 10px;
+              line-height: 1.3;
               font-weight: 700;
               letter-spacing: 0;
               color: #000;
@@ -472,7 +474,8 @@ export default defineEventHandler(async (event) => {
               }
               .wrap {
                 width: var(--content-width);
-                padding: 2.5mm 0 3mm;
+                box-sizing: border-box;
+                padding: 2.5mm 1mm 3mm;
               }
               .no-print {
                 display: none !important;
