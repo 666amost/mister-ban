@@ -334,12 +334,6 @@ export default defineEventHandler(async (event) => {
   const instagramHtml = instagram ? `<div>IG: ${escapeHtml(instagram)}</div>` : "";
 
   const plainContentWidth = paperPreset === "57-roll" ? "40mm" : "46mm";
-  const plainScreenPaperWidth = paperPreset === "57-roll"
-    ? "min(calc(100vw - 24px), 280px)"
-    : "min(calc(100vw - 24px), 320px)";
-  const plainScreenContentWidth = paperPreset === "57-roll"
-    ? "min(calc(100vw - 52px), 236px)"
-    : "min(calc(100vw - 52px), 272px)";
   const plainReceiptWidth = paperPreset === "57-roll" ? 30 : 34;
   const plainQtyWidth = 3;
   const plainTotalWidth = 8;
@@ -394,68 +388,46 @@ export default defineEventHandler(async (event) => {
             :root {
               --paper-width: ${activePaperPreset.pageWidth};
               --content-width: ${plainContentWidth};
-              --screen-paper-width: ${plainScreenPaperWidth};
-              --screen-content-width: ${plainScreenContentWidth};
             }
             html, body {
-              width: 100%;
               margin: 0;
               padding: 0;
               background: #ececec;
               color: #000;
               font-family: ui-monospace, "Roboto Mono", "Noto Sans Mono", "DejaVu Sans Mono", monospace;
               font-variant-numeric: tabular-nums;
-              overflow-x: hidden;
             }
             body {
               min-height: 100vh;
               display: flex;
               justify-content: center;
-              padding: 12px 12px 20px;
-              box-sizing: border-box;
+              padding: 12px 0 20px;
             }
             .sheet {
-              width: var(--screen-paper-width);
-              max-width: calc(100vw - 24px);
+              width: var(--paper-width);
               background: #fff;
               box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
             }
             .wrap {
-              width: var(--screen-content-width);
-              max-width: 100%;
+              width: var(--content-width);
               margin: 0 auto;
               box-sizing: border-box;
-              padding: 12px 8px 16px;
-              display: flex;
-              flex-direction: column;
-              align-items: center;
-              overflow-x: auto;
+              padding: 3mm 1mm 4mm;
             }
             .plainReceipt {
               margin: 0;
               white-space: pre;
-              font-family: "Courier New", Courier, monospace;
+              font: inherit;
               font-size: 10px;
               line-height: 1.3;
               font-weight: 700;
               letter-spacing: 0;
               color: #000;
-              width: 100%;
-              max-width: 100%;
-            }
-            @media screen {
-              .plainReceipt {
-                font-size: 9px;
-                line-height: 1.28;
-                width: max-content;
-                max-width: none;
-              }
             }
             .actions {
               margin-top: 12px;
               display: flex;
               justify-content: center;
-              width: 100%;
             }
             .printAction {
               min-width: 120px;
@@ -490,10 +462,6 @@ export default defineEventHandler(async (event) => {
               .plainReceipt {
                 font-weight: 700;
                 -webkit-text-stroke: 0.15px #000;
-                font-size: 10px;
-                line-height: 1.3;
-                width: 100%;
-                max-width: 100%;
               }
               body {
                 display: block;
@@ -502,16 +470,12 @@ export default defineEventHandler(async (event) => {
               }
               .sheet {
                 width: var(--paper-width);
-                max-width: none;
                 box-shadow: none;
               }
               .wrap {
                 width: var(--content-width);
-                max-width: none;
                 box-sizing: border-box;
-                display: block;
                 padding: 2.5mm 1mm 3mm;
-                overflow: visible;
               }
               .no-print {
                 display: none !important;
