@@ -180,6 +180,21 @@ function buildPlainReceiptItemLines(name: string, qtyValue: string, totalValue: 
   });
 }
 
+function toEscPosSafeText(value: string) {
+  return value
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\r?\n/g, "\n")
+    .replace(/[^\n -~]/g, " ");
+}
+
+function buildEscPosBase64(receiptText: string) {
+  const init = Buffer.from([0x1b, 0x40]);
+  const text = Buffer.from(toEscPosSafeText(receiptText).replace(/\n/g, "\r\n"), "ascii");
+  const tail = Buffer.from("\r\n\r\n\r\n", "ascii");
+  return Buffer.concat([init, text, tail]).toString("base64");
+}
+
 export default defineEventHandler(async (event) => {
   const user = await requireUser(event);
   const storeId = resolveStoreId(event, user);
@@ -212,10 +227,12 @@ export default defineEventHandler(async (event) => {
   const paperPreset = paperPresetSchema.safeParse(query.paper).success
     ? paperPresetSchema.parse(query.paper)
     : "57-roll";
+  const autoPrintMode = typeof query.autoprint === "string" ? query.autoprint : "";
   const userAgent = getHeader(event, "user-agent") ?? "";
+  const isAndroidUserAgent = /android/i.test(userAgent);
   const renderMode = renderModeSchema.safeParse(query.render).success
     ? renderModeSchema.parse(query.render)
-    : /android/i.test(userAgent)
+    : isAndroidUserAgent
       ? "plain"
       : "html";
 
@@ -369,6 +386,18 @@ export default defineEventHandler(async (event) => {
     ...(instagram ? centerReceiptText(`IG: ${instagram}`, plainReceiptWidth) : []),
   ];
   const plainReceiptText = plainLines.join("\n").replace(/\n{3,}/g, "\n\n");
+  const rawBluetoothPayload = JSON.stringify({
+    type: "esc-pos",
+    encoding: "base64",
+    codepage: "gbk",
+    data: buildEscPosBase64(plainReceiptText),
+    saleId,
+    paper: paperPreset,
+  });
+  const rawBluetoothButtonHtml = isAndroidUserAgent
+    ? '<button class="printAction secondary" onclick="mbPrintBluetooth()">Cetak Bluetooth</button>'
+    : "";
+  const shouldAutoPrintBluetooth = isAndroidUserAgent && autoPrintMode === "bluetooth";
 
   if (renderMode === "plain") {
     return `
@@ -392,6 +421,9 @@ export default defineEventHandler(async (event) => {
             html, body {
               margin: 0;
               padding: 0;
+              width: 100%;
+              max-width: 100%;
+              overflow-x: hidden;
               background: #ececec;
               color: #000;
               font-family: ui-monospace, "Roboto Mono", "Noto Sans Mono", "DejaVu Sans Mono", monospace;
@@ -399,23 +431,30 @@ export default defineEventHandler(async (event) => {
             }
             body {
               min-height: 100vh;
-              display: flex;
-              justify-content: center;
+              box-sizing: border-box;
               padding: 12px 0 20px;
             }
             .sheet {
-              width: var(--paper-width);
+              width: min(var(--paper-width), calc(100vw - 8mm));
+              margin: 0 auto;
+              box-sizing: border-box;
               background: #fff;
               box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
             }
             .wrap {
-              width: var(--content-width);
+              width: min(var(--content-width), calc(100% - 2mm));
               margin: 0 auto;
               box-sizing: border-box;
               padding: 3mm 1mm 4mm;
             }
+            .plainReceiptShell {
+              width: 100%;
+              display: flex;
+              justify-content: center;
+            }
             .plainReceipt {
               margin: 0;
+              display: inline-block;
               white-space: pre;
               font: inherit;
               font-size: 10px;
@@ -423,11 +462,16 @@ export default defineEventHandler(async (event) => {
               font-weight: 700;
               letter-spacing: 0;
               color: #000;
+              text-align: left;
+              max-width: 100%;
+              overflow: hidden;
             }
             .actions {
               margin-top: 12px;
               display: flex;
               justify-content: center;
+              gap: 8px;
+              flex-wrap: wrap;
             }
             .printAction {
               min-width: 120px;
@@ -440,6 +484,11 @@ export default defineEventHandler(async (event) => {
               font-size: 12px;
               font-weight: 700;
               cursor: pointer;
+            }
+            .printAction.secondary {
+              background: #fff;
+              color: #111;
+              border: 1px solid #111;
             }
             @media print {
               html, body {
@@ -470,6 +519,7 @@ export default defineEventHandler(async (event) => {
               }
               .sheet {
                 width: var(--paper-width);
+                max-width: none;
                 box-shadow: none;
               }
               .wrap {
@@ -486,18 +536,78 @@ export default defineEventHandler(async (event) => {
         <body>
           <div class="sheet">
             <div class="wrap">
-              <pre class="plainReceipt">${escapeHtml(plainReceiptText)}</pre>
+              <div class="plainReceiptShell">
+                <pre class="plainReceipt">${escapeHtml(plainReceiptText)}</pre>
+              </div>
               <div class="actions no-print">
                 <button class="printAction" onclick="mbPrint()">Cetak</button>
+                ${rawBluetoothButtonHtml}
               </div>
             </div>
           </div>
           <script>
-            async function mbPrint() {
+            const mbMarkedPrintedUrl = ${JSON.stringify(`/api/sales/${saleId}/printed`)};
+            const mbRawBluetoothPayload = ${JSON.stringify(rawBluetoothPayload)};
+            const mbAutoPrintBluetooth = ${JSON.stringify(shouldAutoPrintBluetooth)};
+
+            async function mbMarkPrinted() {
               try {
-                await fetch(${JSON.stringify(`/api/sales/${saleId}/printed`)}, { method: "POST" });
+                await fetch(mbMarkedPrintedUrl, { method: "POST" });
               } catch {}
+            }
+
+            function mbResolveRawPrinterBridge() {
+              if (window.MisterBanPrinter && typeof window.MisterBanPrinter.printEscPosBase64 === "function") {
+                return (payload) => window.MisterBanPrinter.printEscPosBase64(payload);
+              }
+              if (window.AndroidPrinter && typeof window.AndroidPrinter.printEscPosBase64 === "function") {
+                return (payload) => window.AndroidPrinter.printEscPosBase64(payload);
+              }
+              if (window.Android && typeof window.Android.printEscPosBase64 === "function") {
+                return (payload) => window.Android.printEscPosBase64(payload);
+              }
+              if (window.Android && typeof window.Android.printRawBase64 === "function") {
+                return (payload) => window.Android.printRawBase64(payload);
+              }
+              if (window.ReactNativeWebView && typeof window.ReactNativeWebView.postMessage === "function") {
+                return (payload) => window.ReactNativeWebView.postMessage(JSON.stringify({ type: "printEscPosBase64", payload }));
+              }
+              if (window.flutter_inappwebview && typeof window.flutter_inappwebview.callHandler === "function") {
+                return (payload) => window.flutter_inappwebview.callHandler("printEscPosBase64", payload);
+              }
+              if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.printEscPosBase64) {
+                return (payload) => window.webkit.messageHandlers.printEscPosBase64.postMessage(payload);
+              }
+              return null;
+            }
+
+            async function mbPrint() {
+              await mbMarkPrinted();
               window.print();
+            }
+
+            async function mbPrintBluetooth() {
+              const bridge = mbResolveRawPrinterBridge();
+              if (!bridge) {
+                alert("Bridge Bluetooth raw print belum tersedia di APK WebView. Tombol ini menunggu interface native untuk menerima payload ESC/POS base64.");
+                return;
+              }
+              try {
+                const result = bridge(mbRawBluetoothPayload);
+                if (result && typeof result.then === "function") {
+                  await result;
+                }
+                await mbMarkPrinted();
+              } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                alert("Gagal mengirim raw print Bluetooth: " + message);
+              }
+            }
+
+            if (mbAutoPrintBluetooth) {
+              window.addEventListener("load", () => {
+                void mbPrintBluetooth();
+              }, { once: true });
             }
           </script>
         </body>

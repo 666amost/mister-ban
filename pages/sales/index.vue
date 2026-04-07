@@ -859,8 +859,26 @@ async function submit() {
   }
 }
 
+function receiptUrl(saleId: string, options?: { bluetooth?: boolean }) {
+  const params = new URLSearchParams()
+  const isAndroidClient = import.meta.client && /android/i.test(window.navigator.userAgent)
+  if (isAndroidClient || options?.bluetooth) {
+    params.set("render", "plain")
+    params.set("paper", "57-roll")
+  }
+  if (options?.bluetooth) {
+    params.set("autoprint", "bluetooth")
+  }
+  const query = params.toString()
+  return query ? `/api/sales/${saleId}/receipt?${query}` : `/api/sales/${saleId}/receipt`
+}
+
 function openReceipt(saleId: string) {
-  window.open(`/api/sales/${saleId}/receipt`, "_blank")
+  window.open(receiptUrl(saleId), "_blank")
+}
+
+function openBluetoothReceipt(saleId: string) {
+  window.open(receiptUrl(saleId, { bluetooth: true }), "_blank")
 }
 
 function openSaleDetail(sale: SaleRow) {
@@ -878,9 +896,20 @@ function printSaleDetail() {
   openReceipt(detailSale.value.id)
 }
 
+function printSaleDetailBluetooth() {
+  if (!detailSale.value) return
+  openBluetoothReceipt(detailSale.value.id)
+}
+
 function printReceipt() {
   if (lastSaleId.value) {
     openReceipt(lastSaleId.value)
+  }
+}
+
+function printReceiptBluetooth() {
+  if (lastSaleId.value) {
+    openBluetoothReceipt(lastSaleId.value)
   }
 }
 
@@ -1808,7 +1837,7 @@ const detailExpenseTotal = computed(() => {
             <div class="saleActions">
               <a
                 class="printLabel"
-                :href="`/api/sales/${s.id}/receipt`"
+                :href="receiptUrl(s.id)"
                 target="_blank"
                 rel="noreferrer"
                 @click.stop
@@ -2063,6 +2092,16 @@ const detailExpenseTotal = computed(() => {
                 </svg>
                 Cetak Struk
               </button>
+              <button type="button" class="newTxBtn" @click="printSaleDetailBluetooth">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M6 17a6 6 0 0112 0" />
+                  <path d="M8 10a9 9 0 018 0" />
+                  <path d="M12 20h.01" />
+                  <path d="M12 3v8l3-3" />
+                  <path d="M12 11L9 8" />
+                </svg>
+                Cetak Bluetooth
+              </button>
             </div>
 
             <div v-if="isAdmin" class="detailAdminActions">
@@ -2105,6 +2144,16 @@ const detailExpenseTotal = computed(() => {
                   <path d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
                 </svg>
                 Cetak Struk
+              </button>
+              <button class="newTxBtn" @click="printReceiptBluetooth">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M6 17a6 6 0 0112 0" />
+                  <path d="M8 10a9 9 0 018 0" />
+                  <path d="M12 20h.01" />
+                  <path d="M12 3v8l3-3" />
+                  <path d="M12 11L9 8" />
+                </svg>
+                Cetak Bluetooth
               </button>
               <button class="newTxBtn" @click="newTransaction">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
