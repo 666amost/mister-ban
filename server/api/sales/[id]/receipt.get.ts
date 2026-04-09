@@ -333,8 +333,8 @@ export default defineEventHandler(async (event) => {
   const instagram = storeInstagram(storeName, storeCity, storeAddress);
   const instagramHtml = instagram ? `<div>IG: ${escapeHtml(instagram)}</div>` : "";
 
-  const plainContentWidth = paperPreset === "57-roll" ? "40mm" : "46mm";
-  const plainReceiptWidth = paperPreset === "57-roll" ? 30 : 34;
+  const plainContentWidth = paperPreset === "57-roll" ? "40mm" : "44mm";
+  const plainReceiptWidth = paperPreset === "57-roll" ? 30 : 32;
   const plainQtyWidth = 3;
   const plainTotalWidth = 8;
   const plainNameWidth = plainReceiptWidth - plainQtyWidth - plainTotalWidth - 2;
