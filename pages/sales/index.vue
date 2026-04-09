@@ -865,6 +865,27 @@ async function submit() {
 }
 
 function openReceipt(saleId: string) {
+  // Jika berjalan di Android WebView dengan bridge ESC/POS tersedia,
+  // langsung print ke printer Bluetooth — tidak buka halaman baru.
+  const w = window as unknown as Record<string, unknown>
+  const bridge = w["AndroidEscPos"] as { isAvailable?: () => boolean; print?: (text: string) => void } | undefined
+  if (typeof bridge?.print === "function") {
+    fetch(`/api/sales/${saleId}/receipt?render=raw&paper=58-continuous`)
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        return res.text()
+      })
+      .then((text) => {
+        // Tandai sudah pernah dicetak (async, tidak perlu ditunggu)
+        fetch(`/api/sales/${saleId}/printed`, { method: "POST" }).catch(() => {})
+        bridge.print!(text)
+      })
+      .catch(() => {
+        // Fallback jika fetch gagal
+        window.open(`/api/sales/${saleId}/receipt`, "_blank")
+      })
+    return
+  }
   window.open(`/api/sales/${saleId}/receipt`, "_blank")
 }
 

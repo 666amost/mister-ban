@@ -8,7 +8,7 @@ import { getStoreById } from "../../../modules/stores/stores.repo";
 
 const paramsSchema = z.object({ id: z.string().uuid() });
 const paperPresetSchema = z.enum(["57-roll", "58-continuous"]);
-const renderModeSchema = z.enum(["html", "plain"]);
+const renderModeSchema = z.enum(["html", "plain", "raw"]);
 
 function escapeHtml(value: string) {
   return value
@@ -369,6 +369,11 @@ export default defineEventHandler(async (event) => {
     ...(instagram ? centerReceiptText(`IG: ${instagram}`, plainReceiptWidth) : []),
   ];
   const plainReceiptText = plainLines.join("\n").replace(/\n{3,}/g, "\n\n");
+
+  if (renderMode === "raw") {
+    setHeader(event, "content-type", "text/plain; charset=utf-8");
+    return plainReceiptText;
+  }
 
   if (renderMode === "plain") {
     return `
