@@ -167,6 +167,7 @@ const lastSaleId = ref<string | null>(null)
 
 const isInitialLoad = ref(true)
 const activeTab = ref<"input" | "history">("input")
+const stockReceiptHistoryExpanded = ref(false)
 const showSuccessSheet = ref(false)
 const inputModeSheetOpen = ref(false)
 
@@ -1753,9 +1754,25 @@ const detailExpenseTotal = computed(() => {
 
       <div v-if="stockReceipts.length" class="stockReceiptHistorySection">
         <div class="stockReceiptHistoryHeader">
-          <span class="stockReceiptHistoryTitle">Detail Barang Masuk</span>
+          <div class="stockReceiptHistoryHeaderMain">
+            <span class="stockReceiptHistoryTitle">Detail Barang Masuk</span>
+            <span class="stockReceiptHistoryMeta">
+              {{ stockReceiptHistorySummary.totalReceipts }} input | {{ stockReceiptHistorySummary.totalQty }} qty
+            </span>
+          </div>
+          <button
+            type="button"
+            class="stockReceiptHistoryToggle"
+            :aria-expanded="stockReceiptHistoryExpanded ? 'true' : 'false'"
+            @click="stockReceiptHistoryExpanded = !stockReceiptHistoryExpanded"
+          >
+            <span>{{ stockReceiptHistoryExpanded ? "Sembunyikan" : "Lihat" }}</span>
+            <svg :class="{ open: stockReceiptHistoryExpanded }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </button>
         </div>
-        <div class="stockReceiptHistoryList">
+        <div v-if="stockReceiptHistoryExpanded" class="stockReceiptHistoryList">
           <div v-for="receipt in stockReceipts" :key="receipt.id" class="stockReceiptCard">
             <div class="stockReceiptCardHeader">
               <div class="stockReceiptBadgeRow">
@@ -1836,18 +1853,6 @@ const detailExpenseTotal = computed(() => {
           <div class="saleRight">
             <div class="saleTotal">Rp {{ rupiah(saleDisplayTotal(s)) }}</div>
             <div class="saleActions">
-              <a
-                class="printLabel"
-                :href="`/api/sales/${s.id}/receipt`"
-                target="_blank"
-                rel="noreferrer"
-                @click.stop
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-                </svg>
-                Cetak
-              </a>
               <button
                 v-if="isAdmin"
                 type="button"
@@ -3408,9 +3413,15 @@ const detailExpenseTotal = computed(() => {
 
 .stockReceiptHistoryHeader {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
+  flex-wrap: wrap;
+}
+
+.stockReceiptHistoryHeaderMain {
+  display: grid;
+  gap: 4px;
 }
 
 .stockReceiptHistoryTitle {
@@ -3421,6 +3432,33 @@ const detailExpenseTotal = computed(() => {
 .stockReceiptHistoryMeta {
   font-size: 12px;
   color: var(--mb-muted);
+}
+
+.stockReceiptHistoryToggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--mb-border2);
+  border-radius: 999px;
+  background: var(--mb-surface);
+  color: var(--mb-text);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.stockReceiptHistoryToggle svg {
+  width: 14px;
+  height: 14px;
+  transition: transform 0.15s ease;
+}
+
+.stockReceiptHistoryToggle svg.open {
+  transform: rotate(180deg);
 }
 
 .stockReceiptHistoryList {
@@ -3707,23 +3745,6 @@ const detailExpenseTotal = computed(() => {
   justify-items: end;
   gap: 6px;
   margin-top: 4px;
-}
-
-.printLabel {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 4px;
-  font-size: 12px;
-  color: var(--mb-accent);
-  font-weight: 600;
-  text-decoration: none;
-  cursor: pointer;
-}
-
-.printLabel svg {
-  width: 14px;
-  height: 14px;
 }
 
 .editLabel {
