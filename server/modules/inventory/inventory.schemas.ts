@@ -15,6 +15,7 @@ export const inventoryListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).optional(),
   offset: z.coerce.number().int().min(0).optional(),
   category_filter: z.enum(["BAN", "SPAREPART", "CAIRAN", "BAN_DALAM", "OLI"]).optional(),
+  low_stock_only: z.enum(["true", "false"]).transform((v) => v === "true").optional(),
 });
 
 export const inventoryAdjustBodySchema = z
@@ -28,3 +29,12 @@ export const inventoryAdjustBodySchema = z
   .refine((v) => v.qty_delta !== 0 || v.reset_avg_cost === true, {
     message: "qty_delta must not be 0 unless resetting avg cost",
   });
+
+export const maxStockUpdateBodySchema = z.object({
+  items: z.array(
+    z.object({
+      product_id: z.string().uuid(),
+      max_stock: z.coerce.number().int().min(0).nullable(),
+    }),
+  ).min(1).max(200),
+});

@@ -17,11 +17,25 @@ export type InventoryRow = {
   qty_on_hand: number;
   avg_unit_cost: number;
   sell_price: number | null;
+  max_stock: number | null;
   last_adj_at: string | null;
   last_adj_qty_delta: number | null;
   last_adj_by: string | null;
   price_updated_at: string | null;
   price_updated_by: string | null;
+};
+
+export type LowStockRow = {
+  product_id: string;
+  sku: string;
+  name: string;
+  size: string;
+  brand: string;
+  product_type: string;
+  qty_on_hand: number;
+  max_stock: number;
+  qty_needed: number;
+  sell_price: number | null;
 };
 
 export type InventorySummary = {
@@ -79,11 +93,13 @@ export async function listInventory(
     limit,
     offset,
     category_filter,
+    low_stock_only,
   }: {
     q?: string;
     limit: number;
     offset: number;
     category_filter?: string;
+    low_stock_only?: boolean;
   },
 ): Promise<InventoryRow[]> {
   const term = q?.trim() ? q.trim() : null;
@@ -112,6 +128,7 @@ export async function listInventory(
         COALESCE(ib.qty_on_hand, 0) AS qty_on_hand,
         COALESCE(ib.avg_unit_cost, 0) AS avg_unit_cost,
         sp.sell_price,
+        sp.max_stock,
         la.txn_at AS last_adj_at,
         la.qty_delta AS last_adj_qty_delta,
         u_adj.email AS last_adj_by,
@@ -149,6 +166,13 @@ export async function listInventory(
           $5::text IS NULL
           OR cp.category = $5
         )
+        AND (
+          $6::boolean IS NOT TRUE
+          OR (
+            sp.max_stock IS NOT NULL
+            AND COALESCE(ib.qty_on_hand, 0) < sp.max_stock
+          )
+        )
       ORDER BY
         CASE WHEN cp.size ~ '-[0-9]+$' THEN CAST(SUBSTRING(cp.size FROM '-([0-9]+)$') AS INTEGER) ELSE 999 END,
         LOWER(TRIM(b.name)),
@@ -157,7 +181,7 @@ export async function listInventory(
       LIMIT $3
       OFFSET $4
     `,
-    [storeId, term, limit, offset, category_filter ?? null],
+    [storeId, term, limit, offset, category_filter ?? null, low_stock_only ?? false],
   );
   return rows as InventoryRow[];
 }
@@ -251,4 +275,87 @@ export async function summarizeInventory(
     ban_dalam_qty: totals?.ban_dalam_qty ?? 0,
     oli_qty: totals?.oli_qty ?? 0,
   };
+}
+
+export async function listLowStock(
+  db: DbConn,
+  storeId: string,
+  { category_filter }: { category_filter?: string },
+): Promise<LowStockRow[]> {
+  const { rows } = await db.query(
+    `
+      WITH categorized_products AS (
+        SELECT
+          p.id, p.sku, p.name, p.size, p.product_type, p.brand_id,
+          ${inventoryProductCategorySql} AS category
+        FROM products p
+        JOIN brands b ON b.id = p.brand_id
+        WHERE p.status = 'active'
+      )
+      SELECT
+        cp.id AS product_id,
+        cp.sku,
+        cp.name,
+        cp.size,
+        cp.product_type,
+        b.name AS brand,
+        COALESCE(ib.qty_on_hand, 0)::int AS qty_on_hand,
+        sp.max_stock,
+        (sp.max_stock - COALESCE(ib.qty_on_hand, 0))::int AS qty_needed,
+        sp.sell_price
+      FROM store_products sp
+      JOIN categorized_products cp ON cp.id = sp.product_id
+      JOIN brands b ON b.id = cp.brand_id
+      LEFT JOIN inventory_balances ib
+        ON ib.store_id = sp.store_id AND ib.product_id = sp.product_id
+      WHERE sp.store_id = $1
+        AND sp.status = 'active'
+        AND sp.max_stock IS NOT NULL
+        AND COALESCE(ib.qty_on_hand, 0) < sp.max_stock
+        AND ($2::text IS NULL OR cp.category = $2)
+      ORDER BY
+        (sp.max_stock - COALESCE(ib.qty_on_hand, 0)) DESC,
+        LOWER(TRIM(b.name)), cp.name
+    `,
+    [storeId, category_filter ?? null],
+  );
+  return rows as LowStockRow[];
+}
+
+export async function updateMaxStock(
+  db: DbConn,
+  storeId: string,
+  items: Array<{ product_id: string; max_stock: number | null }>,
+): Promise<void> {
+  if (items.length === 0) return;
+  for (const item of items) {
+    await db.query(
+      `
+        UPDATE store_products
+        SET max_stock = $3
+        WHERE store_id = $1 AND product_id = $2
+      `,
+      [storeId, item.product_id, item.max_stock],
+    );
+  }
+}
+
+export async function countLowStock(
+  db: DbConn,
+  storeId: string,
+): Promise<number> {
+  const { rows } = await db.query<{ count: string }>(
+    `
+      SELECT COUNT(*)::int AS count
+      FROM store_products sp
+      LEFT JOIN inventory_balances ib
+        ON ib.store_id = sp.store_id AND ib.product_id = sp.product_id
+      WHERE sp.store_id = $1
+        AND sp.status = 'active'
+        AND sp.max_stock IS NOT NULL
+        AND COALESCE(ib.qty_on_hand, 0) < sp.max_stock
+    `,
+    [storeId],
+  );
+  return Number(rows[0]?.count ?? 0);
 }

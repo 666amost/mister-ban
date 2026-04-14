@@ -13,6 +13,7 @@ type InventoryRow = {
   qty_on_hand: number
   avg_unit_cost: number
   sell_price: number | null
+  max_stock: number | null
   last_adj_at: string | null
   last_adj_qty_delta: number | null
   last_adj_by: string | null
@@ -31,6 +32,7 @@ type InventorySummary = {
 type CategoryFilter = "BAN" | "SPAREPART" | "CAIRAN" | "BAN_DALAM" | "OLI" | null
 
 const me = useMe()
+const storeCtx = useStoreContext()
 
 const items = ref<InventoryRow[]>([])
 const summary = ref<InventorySummary>({
@@ -55,6 +57,16 @@ const priceDrafts = ref<Record<string, number>>({})
 const priceDirty = ref<Set<string>>(new Set())
 const priceSaveLoading = ref(false)
 const priceSaveError = ref<string | null>(null)
+
+const lowStockOnly = ref(false)
+const lowStockCount = ref(0)
+
+const maxStockEditMode = ref(false)
+const maxStockDrafts = ref<Record<string, number | null>>({})
+const maxStockDirty = ref<Set<string>>(new Set())
+const maxStockSaveLoading = ref(false)
+const maxStockSaveError = ref<string | null>(null)
+const exportingPdf = ref(false)
 
 const adjustingId = ref<string | null>(null)
 const adjQtyDelta = ref(0)
@@ -129,6 +141,62 @@ function cancelPriceEditMode() {
   priceSaveError.value = null
 }
 
+function startMaxStockEditMode() {
+  cancelAdjust()
+  cancelPriceEditMode()
+  maxStockEditMode.value = true
+  maxStockSaveError.value = null
+  maxStockDrafts.value = Object.fromEntries(items.value.map((i) => [i.product_id, i.max_stock])) as Record<string, number | null>
+  maxStockDirty.value = new Set()
+}
+
+function cancelMaxStockEditMode() {
+  maxStockEditMode.value = false
+  maxStockDrafts.value = {}
+  maxStockDirty.value = new Set()
+  maxStockSaveError.value = null
+}
+
+function syncMaxStockDraft(productId: string) {
+  const rawValue = maxStockDrafts.value[productId]
+  const normalized = rawValue === null || rawValue === undefined || rawValue === 0 ? null : (Number.isFinite(rawValue) ? Math.max(0, Math.trunc(rawValue)) : null)
+  maxStockDrafts.value[productId] = normalized
+  const original = items.value.find((i) => i.product_id === productId)?.max_stock ?? null
+  if (normalized === original) {
+    maxStockDirty.value.delete(productId)
+  } else {
+    maxStockDirty.value.add(productId)
+  }
+  maxStockDirty.value = new Set(maxStockDirty.value)
+}
+
+async function saveAllMaxStockEdits() {
+  if (maxStockDirty.value.size === 0) return
+  maxStockSaveLoading.value = true
+  maxStockSaveError.value = null
+  try {
+    const payload = Array.from(maxStockDirty.value).map((pid) => ({
+      product_id: pid,
+      max_stock: maxStockDrafts.value[pid] ?? null,
+    }))
+    await $fetch("/api/inventory/max-stock", {
+      method: "POST",
+      body: { items: payload },
+    })
+    cancelMaxStockEditMode()
+    await load()
+  } catch (error) {
+    maxStockSaveError.value = statusMessage(error) ?? "Gagal simpan max stock"
+  } finally {
+    maxStockSaveLoading.value = false
+  }
+}
+
+function toggleLowStock() {
+  lowStockOnly.value = !lowStockOnly.value
+  load({ reset: true })
+}
+
 function syncPriceDraft(productId: string) {
   const rawValue = priceDrafts.value[productId] ?? 0
   const normalized = Number.isFinite(rawValue) ? Math.max(0, Math.trunc(rawValue)) : 0
@@ -183,14 +251,21 @@ async function load(options?: { reset?: boolean }) {
     if (categoryFilter.value) {
       queryParams.category_filter = categoryFilter.value
     }
-    const res = await $fetch<{ items: InventoryRow[]; summary: InventorySummary }>("/api/inventory", {
+    if (lowStockOnly.value) {
+      queryParams.low_stock_only = "true"
+    }
+    const res = await $fetch<{ items: InventoryRow[]; summary: InventorySummary; lowStockCount: number }>("/api/inventory", {
       query: queryParams,
     })
     items.value = res.items
     summary.value = res.summary
+    lowStockCount.value = res.lowStockCount ?? 0
     hasMore.value = res.items.length === pageLimit.value
 
     if (priceEditMode.value) resetPriceDrafts()
+    if (maxStockEditMode.value) {
+      maxStockDrafts.value = Object.fromEntries(res.items.map((i) => [i.product_id, i.max_stock])) as Record<string, number | null>
+    }
     if (adjustingId.value && !res.items.some((i) => i.product_id === adjustingId.value)) cancelAdjust()
   } catch (error) {
     errorMessage.value = statusMessage(error) ?? "Gagal memuat inventory"
@@ -316,6 +391,101 @@ async function clearAvgCost(productId: string) {
   }
 }
 
+type LowStockExportRow = {
+  product_id: string
+  sku: string
+  name: string
+  size: string
+  brand: string
+  qty_on_hand: number
+  max_stock: number
+  qty_needed: number
+}
+
+function buildLowStockHtml(rows: LowStockExportRow[], storeName: string): string {
+  const now = new Date()
+  const dateStr = now.toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })
+  let tableRows = ""
+  let totalNeeded = 0
+  for (let idx = 0; idx < rows.length; idx++) {
+    const r = rows[idx]
+    const displayName = productDisplayName(r.brand, r.name)
+    totalNeeded += r.qty_needed
+    tableRows += `<tr>
+      <td class="c">${idx + 1}</td>
+      <td class="sku">${r.sku}</td>
+      <td>${displayName}<br><span class="sub">${r.size}</span></td>
+      <td class="r">${r.qty_on_hand}</td>
+      <td class="r">${r.max_stock}</td>
+      <td class="r b red">${r.qty_needed}</td>
+    </tr>`
+  }
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Restock - ${storeName}</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1d1d1f;padding:32px 24px;max-width:800px;margin:0 auto}
+.header{margin-bottom:24px;padding-bottom:16px;border-bottom:2px solid #1d1d1f}
+.header h1{font-size:18px;font-weight:700;letter-spacing:-0.01em}
+.header p{font-size:12px;color:#86868b;margin-top:4px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;font-weight:600;color:#86868b;padding:8px 6px;border-bottom:1px solid #d2d2d7;font-size:11px;text-transform:uppercase;letter-spacing:0.03em}
+td{padding:7px 6px;border-bottom:1px solid #f0f0f0}
+.c{text-align:center;color:#86868b;width:28px}
+.r{text-align:right}
+.b{font-weight:700}
+.red{color:#ff3b30}
+.sku{font-family:ui-monospace,monospace;font-size:11px;color:#86868b}
+.sub{font-size:11px;color:#86868b}
+tfoot td{border-top:2px solid #1d1d1f;border-bottom:none;font-weight:700;padding-top:10px}
+.actions{margin-top:24px;display:flex;gap:8px}
+.actions button{padding:8px 20px;font-size:13px;font-weight:600;border-radius:8px;cursor:pointer;border:none}
+.print{background:#1d1d1f;color:#fff}.print:hover{background:#333}
+@media print{.actions{display:none!important}body{padding:16px}}
+@media(max-width:600px){body{padding:16px 12px}td,th{padding:6px 4px}}
+</style></head><body>
+<div class="header">
+  <h1>${storeName} — Restock</h1>
+  <p>${dateStr}</p>
+</div>
+<table>
+  <thead><tr>
+    <th class="c">No</th><th>SKU</th><th>Produk</th>
+    <th class="r">Stok</th><th class="r">Max</th><th class="r">Order</th>
+  </tr></thead>
+  <tbody>${tableRows}</tbody>
+  <tfoot><tr>
+    <td colspan="5" class="r">Total Order</td>
+    <td class="r red">${totalNeeded}</td>
+  </tr></tfoot>
+</table>
+<div class="actions"><button class="print" onclick="window.print()">Print</button></div>
+</body></html>`
+}
+
+async function exportLowStockPdf() {
+  exportingPdf.value = true
+  try {
+    const res = await $fetch<{ items: LowStockExportRow[] }>("/api/inventory/low-stock", {
+      query: categoryFilter.value ? { category_filter: categoryFilter.value } : {},
+    })
+    if (res.items.length === 0) {
+      errorMessage.value = "Tidak ada item stok rendah untuk diexport"
+      return
+    }
+    const storeName = storeCtx.store.value?.name ?? "Toko"
+    const html = buildLowStockHtml(res.items, storeName)
+    const w = window.open("", "_blank")
+    if (w) {
+      w.document.write(html)
+      w.document.close()
+    }
+  } catch (error) {
+    errorMessage.value = statusMessage(error) ?? "Gagal export stok rendah"
+  } finally {
+    exportingPdf.value = false
+  }
+}
+
 onMounted(async () => {
   await load({ reset: true })
 })
@@ -331,6 +501,29 @@ onMounted(async () => {
         </label>
         <button class="mb-btn" :disabled="isLoading" @click="load({ reset: true })">{{ isLoading ? "Loading..." : "Search" }}</button>
         <button v-if="q.trim().length" class="mb-btn" :disabled="isLoading" @click="clearSearch">Clear</button>
+        <button
+          :class="lowStockOnly ? 'mb-btnDanger' : 'mb-btn'"
+          type="button"
+          @click="toggleLowStock"
+        >
+          {{ lowStockOnly ? "Semua Stok" : `Stok Rendah (${lowStockCount})` }}
+        </button>
+        <button
+          v-if="me.user.value?.role === 'ADMIN'"
+          :class="maxStockEditMode ? 'mb-btnDanger' : 'mb-btn'"
+          @click="maxStockEditMode ? cancelMaxStockEditMode() : startMaxStockEditMode()"
+        >
+          {{ maxStockEditMode ? "Batal Max Stock" : "Set Max Stock" }}
+        </button>
+        <button
+          v-if="me.user.value?.role === 'ADMIN' && maxStockEditMode"
+          class="mb-btnPrimary"
+          type="button"
+          :disabled="maxStockSaveLoading || maxStockDirty.size === 0"
+          @click="saveAllMaxStockEdits"
+        >
+          {{ maxStockSaveLoading ? "Saving..." : `Save ${maxStockDirty.size} Max Stock` }}
+        </button>
         <button
           v-if="me.user.value?.role === 'ADMIN'"
           :class="priceEditMode ? 'mb-btnDanger' : 'mb-btn'"
@@ -349,6 +542,7 @@ onMounted(async () => {
         </button>
       </div>
       <p v-if="priceEditMode && priceSaveError" class="error">{{ priceSaveError }}</p>
+      <p v-if="maxStockEditMode && maxStockSaveError" class="error">{{ maxStockSaveError }}</p>
     </section>
 
     <section class="mb-card">
@@ -404,6 +598,7 @@ onMounted(async () => {
               <th>SKU</th>
               <th>Nama</th>
               <th style="text-align: right">Qty</th>
+              <th style="text-align: right">Max Stock</th>
               <th v-if="me.user.value?.role === 'ADMIN'" style="text-align: right" title="Harga modal (rata-rata). Berubah saat tambah stok, tetap saat kurang stok.">Modal (Avg)</th>
               <th style="text-align: right">Harga Jual</th>
               <th v-if="me.user.value?.role === 'ADMIN'" style="width: 1%"></th>
@@ -423,6 +618,28 @@ onMounted(async () => {
                     {{ i.last_adj_qty_delta !== null && i.last_adj_qty_delta > 0 ? '+' : '' }}{{ i.last_adj_qty_delta }} qty
                     • {{ formatDate(i.last_adj_at) }}
                   </div>
+                </td>
+                <td class="maxStockCell">
+                  <template v-if="maxStockEditMode">
+                    <input
+                      v-model.number="maxStockDrafts[i.product_id]"
+                      class="mb-input maxStockInput"
+                      type="number"
+                      min="0"
+                      step="1"
+                      placeholder="—"
+                      @input="syncMaxStockDraft(i.product_id)"
+                    />
+                  </template>
+                  <template v-else>
+                    <span v-if="i.max_stock !== null" :class="{ lowStockBadge: i.qty_on_hand < i.max_stock }">
+                      {{ i.qty_on_hand }}/{{ i.max_stock }}
+                      <span v-if="i.qty_on_hand < i.max_stock" class="qtyNeeded">
+                        (-{{ i.max_stock - i.qty_on_hand }})
+                      </span>
+                    </span>
+                    <span v-else class="muted">—</span>
+                  </template>
                 </td>
                 <td v-if="me.user.value?.role === 'ADMIN'" style="text-align: right">
                   <template v-if="i.avg_unit_cost > 0">Rp {{ rupiah(i.avg_unit_cost) }}</template>
@@ -497,6 +714,15 @@ onMounted(async () => {
           <input v-model.number="pageInput" class="mb-input" type="number" min="1" step="1" @keydown.enter.prevent="jumpToPage" />
           <button class="mb-btn" :disabled="isLoading || pageInput === currentPage" @click="jumpToPage">Go</button>
         </div>
+        <button
+          v-if="lowStockCount > 0"
+          class="mb-btnPrimary"
+          type="button"
+          :disabled="exportingPdf"
+          @click="exportLowStockPdf"
+        >
+          {{ exportingPdf ? "Exporting..." : `Export Stok Rendah (${lowStockCount})` }}
+        </button>
       </div>
     </section>
   </div>
@@ -630,6 +856,23 @@ th {
 .errorInline {
   font-size: 12px;
   color: var(--mb-danger);
+}
+.lowStockBadge {
+  color: #ff6b6b;
+  font-weight: 700;
+}
+.qtyNeeded {
+  font-size: 11px;
+  font-weight: 600;
+}
+.maxStockCell {
+  text-align: right;
+  white-space: nowrap;
+}
+.maxStockInput {
+  width: 90px;
+  margin-left: auto;
+  text-align: right;
 }
 .summaryGrid {
   display: grid;
