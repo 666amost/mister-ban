@@ -405,21 +405,41 @@ type LowStockExportRow = {
 function buildLowStockHtml(rows: LowStockExportRow[], storeName: string): string {
   const now = new Date()
   const dateStr = now.toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })
-  let tableRows = ""
-  let totalNeeded = 0
-  for (let idx = 0; idx < rows.length; idx++) {
-    const r = rows[idx]
-    const displayName = productDisplayName(r.brand, r.name)
-    totalNeeded += r.qty_needed
-    tableRows += `<tr>
-      <td class="c">${idx + 1}</td>
-      <td class="sku">${r.sku}</td>
-      <td>${displayName}<br><span class="sub">${r.size}</span></td>
-      <td class="r">${r.qty_on_hand}</td>
-      <td class="r">${r.max_stock}</td>
-      <td class="r b red">${r.qty_needed}</td>
-    </tr>`
+
+  const grouped = new Map<string, LowStockExportRow[]>()
+  for (const r of rows) {
+    const brand = r.brand || "Lainnya"
+    const list = grouped.get(brand)
+    if (list) list.push(r)
+    else grouped.set(brand, [r])
   }
+
+  let sections = ""
+  let grandTotal = 0
+  for (const [brand, items] of grouped) {
+    let brandTotal = 0
+    let tableRows = ""
+    for (let idx = 0; idx < items.length; idx++) {
+      const r = items[idx]
+      const displayName = productDisplayName(r.brand, r.name)
+      brandTotal += r.qty_needed
+      tableRows += `<tr>
+        <td class="c">${idx + 1}</td>
+        <td>${displayName}<br><span class="sub">${r.size}</span></td>
+        <td class="r b">${r.qty_needed}</td>
+      </tr>`
+    }
+    grandTotal += brandTotal
+    sections += `<div class="brand-section">
+      <div class="brand-header">${brand}<span class="brand-count">${items.length} item</span></div>
+      <table>
+        <thead><tr><th class="c">No</th><th>Produk</th><th class="r">Order</th></tr></thead>
+        <tbody>${tableRows}</tbody>
+        <tfoot><tr><td colspan="2" class="r">Subtotal</td><td class="r red">${brandTotal}</td></tr></tfoot>
+      </table>
+    </div>`
+  }
+
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Restock - ${storeName}</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -427,37 +447,33 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;c
 .header{margin-bottom:24px;padding-bottom:16px;border-bottom:2px solid #1d1d1f}
 .header h1{font-size:18px;font-weight:700;letter-spacing:-0.01em}
 .header p{font-size:12px;color:#86868b;margin-top:4px}
+.brand-section{margin-bottom:28px}
+.brand-header{font-size:14px;font-weight:700;padding:8px 0;border-bottom:1px solid #d2d2d7;margin-bottom:2px;display:flex;align-items:baseline;gap:8px}
+.brand-count{font-size:11px;font-weight:400;color:#86868b}
 table{width:100%;border-collapse:collapse;font-size:12px}
-th{text-align:left;font-weight:600;color:#86868b;padding:8px 6px;border-bottom:1px solid #d2d2d7;font-size:11px;text-transform:uppercase;letter-spacing:0.03em}
+th{text-align:left;font-weight:600;color:#86868b;padding:8px 6px;border-bottom:1px solid #e5e5ea;font-size:11px;text-transform:uppercase;letter-spacing:0.03em}
 td{padding:7px 6px;border-bottom:1px solid #f0f0f0}
 .c{text-align:center;color:#86868b;width:28px}
 .r{text-align:right}
 .b{font-weight:700}
 .red{color:#ff3b30}
-.sku{font-family:ui-monospace,monospace;font-size:11px;color:#86868b}
 .sub{font-size:11px;color:#86868b}
-tfoot td{border-top:2px solid #1d1d1f;border-bottom:none;font-weight:700;padding-top:10px}
+tfoot td{border-top:1px solid #d2d2d7;border-bottom:none;font-weight:600;padding-top:8px;font-size:11px;color:#86868b}
+tfoot .red{font-size:12px}
+.grand{margin-top:8px;padding-top:16px;border-top:2px solid #1d1d1f;display:flex;justify-content:flex-end;gap:12px;font-size:14px;font-weight:700}
+.grand .red{color:#ff3b30}
 .actions{margin-top:24px;display:flex;gap:8px}
 .actions button{padding:8px 20px;font-size:13px;font-weight:600;border-radius:8px;cursor:pointer;border:none}
 .print{background:#1d1d1f;color:#fff}.print:hover{background:#333}
-@media print{.actions{display:none!important}body{padding:16px}}
+@media print{.actions{display:none!important}body{padding:16px}.brand-section{break-inside:avoid}}
 @media(max-width:600px){body{padding:16px 12px}td,th{padding:6px 4px}}
 </style></head><body>
 <div class="header">
   <h1>${storeName} — Restock</h1>
   <p>${dateStr}</p>
 </div>
-<table>
-  <thead><tr>
-    <th class="c">No</th><th>SKU</th><th>Produk</th>
-    <th class="r">Stok</th><th class="r">Max</th><th class="r">Order</th>
-  </tr></thead>
-  <tbody>${tableRows}</tbody>
-  <tfoot><tr>
-    <td colspan="5" class="r">Total Order</td>
-    <td class="r red">${totalNeeded}</td>
-  </tr></tfoot>
-</table>
+${sections}
+<div class="grand"><span>Total Order</span><span class="red">${grandTotal}</span></div>
 <div class="actions"><button class="print" onclick="window.print()">Print</button></div>
 </body></html>`
 }

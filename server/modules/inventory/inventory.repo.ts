@@ -314,8 +314,9 @@ export async function listLowStock(
         AND COALESCE(ib.qty_on_hand, 0) < sp.max_stock
         AND ($2::text IS NULL OR cp.category = $2)
       ORDER BY
+        LOWER(TRIM(b.name)),
         (sp.max_stock - COALESCE(ib.qty_on_hand, 0)) DESC,
-        LOWER(TRIM(b.name)), cp.name
+        cp.name
     `,
     [storeId, category_filter ?? null],
   );
