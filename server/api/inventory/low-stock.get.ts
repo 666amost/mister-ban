@@ -8,6 +8,7 @@ import { z } from "zod";
 
 const querySchema = z.object({
   category_filter: z.enum(["BAN", "SPAREPART", "CAIRAN", "BAN_DALAM", "OLI"]).optional(),
+  brand_filter: z.string().trim().min(1).optional(),
 });
 
 export default defineEventHandler(async (event) => {
@@ -18,6 +19,7 @@ export default defineEventHandler(async (event) => {
 
   const rows = await listLowStock(getPool(), storeId, {
     category_filter: query.category_filter,
+    brand_filter: query.brand_filter,
   });
 
   return { items: rows };

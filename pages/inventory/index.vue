@@ -67,6 +67,9 @@ const maxStockDirty = ref<Set<string>>(new Set())
 const maxStockSaveLoading = ref(false)
 const maxStockSaveError = ref<string | null>(null)
 const exportingPdf = ref(false)
+const showBrandPicker = ref(false)
+const brandPickerLoading = ref(false)
+const brandPickerAllItems = ref<LowStockExportRow[]>([])
 
 const adjustingId = ref<string | null>(null)
 const adjQtyDelta = ref(0)
@@ -261,6 +264,10 @@ async function load(options?: { reset?: boolean }) {
     summary.value = res.summary
     lowStockCount.value = res.lowStockCount ?? 0
     hasMore.value = res.items.length === pageLimit.value
+    if (showBrandPicker.value) {
+      showBrandPicker.value = false
+      brandPickerAllItems.value = []
+    }
 
     if (priceEditMode.value) resetPriceDrafts()
     if (maxStockEditMode.value) {
@@ -402,7 +409,7 @@ type LowStockExportRow = {
   qty_needed: number
 }
 
-function buildLowStockHtml(rows: LowStockExportRow[], storeName: string): string {
+function buildLowStockHtml(rows: LowStockExportRow[], storeName: string, brandFilter?: string): string {
   const now = new Date()
   const dateStr = now.toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })
 
@@ -423,73 +430,71 @@ function buildLowStockHtml(rows: LowStockExportRow[], storeName: string): string
       const r = items[idx]
       const displayName = productDisplayName(r.brand, r.name)
       brandTotal += r.qty_needed
-      tableRows += `<tr>
-        <td class="c">${idx + 1}</td>
-        <td>${displayName}<br><span class="sub">${r.size}</span></td>
-        <td class="r b">${r.qty_needed}</td>
-      </tr>`
+      tableRows += `<tr><td class="c">${idx + 1}</td><td>${displayName} <span class="sub">${r.size}</span></td><td class="r b">${r.qty_needed}</td></tr>`
     }
     grandTotal += brandTotal
-    sections += `<div class="brand-section">
-      <div class="brand-header">${brand}<span class="brand-count">${items.length} item</span></div>
-      <table>
-        <thead><tr><th class="c">No</th><th>Produk</th><th class="r">Order</th></tr></thead>
-        <tbody>${tableRows}</tbody>
-        <tfoot><tr><td colspan="2" class="r">Subtotal</td><td class="r red">${brandTotal}</td></tr></tfoot>
-      </table>
+    sections += `<div class="bs">
+      <div class="bh">${brand}<span class="bc">${items.length} item · sub: <b>${brandTotal}</b></span></div>
+      <table><thead><tr><th class="c">#</th><th>Produk</th><th class="r">Order</th></tr></thead><tbody>${tableRows}</tbody></table>
     </div>`
   }
 
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Restock - ${storeName}</title>
+  const brandCount = grouped.size
+  const gridCols = brandCount === 1 ? 1 : brandCount === 2 ? 2 : 3
+  const singleBrand = brandCount === 1
+  const bodyMaxWidth = singleBrand ? "max-width:400px;" : ""
+
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Restock ${brandFilter ? `- ${brandFilter}` : ""} - ${storeName}</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1d1d1f;padding:32px 24px;max-width:800px;margin:0 auto}
-.header{margin-bottom:24px;padding-bottom:16px;border-bottom:2px solid #1d1d1f}
-.header h1{font-size:18px;font-weight:700;letter-spacing:-0.01em}
-.header p{font-size:12px;color:#86868b;margin-top:4px}
-.brand-section{margin-bottom:28px}
-.brand-header{font-size:14px;font-weight:700;padding:8px 0;border-bottom:1px solid #d2d2d7;margin-bottom:2px;display:flex;align-items:baseline;gap:8px}
-.brand-count{font-size:11px;font-weight:400;color:#86868b}
-table{width:100%;border-collapse:collapse;font-size:12px}
-th{text-align:left;font-weight:600;color:#86868b;padding:8px 6px;border-bottom:1px solid #e5e5ea;font-size:11px;text-transform:uppercase;letter-spacing:0.03em}
-td{padding:7px 6px;border-bottom:1px solid #f0f0f0}
-.c{text-align:center;color:#86868b;width:28px}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:11px;color:#1d1d1f;padding:14px 16px;${bodyMaxWidth}}
+.hdr{display:flex;justify-content:space-between;align-items:baseline;border-bottom:1.5px solid #1d1d1f;padding-bottom:6px;margin-bottom:10px}
+.hdr h1{font-size:13px;font-weight:700}
+.hdr p{font-size:10px;color:#86868b}
+.grid{display:grid;grid-template-columns:repeat(${gridCols},1fr);gap:10px 14px;align-items:start}
+.bs{break-inside:avoid}
+.bh{font-size:11px;font-weight:700;padding:4px 0 3px;border-bottom:1px solid #1d1d1f;margin-bottom:1px;display:flex;gap:6px;align-items:baseline}
+.bc{font-size:9px;font-weight:400;color:#86868b}
+table{width:100%;border-collapse:collapse}
+th{font-size:9px;font-weight:600;color:#86868b;padding:3px 3px;border-bottom:1px solid #d2d2d7;text-transform:uppercase;letter-spacing:0.03em;text-align:left}
+td{padding:2px 3px;border-bottom:1px solid #f0f0f0;font-size:10px;line-height:1.3}
+.c{text-align:center;color:#bbb;width:16px;font-size:9px}
 .r{text-align:right}
 .b{font-weight:700}
-.red{color:#ff3b30}
-.sub{font-size:11px;color:#86868b}
-tfoot td{border-top:1px solid #d2d2d7;border-bottom:none;font-weight:600;padding-top:8px;font-size:11px;color:#86868b}
-tfoot .red{font-size:12px}
-.grand{margin-top:8px;padding-top:16px;border-top:2px solid #1d1d1f;display:flex;justify-content:flex-end;gap:12px;font-size:14px;font-weight:700}
-.grand .red{color:#ff3b30}
-.actions{margin-top:24px;display:flex;gap:8px}
-.actions button{padding:8px 20px;font-size:13px;font-weight:600;border-radius:8px;cursor:pointer;border:none}
-.print{background:#1d1d1f;color:#fff}.print:hover{background:#333}
-@media print{.actions{display:none!important}body{padding:16px}.brand-section{break-inside:avoid}}
-@media(max-width:600px){body{padding:16px 12px}td,th{padding:6px 4px}}
+.red{color:#e00}
+.sub{color:#86868b;font-size:9px}
+.foot{margin-top:10px;padding-top:6px;border-top:1.5px solid #1d1d1f;display:flex;justify-content:flex-end;gap:10px;font-size:11px;font-weight:700}
+.foot .red{color:#e00}
+.actions{margin-top:12px}
+.actions button{padding:5px 14px;font-size:11px;font-weight:600;border-radius:6px;cursor:pointer;border:none;background:#1d1d1f;color:#fff}
+@media print{.actions{display:none!important}body{padding:8px 10px;max-width:none!important}.grid{gap:8px 12px}}
+@media(max-width:700px){.grid{grid-template-columns:repeat(${Math.min(gridCols, 2)},1fr)}}
+@media(max-width:420px){.grid{grid-template-columns:1fr}}
 </style></head><body>
-<div class="header">
-  <h1>${storeName} — Restock</h1>
+<div class="hdr">
+  <h1>${storeName} — Restock${brandFilter ? ` · ${brandFilter}` : ""}</h1>
   <p>${dateStr}</p>
 </div>
-${sections}
-<div class="grand"><span>Total Order</span><span class="red">${grandTotal}</span></div>
-<div class="actions"><button class="print" onclick="window.print()">Print</button></div>
+<div class="grid">${sections}</div>
+<div class="foot"><span>Total Order</span><span class="red">${grandTotal}</span></div>
+<div class="actions"><button onclick="window.print()">Print</button></div>
 </body></html>`
 }
 
-async function exportLowStockPdf() {
+async function exportLowStockPdf(brandFilter?: string) {
   exportingPdf.value = true
+  showBrandPicker.value = false
   try {
-    const res = await $fetch<{ items: LowStockExportRow[] }>("/api/inventory/low-stock", {
-      query: categoryFilter.value ? { category_filter: categoryFilter.value } : {},
-    })
+    const params: Record<string, string> = {}
+    if (categoryFilter.value) params.category_filter = categoryFilter.value
+    if (brandFilter) params.brand_filter = brandFilter
+    const res = await $fetch<{ items: LowStockExportRow[] }>("/api/inventory/low-stock", { query: params })
     if (res.items.length === 0) {
       errorMessage.value = "Tidak ada item stok rendah untuk diexport"
       return
     }
     const storeName = storeCtx.store.value?.name ?? "Toko"
-    const html = buildLowStockHtml(res.items, storeName)
+    const html = buildLowStockHtml(res.items, storeName, brandFilter)
     const w = window.open("", "_blank")
     if (w) {
       w.document.write(html)
@@ -501,6 +506,31 @@ async function exportLowStockPdf() {
     exportingPdf.value = false
   }
 }
+
+async function openBrandPicker() {
+  showBrandPicker.value = true
+  if (brandPickerAllItems.value.length > 0) return
+  brandPickerLoading.value = true
+  try {
+    const params: Record<string, string> = {}
+    if (categoryFilter.value) params.category_filter = categoryFilter.value
+    const res = await $fetch<{ items: LowStockExportRow[] }>("/api/inventory/low-stock", { query: params })
+    brandPickerAllItems.value = res.items
+  } catch {
+    brandPickerAllItems.value = []
+  } finally {
+    brandPickerLoading.value = false
+  }
+}
+
+const brandPickerOptions = computed(() => {
+  const map = new Map<string, number>()
+  for (const r of brandPickerAllItems.value) {
+    const b = r.brand || "Lainnya"
+    map.set(b, (map.get(b) ?? 0) + 1)
+  }
+  return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0])).map(([brand, count]) => ({ brand, count }))
+})
 
 onMounted(async () => {
   await load({ reset: true })
@@ -735,10 +765,32 @@ onMounted(async () => {
           class="mb-btnPrimary"
           type="button"
           :disabled="exportingPdf"
-          @click="exportLowStockPdf"
+          @click="openBrandPicker"
         >
           {{ exportingPdf ? "Exporting..." : `Export Stok Rendah (${lowStockCount})` }}
         </button>
+      </div>
+
+      <div v-if="showBrandPicker" class="brandPicker">
+        <div class="brandPickerHeader">
+          <span class="brandPickerTitle">Pilih Merk</span>
+          <button class="mb-btn brandPickerClose" type="button" @click="showBrandPicker = false; brandPickerAllItems = []">✕</button>
+        </div>
+        <div v-if="brandPickerLoading" class="brandPickerLoading">Memuat...</div>
+        <div v-else class="brandPickerList">
+          <button class="mb-btnPrimary brandPickerBtn" type="button" @click="exportLowStockPdf()">
+            Semua Merk
+          </button>
+          <button
+            v-for="opt in brandPickerOptions"
+            :key="opt.brand"
+            class="mb-btn brandPickerBtn"
+            type="button"
+            @click="exportLowStockPdf(opt.brand)"
+          >
+            {{ opt.brand }} <span class="brandPickerCount">({{ opt.count }})</span>
+          </button>
+        </div>
       </div>
     </section>
   </div>
@@ -919,6 +971,52 @@ th {
   font-size: 24px;
   line-height: 1.1;
   font-weight: 900;
+}
+
+.brandPicker {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--mb-border2);
+  border-radius: 12px;
+  background: var(--mb-surface2);
+}
+.brandPickerHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.brandPickerTitle {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--mb-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.brandPickerClose {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+.brandPickerLoading {
+  font-size: 12px;
+  color: var(--mb-muted);
+  padding: 4px 0;
+}
+.brandPickerList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.brandPickerBtn {
+  font-size: 12px;
+  height: 32px;
+  padding: 0 12px;
+}
+.brandPickerCount {
+  opacity: 0.65;
+  font-weight: 400;
+  font-size: 11px;
 }
 
 @media (max-width: 900px) {

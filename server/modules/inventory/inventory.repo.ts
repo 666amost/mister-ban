@@ -280,7 +280,7 @@ export async function summarizeInventory(
 export async function listLowStock(
   db: DbConn,
   storeId: string,
-  { category_filter }: { category_filter?: string },
+  { category_filter, brand_filter }: { category_filter?: string; brand_filter?: string },
 ): Promise<LowStockRow[]> {
   const { rows } = await db.query(
     `
@@ -313,12 +313,14 @@ export async function listLowStock(
         AND sp.max_stock IS NOT NULL
         AND COALESCE(ib.qty_on_hand, 0) < sp.max_stock
         AND ($2::text IS NULL OR cp.category = $2)
+        AND ($3::text IS NULL OR LOWER(TRIM(b.name)) = LOWER(TRIM($3)))
       ORDER BY
         LOWER(TRIM(b.name)),
-        (sp.max_stock - COALESCE(ib.qty_on_hand, 0)) DESC,
-        cp.name
+        CASE WHEN cp.size ~ '-[0-9]+$' THEN CAST(SUBSTRING(cp.size FROM '-([0-9]+)$') AS INTEGER) ELSE 999 END,
+        CASE WHEN cp.size ~ '^[0-9]+' THEN CAST(SUBSTRING(cp.size FROM '^([0-9]+)') AS INTEGER) ELSE 999 END,
+        cp.size
     `,
-    [storeId, category_filter ?? null],
+    [storeId, category_filter ?? null, brand_filter ?? null],
   );
   return rows as LowStockRow[];
 }
