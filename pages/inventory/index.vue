@@ -70,6 +70,7 @@ const exportingPdf = ref(false)
 const showBrandPicker = ref(false)
 const brandPickerLoading = ref(false)
 const brandPickerAllItems = ref<LowStockExportRow[]>([])
+const selectedBrands = ref<Set<string>>(new Set())
 
 const adjustingId = ref<string | null>(null)
 const adjQtyDelta = ref(0)
@@ -481,25 +482,49 @@ td{padding:2px 3px;border-bottom:1px solid #f0f0f0;font-size:10px;line-height:1.
 </body></html>`
 }
 
-async function exportLowStockPdf(brandFilter?: string) {
+function toggleBrand(brand: string) {
+  const next = new Set(selectedBrands.value)
+  if (next.has(brand)) next.delete(brand)
+  else next.add(brand)
+  selectedBrands.value = next
+}
+
+async function exportLowStockPdf() {
   exportingPdf.value = true
   showBrandPicker.value = false
   try {
-    const params: Record<string, string> = {}
-    if (categoryFilter.value) params.category_filter = categoryFilter.value
-    if (brandFilter) params.brand_filter = brandFilter
-    const res = await $fetch<{ items: LowStockExportRow[] }>("/api/inventory/low-stock", { query: params })
-    if (res.items.length === 0) {
+    let rows = brandPickerAllItems.value
+    if (rows.length === 0) {
+      const params: Record<string, string> = {}
+      if (categoryFilter.value) params.category_filter = categoryFilter.value
+      const res = await $fetch<{ items: LowStockExportRow[] }>("/api/inventory/low-stock", { query: params })
+      rows = res.items
+    }
+    if (selectedBrands.value.size > 0) {
+      rows = rows.filter((r) => selectedBrands.value.has(r.brand || "Lainnya"))
+    }
+    if (rows.length === 0) {
       errorMessage.value = "Tidak ada item stok rendah untuk diexport"
       return
     }
     const storeName = storeCtx.store.value?.name ?? "Toko"
-    const html = buildLowStockHtml(res.items, storeName, brandFilter)
-    const w = window.open("", "_blank")
-    if (w) {
-      w.document.write(html)
-      w.document.close()
+    const brandLabel =
+      selectedBrands.value.size === 1
+        ? [...selectedBrands.value][0]
+        : selectedBrands.value.size > 1
+          ? `${selectedBrands.value.size} Merk`
+          : undefined
+    const html = buildLowStockHtml(rows, storeName, brandLabel)
+    const blob = new Blob([html], { type: "text/html" })
+    const blobUrl = URL.createObjectURL(blob)
+    const w = window.open(blobUrl, "_blank")
+    if (!w) {
+      const a = document.createElement("a")
+      a.href = blobUrl
+      a.target = "_blank"
+      a.click()
     }
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 60000)
   } catch (error) {
     errorMessage.value = statusMessage(error) ?? "Gagal export stok rendah"
   } finally {
@@ -508,6 +533,7 @@ async function exportLowStockPdf(brandFilter?: string) {
 }
 
 async function openBrandPicker() {
+  selectedBrands.value = new Set()
   showBrandPicker.value = true
   if (brandPickerAllItems.value.length > 0) return
   brandPickerLoading.value = true
@@ -774,23 +800,36 @@ onMounted(async () => {
       <div v-if="showBrandPicker" class="brandPicker">
         <div class="brandPickerHeader">
           <span class="brandPickerTitle">Pilih Merk</span>
-          <button class="mb-btn brandPickerClose" type="button" @click="showBrandPicker = false; brandPickerAllItems = []">✕</button>
+          <button class="mb-btn brandPickerClose" type="button" @click="showBrandPicker = false">✕</button>
         </div>
         <div v-if="brandPickerLoading" class="brandPickerLoading">Memuat...</div>
-        <div v-else class="brandPickerList">
-          <button class="mb-btnPrimary brandPickerBtn" type="button" @click="exportLowStockPdf()">
-            Semua Merk
-          </button>
-          <button
-            v-for="opt in brandPickerOptions"
-            :key="opt.brand"
-            class="mb-btn brandPickerBtn"
-            type="button"
-            @click="exportLowStockPdf(opt.brand)"
-          >
-            {{ opt.brand }} <span class="brandPickerCount">({{ opt.count }})</span>
-          </button>
-        </div>
+        <template v-else>
+          <div class="brandPickerList">
+            <button
+              :class="selectedBrands.size === 0 ? 'mb-btnPrimary' : 'mb-btn'"
+              class="brandPickerBtn"
+              type="button"
+              @click="selectedBrands = new Set()"
+            >
+              Semua Merk
+            </button>
+            <button
+              v-for="opt in brandPickerOptions"
+              :key="opt.brand"
+              :class="selectedBrands.has(opt.brand) ? 'mb-btnPrimary' : 'mb-btn'"
+              class="brandPickerBtn"
+              type="button"
+              @click="toggleBrand(opt.brand)"
+            >
+              {{ opt.brand }} <span class="brandPickerCount">({{ opt.count }})</span>
+            </button>
+          </div>
+          <div class="brandPickerActions">
+            <button class="mb-btnPrimary brandPickerExport" type="button" :disabled="exportingPdf" @click="exportLowStockPdf()">
+              {{ exportingPdf ? 'Memuat...' : selectedBrands.size === 0 ? 'Export Semua Merk' : `Export ${selectedBrands.size} Merk Terpilih` }}
+            </button>
+          </div>
+        </template>
       </div>
     </section>
   </div>
@@ -1017,6 +1056,16 @@ th {
   opacity: 0.65;
   font-weight: 400;
   font-size: 11px;
+}
+.brandPickerActions {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--mb-border2);
+}
+.brandPickerExport {
+  width: 100%;
+  height: 36px;
+  font-size: 13px;
 }
 
 @media (max-width: 900px) {
