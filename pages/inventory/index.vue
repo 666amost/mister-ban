@@ -427,12 +427,11 @@ function buildLowStockHtml(rows: LowStockExportRow[], storeName: string, brandFi
   for (const [brand, items] of grouped) {
     let brandTotal = 0
     let tableRows = ""
-    for (let idx = 0; idx < items.length; idx++) {
-      const r = items[idx]
+    items.forEach((r, idx) => {
       const displayName = productDisplayName(r.brand, r.name)
       brandTotal += r.qty_needed
       tableRows += `<tr><td class="c">${idx + 1}</td><td>${displayName} <span class="sub">${r.size}</span></td><td class="r b">${r.qty_needed}</td></tr>`
-    }
+    })
     grandTotal += brandTotal
     sections += `<div class="bs">
       <div class="bh">${brand}<span class="bc">${items.length} item · sub: <b>${brandTotal}</b></span></div>
