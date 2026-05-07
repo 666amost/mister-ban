@@ -67,6 +67,16 @@ type MonthlyStockReceiptDay = {
 type MonthlyPaymentSummary = {
   cash: number
   non_cash: number
+  qris: number
+  debit: number
+  transfer: number
+  credit: number
+}
+
+type MonthlyPaymentDetailItem = {
+  key: string
+  label: string
+  amount: number
 }
 
 type MonthlyReport = {
@@ -90,6 +100,7 @@ const month = ref(new Date().toISOString().slice(0, 7))
 const report = ref<MonthlyReport | null>(null)
 const isLoading = ref(false)
 const errorMessage = ref<string | null>(null)
+const isPaymentDetailOpen = ref(false)
 const isExpenseDetailOpen = ref(false)
 const isStockReceiptDetailOpen = ref(false)
 const isBrandDetailOpen = ref(false)
@@ -158,6 +169,38 @@ const paymentTotal = computed(() => {
   return cash + nonCash
 })
 
+const knownNonCashPaymentTotal = computed(() => {
+  const paymentSummary = report.value?.payment_summary
+  if (!paymentSummary) return 0
+  return paymentSummary.qris + paymentSummary.debit + paymentSummary.transfer + paymentSummary.credit
+})
+
+const otherNonCashPaymentAmount = computed(() => {
+  const nonCash = report.value?.payment_summary.non_cash ?? 0
+  return Math.max(0, nonCash - knownNonCashPaymentTotal.value)
+})
+
+const nonCashPaymentItems = computed(() => {
+  const paymentSummary = report.value?.payment_summary
+  if (!paymentSummary) return [] as MonthlyPaymentDetailItem[]
+
+  const items: MonthlyPaymentDetailItem[] = [
+    { key: "qris", label: "QRIS", amount: paymentSummary.qris },
+    { key: "debit", label: "Debit", amount: paymentSummary.debit },
+    { key: "credit", label: "Kredit", amount: paymentSummary.credit },
+  ]
+
+  if (paymentSummary.transfer > 0) {
+    items.push({ key: "transfer", label: "Transfer", amount: paymentSummary.transfer })
+  }
+
+  if (otherNonCashPaymentAmount.value > 0) {
+    items.push({ key: "other", label: "Lainnya", amount: otherNonCashPaymentAmount.value })
+  }
+
+  return items
+})
+
 const stockReceiptDayCount = computed(() => report.value?.stock_receipt_daily?.length ?? 0)
 
 const groupedBrandTransactions = computed(() => {
@@ -183,7 +226,12 @@ const totalBrandQty = computed(() => {
 })
 
 const isAnyDetailOpen = computed(() => {
-  return isExpenseDetailOpen.value || isStockReceiptDetailOpen.value || isBrandDetailOpen.value
+  return (
+    isPaymentDetailOpen.value
+    || isExpenseDetailOpen.value
+    || isStockReceiptDetailOpen.value
+    || isBrandDetailOpen.value
+  )
 })
 
 function brandShare(qty: number) {
@@ -273,9 +321,21 @@ const hasBrandDetailFilter = computed(() => {
 })
 
 function openExpenseDetail() {
+  closePaymentDetail()
   closeBrandDetail()
   closeStockReceiptDetail()
   isExpenseDetailOpen.value = true
+}
+
+function openPaymentDetail() {
+  closeBrandDetail()
+  closeExpenseDetail()
+  closeStockReceiptDetail()
+  isPaymentDetailOpen.value = true
+}
+
+function closePaymentDetail() {
+  isPaymentDetailOpen.value = false
 }
 
 function closeExpenseDetail() {
@@ -284,6 +344,7 @@ function closeExpenseDetail() {
 
 function openStockReceiptDetail() {
   closeBrandDetail()
+  closePaymentDetail()
   closeExpenseDetail()
   isStockReceiptDetailOpen.value = true
 }
@@ -308,6 +369,7 @@ async function openBrandDetail(brand: string) {
   if (!reportMonth) return
 
   const requestId = ++brandDetailRequestId
+  closePaymentDetail()
   isExpenseDetailOpen.value = false
   isStockReceiptDetailOpen.value = false
   isBrandDetailOpen.value = true
@@ -358,6 +420,11 @@ function closeActiveDetail() {
     return
   }
 
+  if (isPaymentDetailOpen.value) {
+    closePaymentDetail()
+    return
+  }
+
   if (isExpenseDetailOpen.value) {
     closeExpenseDetail()
     return
@@ -402,6 +469,7 @@ async function load() {
     const res = await requestFetch<{ report: MonthlyReport }>("/api/reports/monthly", { query: { month: month.value } })
     report.value = res.report
     brandDetailCache.value = {}
+    closePaymentDetail()
     closeExpenseDetail()
     closeStockReceiptDetail()
     closeBrandDetail()
@@ -482,8 +550,18 @@ await load()
             <div class="value monoNumeric">Rp {{ rupiah(report.payment_summary.cash) }}</div>
             <div class="meta">{{ formatPercent(report.payment_summary.cash, paymentTotal) }} dari total pembayaran</div>
           </div>
-          <div class="sumItem">
-            <div class="label">Non Tunai</div>
+          <div
+            class="sumItem sumItemClickable"
+            role="button"
+            tabindex="0"
+            @click="openPaymentDetail"
+            @keydown.enter.prevent="openPaymentDetail"
+            @keydown.space.prevent="openPaymentDetail"
+          >
+            <div class="labelRow">
+              <div class="label">Non Tunai</div>
+              <span class="actionLink" aria-hidden="true">Detail</span>
+            </div>
             <div class="value monoNumeric">Rp {{ rupiah(report.payment_summary.non_cash) }}</div>
             <div class="meta">
               {{ formatPercent(report.payment_summary.non_cash, paymentTotal) }} dari total pembayaran
@@ -539,6 +617,43 @@ await load()
 
       <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
     </section>
+
+    <Teleport to="body">
+      <Transition name="expense-modal">
+        <div v-if="report && isPaymentDetailOpen" class="modalBackdrop" @click.self="closePaymentDetail">
+          <div class="modalCard" role="dialog" aria-modal="true" aria-labelledby="payment-detail-title">
+            <div class="modalHeader">
+              <div class="modalTitleBlock">
+                <div id="payment-detail-title" class="sectionTitle sectionTitleNoMargin">Detail Non Tunai</div>
+                <div class="modalMetaText">Rp {{ rupiah(report.payment_summary.non_cash) }} total pembayaran non tunai</div>
+              </div>
+              <button class="mb-btn modalCloseBtn" type="button" @click="closePaymentDetail">Tutup</button>
+            </div>
+            <div v-if="report.payment_summary.non_cash > 0" class="modalBody">
+              <div class="tableWrap modalTableWrap">
+                <table class="table">
+                  <thead>
+                    <tr>
+                      <th>Metode</th>
+                      <th class="alignRight">Nominal</th>
+                      <th class="alignRight">Porsi</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="item in nonCashPaymentItems" :key="item.key">
+                      <td>{{ item.label }}</td>
+                      <td class="alignRight monoNumeric">Rp {{ rupiah(item.amount) }}</td>
+                      <td class="alignRight">{{ formatPercent(item.amount, report.payment_summary.non_cash) }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div v-else class="emptyState">Belum ada pembayaran non tunai di bulan ini</div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
 
     <Teleport to="body">
       <Transition name="expense-modal">
