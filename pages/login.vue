@@ -27,7 +27,7 @@ async function onSubmit() {
     } else {
       const storeContext = useStoreContext();
       await storeContext.refresh();
-      await navigateTo("/");
+      await navigateTo("/dashboard");
     }
   } catch (error: unknown) {
     errorMessage.value = statusMessage(error) ?? "Login gagal";

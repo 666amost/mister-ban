@@ -219,6 +219,7 @@ const editError = ref<string | null>(null)
 const deleteConfirmOpen = ref(false)
 const deleteSaleId = ref<string | null>(null)
 const deleteSaleLabel = ref("")
+const deleteSaleRow = ref<SaleRow | null>(null)
 const deleteLoading = ref(false)
 const deleteError = ref<string | null>(null)
 
@@ -1243,6 +1244,7 @@ async function saveEditSale() {
 function openDeleteConfirm(s: SaleRow) {
   closeSaleDetail()
   deleteSaleId.value = s.id
+  deleteSaleRow.value = s
   const preview = saleItemPreview(s, 1)
   deleteSaleLabel.value = preview.lines[0] ?? s.customer_plate_no ?? s.id.slice(0, 8)
   deleteError.value = null
@@ -1252,6 +1254,7 @@ function openDeleteConfirm(s: SaleRow) {
 function closeDeleteConfirm() {
   deleteConfirmOpen.value = false
   deleteSaleId.value = null
+  deleteSaleRow.value = null
   deleteLoading.value = false
   deleteError.value = null
 }
@@ -2165,8 +2168,36 @@ const detailExpenseTotal = computed(() => {
                 <path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" />
               </svg>
             </div>
-            <div class="deleteSheetTitle">Hapus Transaksi?</div>
-            <div class="deleteSheetSub">{{ deleteSaleLabel }}</div>
+            <div class="deleteSheetTitle">{{ deleteSaleRow && isExpenseOnlySale(deleteSaleRow) ? 'Hapus Pengeluaran?' : 'Hapus Transaksi?' }}</div>
+            <template v-if="deleteSaleRow">
+              <div class="deleteSheetMeta">
+                <span v-if="!isExpenseOnlySale(deleteSaleRow)">{{ salePlateText(deleteSaleRow) }}</span>
+                <span>{{ formatDate(deleteSaleRow.sale_date) }}</span>
+                <span v-if="!isExpenseOnlySale(deleteSaleRow)">{{ paymentLabel(deleteSaleRow) }}</span>
+              </div>
+              <div class="deleteSheetItems">
+                <div
+                  v-for="item in [...(deleteSaleRow.items ?? []), ...(deleteSaleRow.custom_items ?? [])]"
+                  :key="'item-' + (item.type === 'product' ? item.product_id : item.item_name)"
+                  class="deleteSheetItem"
+                >
+                  <span>{{ saleItemTitle(item) }} <span class="deleteSheetItemQty">× {{ item.qty }}</span></span>
+                  <span>Rp {{ rupiah(item.line_total) }}</span>
+                </div>
+                <div
+                  v-for="exp in (deleteSaleRow.expenses ?? [])"
+                  :key="'exp-' + exp.item_name"
+                  class="deleteSheetItem deleteSheetItemDanger"
+                >
+                  <span>{{ exp.item_name }}</span>
+                  <span>Rp {{ rupiah(exp.amount) }}</span>
+                </div>
+              </div>
+              <div class="deleteSheetTotal">
+                <span>{{ isExpenseOnlySale(deleteSaleRow) ? 'Total Pengeluaran' : 'Total Transaksi' }}</span>
+                <span>Rp {{ rupiah(saleDisplayTotal(deleteSaleRow)) }}</span>
+              </div>
+            </template>
             <p v-if="deleteError" class="errorMsg">{{ deleteError }}</p>
             <div class="deleteSheetActions">
               <button type="button" class="newTxBtn" :disabled="deleteLoading" @click="closeDeleteConfirm">Batal</button>
@@ -3839,6 +3870,81 @@ const detailExpenseTotal = computed(() => {
   white-space: nowrap;
 }
 
+.deleteSheetMeta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  font-size: 13px;
+  color: var(--mb-muted);
+  margin-top: 2px;
+}
+
+.deleteSheetMeta span::before {
+  content: "";
+}
+
+.deleteSheetMeta span + span::before {
+  content: "·";
+  margin-right: 10px;
+  opacity: 0.5;
+}
+
+.deleteSheetItems {
+  width: 100%;
+  margin-top: 12px;
+  border: 1px solid var(--mb-border2);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.deleteSheetItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--mb-border2);
+  text-align: left;
+}
+
+.deleteSheetItem:last-child {
+  border-bottom: none;
+}
+
+.deleteSheetItemQty {
+  color: var(--mb-muted);
+  font-size: 12px;
+}
+
+.deleteSheetItem span:last-child {
+  font-weight: 700;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.deleteSheetItemDanger span:last-child {
+  color: var(--mb-danger);
+}
+
+.deleteSheetTotal {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--mb-surface2);
+  border: 1px solid var(--mb-border2);
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 800;
+  margin-top: 8px;
+  text-align: left;
+}
+
 .deleteSheetActions {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -4000,7 +4106,14 @@ const detailExpenseTotal = computed(() => {
   margin-top: 2px;
 }
 
+@keyframes shimmer-sweep {
+  0% { transform: translateX(-150%) skewX(-20deg); }
+  50%, 100% { transform: translateX(300%) skewX(-20deg); }
+}
+
 .submitBtn {
+  position: relative;
+  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -4016,6 +4129,24 @@ const detailExpenseTotal = computed(() => {
   font-size: 16px;
   cursor: pointer;
   transition: all 0.15s ease;
+}
+
+.submitBtn:not(:disabled)::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 55%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.28),
+    transparent
+  );
+  transform: translateX(-150%) skewX(-20deg);
+  pointer-events: none;
+  animation: shimmer-sweep 2.2s ease-in-out infinite;
 }
 
 .submitBtn:disabled {
@@ -4272,6 +4403,7 @@ const detailExpenseTotal = computed(() => {
   font-size: 14px;
   font-weight: 800;
   cursor: pointer;
+  transition: all 0.15s ease;
 }
 
 .editDetailBtn {
@@ -4280,10 +4412,27 @@ const detailExpenseTotal = computed(() => {
   color: var(--mb-text);
 }
 
+.editDetailBtn:active {
+  transform: scale(0.97);
+  background: var(--mb-border2);
+}
+
 .deleteDetailBtn {
   border: 1px solid rgba(215, 0, 21, 0.18);
   background: rgba(215, 0, 21, 0.08);
   color: var(--mb-danger);
+  animation: danger-pulse 2.4s ease-in-out infinite;
+}
+
+.deleteDetailBtn:active {
+  transform: scale(0.97);
+  background: rgba(215, 0, 21, 0.18);
+  animation: none;
+}
+
+@keyframes danger-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(215, 0, 21, 0); }
+  50% { box-shadow: 0 0 0 4px rgba(215, 0, 21, 0.14); }
 }
 
 .editDetailBtn svg,
@@ -4378,10 +4527,30 @@ const detailExpenseTotal = computed(() => {
   border: none;
   border-radius: 14px;
   background: linear-gradient(180deg, var(--mb-accent), var(--mb-accent2));
-  color: white;
+  color: var(--mb-accent-ink);
   font-weight: 800;
   font-size: 16px;
   cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.15s ease;
+}
+
+.printBtn::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 55%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.28), transparent);
+  transform: translateX(-150%) skewX(-20deg);
+  pointer-events: none;
+  animation: shimmer-sweep 2.2s ease-in-out infinite;
+}
+
+.printBtn:active {
+  transform: scale(0.97);
 }
 
 .printBtn svg {
@@ -4402,6 +4571,12 @@ const detailExpenseTotal = computed(() => {
   font-weight: 700;
   font-size: 15px;
   cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.newTxBtn:active {
+  transform: scale(0.97);
+  background: var(--mb-surface2);
 }
 
 .newTxBtn svg {

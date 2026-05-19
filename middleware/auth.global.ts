@@ -2,16 +2,18 @@ export default defineNuxtRouteMiddleware(async (to) => {
   const me = useMe();
   const storeContext = useStoreContext();
 
+  if (to.path === "/") return;
+
   if (to.path === "/login") {
     try {
       const freshUser = await me.refresh();
-      if (freshUser.role === "STAFF") return navigateTo("/");
+      if (freshUser.role === "STAFF") return navigateTo("/dashboard");
 
       if (!storeContext.store.value) {
         await storeContext.refresh();
       }
 
-      return navigateTo(storeContext.store.value ? "/" : "/select-store");
+      return navigateTo(storeContext.store.value ? "/dashboard" : "/select-store");
     } catch {
       me.clear();
       storeContext.clear();

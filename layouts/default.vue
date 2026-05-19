@@ -65,7 +65,7 @@ const navGroups = computed<NavGroup[]>(() => {
     {
       label: "Menu",
       items: [
-        { to: "/", label: "Dashboard", icon: "home", keywords: ["home"] },
+        { to: "/dashboard", label: "Dashboard", icon: "home", keywords: ["home"] },
         { to: "/sales", label: "Sales", icon: "sales", keywords: ["struk", "invoice", "kasir"] },
       ],
     },
@@ -104,7 +104,7 @@ const navGroups = computed<NavGroup[]>(() => {
 
 const bottomItems = computed<BottomItem[]>(() => {
   const items: BottomItem[] = [
-    { key: "home", to: "/", label: "Home", icon: "home", kind: "link" },
+    { key: "home", to: "/dashboard", label: "Home", icon: "home", kind: "link" },
     { key: "sales", to: "/sales", label: "Sales", icon: "sales", kind: "link" },
   ]
   if (role.value === "ADMIN") {
@@ -278,7 +278,7 @@ const filteredNavGroups = computed(() => {
 })
 
 function isActive(path: string) {
-  if (path === "/") return route.path === "/"
+  if (path === "/dashboard") return route.path === "/dashboard"
   return route.path === path || route.path.startsWith(`${path}/`)
 }
 
@@ -423,7 +423,7 @@ async function logout() {
             :class="{ active: isBottomItemActive(i) }"
             :to="i.to"
           >
-            <MbIcon class="mb-bottomIcon" :name="i.icon" />
+            <MbIcon class="mb-bottomIcon" :name="i.icon" :active="isBottomItemActive(i)" />
             <span class="mb-bottomLabel">{{ i.label }}</span>
           </NuxtLink>
           <button
@@ -436,7 +436,7 @@ async function logout() {
             aria-label="Menu lainnya"
             @click="toggleMoreMenu"
           >
-            <MbIcon class="mb-bottomIcon" :name="i.icon" />
+            <MbIcon class="mb-bottomIcon" :name="i.icon" :active="isBottomItemActive(i)" />
             <span class="mb-bottomLabel">{{ i.label }}</span>
           </button>
         </template>

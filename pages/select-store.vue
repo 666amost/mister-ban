@@ -192,7 +192,7 @@ watch(isSummaryOpen, (open) => {
 onMounted(async () => {
   await me.refresh();
   if (me.user.value?.role === "STAFF") {
-    await navigateTo("/");
+    await navigateTo("/dashboard");
     return;
   }
   
@@ -212,7 +212,7 @@ async function enterStore() {
   errorMessage.value = null;
   try {
     await storeContext.select(selectedStoreId.value);
-    await navigateTo("/");
+    await navigateTo("/dashboard");
   } catch (error: unknown) {
     errorMessage.value = statusMessage(error) ?? "Gagal memilih toko";
     isSelecting.value = false;
