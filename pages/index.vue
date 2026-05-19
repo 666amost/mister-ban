@@ -189,12 +189,12 @@ const productLines: ProductLine[] = [
     ],
     imageAlt: "Foto ban Kingland Tiger",
     stagePalette: {
-      accent: "#2dd569",
-      accentRgb: "45, 213, 105",
-      accentSoft: "#95f1b7",
-      surfaceFrom: "#07140d",
-      surfaceTo: "#10251a",
-      surfaceGlow: "#184c2d",
+      accent: "#24c466",
+      accentRgb: "36, 196, 102",
+      accentSoft: "#7de89d",
+      surfaceFrom: "#052314",
+      surfaceTo: "#0d3f24",
+      surfaceGlow: "#177c42",
     },
     imagePath: "/brand/brand/kingland-tiger.png",
   },
@@ -219,12 +219,12 @@ const productLines: ProductLine[] = [
     ],
     imageAlt: "Foto ban IRC SS-530R",
     stagePalette: {
-      accent: "#3b82f6",
-      accentRgb: "59, 130, 246",
-      accentSoft: "#a6c9ff",
-      surfaceFrom: "#07111f",
-      surfaceTo: "#12284d",
-      surfaceGlow: "#1b3f79",
+      accent: "#19b85f",
+      accentRgb: "25, 184, 95",
+      accentSoft: "#74e79b",
+      surfaceFrom: "#052314",
+      surfaceTo: "#0b3921",
+      surfaceGlow: "#126d3a",
     },
     imagePath: "/brand/brand/IRC-SS-530r.png",
   },
@@ -249,12 +249,12 @@ const productLines: ProductLine[] = [
     ],
     imageAlt: "Foto ban Maxxis MA-3Di",
     stagePalette: {
-      accent: "#ff6b1b",
-      accentRgb: "255, 107, 27",
-      accentSoft: "#ffc18d",
-      surfaceFrom: "#180b05",
-      surfaceTo: "#381506",
-      surfaceGlow: "#6d2a0c",
+      accent: "#2fd173",
+      accentRgb: "47, 209, 115",
+      accentSoft: "#8af0ad",
+      surfaceFrom: "#061f13",
+      surfaceTo: "#0f4227",
+      surfaceGlow: "#1b8549",
     },
     imagePath: "/brand/brand/Maxxis-Ma-3Di.png",
   },
@@ -279,12 +279,12 @@ const productLines: ProductLine[] = [
     ],
     imageAlt: "Foto ban Zeneos ZN77",
     stagePalette: {
-      accent: "#ef4444",
-      accentRgb: "239, 68, 68",
-      accentSoft: "#ffb0b0",
-      surfaceFrom: "#17080b",
-      surfaceTo: "#361014",
-      surfaceGlow: "#5d1720",
+      accent: "#13a957",
+      accentRgb: "19, 169, 87",
+      accentSoft: "#69df91",
+      surfaceFrom: "#041f12",
+      surfaceTo: "#0a351f",
+      surfaceGlow: "#116d38",
     },
     imagePath: "/brand/brand/Zeneos-zn77.png",
   },
@@ -761,11 +761,11 @@ const currentYear: number = new Date().getFullYear()
 <style scoped>
 :global(html),
 :global(body) {
-  background: #090d12;
+  background: #ffffff;
 }
 
 :global(body) {
-  scrollbar-color: rgba(var(--mb-accent-rgb), 0.28) #090d12;
+  scrollbar-color: #0f7a3d #e1ede4;
 }
 
 :global(body::-webkit-scrollbar) {
@@ -773,19 +773,34 @@ const currentYear: number = new Date().getFullYear()
 }
 
 :global(body::-webkit-scrollbar-track) {
-  background: #090d12;
+  background: #e1ede4;
 }
 
 :global(body::-webkit-scrollbar-thumb) {
-  border: 3px solid #090d12;
+  border: 3px solid #e1ede4;
   border-radius: 999px;
-  background: rgba(var(--mb-accent-rgb), 0.28);
+  background: #0f7a3d;
 }
 
 .pub-page {
+  --mb-accent: #118342;
+  --mb-accent2: #0b6533;
+  --mb-accent-rgb: 17, 131, 66;
+  --mb-accent-ink: #ffffff;
+  --pub-green-950: #042114;
+  --pub-green-900: #07361f;
+  --pub-green-800: #0b512c;
+  --pub-green-700: #0f713a;
+  --pub-green-600: #118342;
+  --pub-green-100: #dcefe3;
+  --pub-green-75: #edf7f0;
+  --pub-green-50: #f6fbf7;
+  --pub-ink: #142019;
+  --pub-muted: rgba(20, 32, 25, 0.68);
+  --pub-soft-border: rgba(7, 54, 31, 0.16);
   min-height: 100vh;
-  background: #090d12;
-  color: white;
+  background: #ffffff;
+  color: var(--pub-ink);
   overflow-x: clip;
 }
 
@@ -798,8 +813,10 @@ const currentYear: number = new Date().getFullYear()
   position: sticky;
   top: 0;
   z-index: 50;
-  background: #090d12;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.96);
+  border-bottom: 1px solid var(--pub-soft-border);
+  box-shadow: 0 1px 16px rgba(7, 54, 31, 0.08);
+  backdrop-filter: blur(18px);
 }
 
 .pub-topbar-inner {
@@ -815,7 +832,7 @@ const currentYear: number = new Date().getFullYear()
   display: inline-flex;
   align-items: center;
   gap: 12px;
-  color: white;
+  color: var(--pub-green-900);
   text-decoration: none;
 }
 
@@ -832,12 +849,13 @@ const currentYear: number = new Date().getFullYear()
 }
 
 .pub-brand-copy strong {
+  color: var(--pub-green-900);
   font-size: 15px;
   line-height: 1;
 }
 
 .pub-brand-copy span {
-  color: rgba(255, 255, 255, 0.54);
+  color: rgba(20, 32, 25, 0.66);
   font-size: 12px;
   line-height: 1.4;
 }
@@ -856,7 +874,7 @@ const currentYear: number = new Date().getFullYear()
   border: 0;
   padding: 0;
   background: transparent;
-  color: rgba(255, 255, 255, 0.86);
+  color: rgba(7, 54, 31, 0.68);
   font-size: 14px;
   font-weight: 700;
   text-decoration: none;
@@ -879,7 +897,7 @@ const currentYear: number = new Date().getFullYear()
   width: 100%;
   height: 2px;
   border-radius: 999px;
-  background: var(--mb-accent);
+  background: var(--pub-green-700);
   transform: scaleX(0);
   transform-origin: center;
   transition: transform 0.18s ease;
@@ -892,7 +910,7 @@ const currentYear: number = new Date().getFullYear()
 
 .pub-nav-link.is-active,
 .pub-nav-link:hover {
-  color: white;
+  color: var(--pub-green-900);
 }
 
 .pub-menu-panel {
@@ -902,11 +920,11 @@ const currentYear: number = new Date().getFullYear()
   width: min(760px, calc(100vw - 80px));
   transform: translateX(-50%);
   padding: 18px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(7, 54, 31, 0.18);
   border-radius: 28px;
-  background: #0d1218;
+  background: #ffffff;
   backdrop-filter: blur(22px);
-  box-shadow: 0 28px 56px rgba(0, 0, 0, 0.28);
+  box-shadow: 0 28px 56px rgba(7, 54, 31, 0.14);
 }
 
 .pub-menu-panel::before {
@@ -929,7 +947,7 @@ const currentYear: number = new Date().getFullYear()
 }
 
 .pub-menu-eyebrow {
-  color: var(--mb-accent);
+  color: var(--pub-green-700);
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -938,7 +956,7 @@ const currentYear: number = new Date().getFullYear()
 
 .pub-menu-title {
   margin: 16px 0 0;
-  color: white;
+  color: var(--pub-green-950);
   font-size: 28px;
   line-height: 1.02;
   letter-spacing: -0.05em;
@@ -947,7 +965,7 @@ const currentYear: number = new Date().getFullYear()
 
 .pub-menu-desc {
   margin: 14px 0 0;
-  color: rgba(255, 255, 255, 0.62);
+  color: var(--pub-muted);
   font-size: 13px;
   line-height: 1.7;
 }
@@ -963,10 +981,10 @@ const currentYear: number = new Date().getFullYear()
   justify-content: space-between;
   gap: 12px;
   padding: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(7, 54, 31, 0.14);
   border-radius: 22px;
-  background: rgba(255, 255, 255, 0.03);
-  color: white;
+  background: var(--pub-green-50);
+  color: var(--pub-green-950);
   text-decoration: none;
   transition:
     transform 0.16s ease,
@@ -976,8 +994,8 @@ const currentYear: number = new Date().getFullYear()
 
 .pub-menu-link:hover {
   transform: translateX(4px);
-  border-color: rgba(var(--mb-accent-rgb), 0.34);
-  background: rgba(var(--mb-accent-rgb), 0.1);
+  border-color: rgba(var(--mb-accent-rgb), 0.36);
+  background: var(--pub-green-100);
 }
 
 .pub-menu-link-copy {
@@ -991,13 +1009,13 @@ const currentYear: number = new Date().getFullYear()
 }
 
 .pub-menu-link-copy span {
-  color: rgba(255, 255, 255, 0.58);
+  color: rgba(20, 32, 25, 0.64);
   font-size: 12px;
   line-height: 1.5;
 }
 
 .pub-menu-link-arrow {
-  color: var(--mb-accent);
+  color: var(--pub-green-700);
   font-size: 20px;
   line-height: 1;
 }
@@ -1029,9 +1047,9 @@ const currentYear: number = new Date().getFullYear()
   min-height: 42px;
   padding: 0 16px;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.04);
-  color: rgba(255, 255, 255, 0.72);
+  border: 1px solid var(--pub-green-700);
+  background: var(--pub-green-700);
+  color: #ffffff;
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.12em;
@@ -1040,7 +1058,8 @@ const currentYear: number = new Date().getFullYear()
 
 .pub-hero {
   padding: 16px 0 0;
-  background: #090d12;
+  background:
+    linear-gradient(180deg, #ffffff 0%, #ffffff 58%, #f7fbf8 100%);
 }
 
 .pub-hero-grid {
@@ -1064,12 +1083,12 @@ const currentYear: number = new Date().getFullYear()
 
 .pub-hero-line {
   fill: none;
-  stroke: rgba(255, 255, 255, 0.09);
+  stroke: rgba(7, 54, 31, 0.16);
   stroke-width: 1.35;
 }
 
 .pub-hero-line--accent {
-  stroke: rgba(var(--mb-accent-rgb), 0.48);
+  stroke: rgba(var(--mb-accent-rgb), 0.66);
   stroke-width: 1.7;
 }
 
@@ -1089,9 +1108,9 @@ const currentYear: number = new Date().getFullYear()
   min-height: 34px;
   padding: 0 14px;
   border-radius: 999px;
-  border: 1px solid rgba(var(--mb-accent-rgb), 0.24);
-  background: rgba(var(--mb-accent-rgb), 0.12);
-  color: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(var(--mb-accent-rgb), 0.32);
+  background: var(--pub-green-100);
+  color: var(--pub-green-900);
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -1101,7 +1120,7 @@ const currentYear: number = new Date().getFullYear()
 .pub-hero-title {
   max-width: 10.5ch;
   margin: 10px 0 0;
-  color: white;
+  color: var(--pub-green-950);
   font-size: clamp(34px, 4.6vw, 70px);
   line-height: 0.92;
   letter-spacing: -0.07em;
@@ -1111,7 +1130,7 @@ const currentYear: number = new Date().getFullYear()
 .pub-hero-desc {
   max-width: 60ch;
   margin: 10px 0 0;
-  color: rgba(255, 255, 255, 0.72);
+  color: var(--pub-muted);
   font-size: 15px;
   line-height: 1.8;
 }
@@ -1146,21 +1165,22 @@ const currentYear: number = new Date().getFullYear()
 }
 
 .pub-btn--primary {
-  background: var(--mb-accent);
-  color: var(--mb-accent-ink);
-  box-shadow: 0 16px 28px rgba(var(--mb-accent-rgb), 0.22);
+  background: linear-gradient(180deg, #13924a, var(--pub-green-700));
+  border-color: var(--pub-green-700);
+  color: #ffffff;
+  box-shadow: 0 16px 28px rgba(7, 54, 31, 0.24);
 }
 
 .pub-btn--ghost {
-  background: rgba(255, 255, 255, 0.09);
-  border-color: rgba(255, 255, 255, 0.16);
-  color: white;
+  background: #ffffff;
+  border-color: rgba(7, 54, 31, 0.24);
+  color: var(--pub-green-900);
 }
 
 .pub-btn--outline {
-  background: rgba(255, 255, 255, 0.03);
-  border-color: rgba(var(--mb-accent-rgb), 0.26);
-  color: white;
+  background: #ffffff;
+  border-color: rgba(7, 54, 31, 0.28);
+  color: var(--pub-green-900);
 }
 
 .pub-switcher {
@@ -1178,10 +1198,10 @@ const currentYear: number = new Date().getFullYear()
   align-items: center;
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(7, 54, 31, 0.14);
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.04);
-  color: white;
+  background: #ffffff;
+  color: var(--pub-green-950);
   text-align: left;
   cursor: pointer;
   transition:
@@ -1196,9 +1216,10 @@ const currentYear: number = new Date().getFullYear()
 }
 
 .pub-switcher-item.is-active {
-  border-color: rgba(var(--mb-accent-rgb), 0.42);
-  background: rgba(var(--mb-accent-rgb), 0.16);
-  box-shadow: 0 18px 30px rgba(var(--mb-accent-rgb), 0.12);
+  border-color: var(--pub-green-700);
+  background: var(--pub-green-900);
+  color: #ffffff;
+  box-shadow: 0 18px 30px rgba(7, 54, 31, 0.2);
 }
 
 .pub-switcher-index {
@@ -1207,7 +1228,8 @@ const currentYear: number = new Date().getFullYear()
   width: 40px;
   height: 40px;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--pub-green-100);
+  color: var(--pub-green-900);
   font-size: 15px;
   font-weight: 800;
 }
@@ -1223,9 +1245,18 @@ const currentYear: number = new Date().getFullYear()
 }
 
 .pub-switcher-text span {
-  color: rgba(255, 255, 255, 0.66);
+  color: rgba(20, 32, 25, 0.64);
   font-size: 12px;
   line-height: 1.5;
+}
+
+.pub-switcher-item.is-active .pub-switcher-index {
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+}
+
+.pub-switcher-item.is-active .pub-switcher-text span {
+  color: rgba(255, 255, 255, 0.72);
 }
 
 .pub-stage {
@@ -1247,16 +1278,16 @@ const currentYear: number = new Date().getFullYear()
     transform 0.34s ease,
     filter 0.34s ease;
   filter:
-    drop-shadow(0 28px 40px rgba(0, 0, 0, 0.42))
-    drop-shadow(0 0 28px rgba(var(--stage-accent-rgb), 0.18));
+    drop-shadow(0 18px 28px rgba(0, 0, 0, 0.55))
+    drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
 }
 
 .pub-stage-lane {
   position: absolute;
   width: 12px;
   border-radius: 999px;
-  background: linear-gradient(180deg, var(--stage-accent), rgba(255, 255, 255, 0.76));
-  box-shadow: 0 0 22px rgba(var(--stage-accent-rgb), 0.26);
+  background: linear-gradient(180deg, var(--stage-accent), var(--pub-green-700));
+  box-shadow: 0 0 24px rgba(var(--stage-accent-rgb), 0.28);
 }
 
 .pub-stage-lane--one {
@@ -1275,7 +1306,7 @@ const currentYear: number = new Date().getFullYear()
   position: absolute;
   inset: 20% 12% 18% 18%;
   border-radius: 50%;
-  box-shadow: 0 0 140px rgba(var(--stage-accent-rgb), 0.2);
+  box-shadow: 0 0 130px rgba(var(--stage-accent-rgb), 0.2);
   pointer-events: none;
 }
 
@@ -1289,10 +1320,10 @@ const currentYear: number = new Date().getFullYear()
   text-transform: uppercase;
   width: 100%;
   min-height: 480px;
-  border: 1px solid rgba(var(--stage-accent-rgb), 0.22);
+  border: 1px solid rgba(var(--stage-accent-rgb), 0.34);
   border-radius: 40px;
   background: linear-gradient(145deg, var(--stage-surface-from), var(--stage-surface-to));
-  box-shadow: 0 0 60px rgba(var(--stage-accent-rgb), 0.14), 0 20px 48px rgba(0, 0, 0, 0.22);
+  box-shadow: 0 24px 56px rgba(7, 54, 31, 0.26), 0 4px 16px rgba(0, 0, 0, 0.16);
   overflow: hidden;
 }
 
@@ -1449,13 +1480,13 @@ const currentYear: number = new Date().getFullYear()
   width: min(480px, 74vw);
   aspect-ratio: 1;
   border-radius: 50%;
-  border: 24px solid #1c232a;
-  background: #0a1015;
+  border: 24px solid #2a3a2e;
+  background: #1a2e1e;
   box-shadow:
-    inset 0 0 0 6px rgba(255, 255, 255, 0.04),
-    inset 0 0 0 38px #141c23,
-    0 26px 60px rgba(0, 0, 0, 0.28),
-    0 0 40px rgba(var(--mb-accent-rgb), 0.08);
+    inset 0 0 0 6px rgba(255, 255, 255, 0.06),
+    inset 0 0 0 38px #223228,
+    0 26px 60px rgba(0, 0, 0, 0.18),
+    0 0 40px rgba(var(--mb-accent-rgb), 0.12);
 }
 
 .pub-wheel-ring {
@@ -1577,9 +1608,9 @@ const currentYear: number = new Date().getFullYear()
 
 .pub-tape {
   padding: 16px 0;
-  background: #090d12;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--pub-green-900);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   overflow: hidden;
 }
 
@@ -1597,9 +1628,9 @@ const currentYear: number = new Date().getFullYear()
   min-height: 42px;
   padding: 0 16px;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.04);
-  color: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.92);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1610,19 +1641,19 @@ const currentYear: number = new Date().getFullYear()
 }
 
 .pub-heading--light {
-  color: white;
+  color: #ffffff;
 }
 
 .pub-body {
   max-width: 62ch;
   margin: 16px 0 0;
-  color: rgba(255, 255, 255, 0.68);
+  color: var(--pub-muted);
   font-size: 15px;
   line-height: 1.8;
 }
 
 .pub-body--light {
-  color: rgba(255, 255, 255, 0.72);
+  color: rgba(255, 255, 255, 0.76);
 }
 
 .pub-product-grid {
@@ -1651,10 +1682,10 @@ const currentYear: number = new Date().getFullYear()
   align-items: center;
   width: 100%;
   padding: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 22px;
-  background: rgba(255, 255, 255, 0.04);
-  color: white;
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
   text-align: left;
   cursor: pointer;
   transition:
@@ -1669,9 +1700,10 @@ const currentYear: number = new Date().getFullYear()
 }
 
 .pub-product-item.is-active {
-  border-color: rgba(var(--mb-accent-rgb), 0.38);
-  background: rgba(var(--mb-accent-rgb), 0.14);
-  box-shadow: 0 18px 32px rgba(var(--mb-accent-rgb), 0.12);
+  border-color: rgba(255, 255, 255, 0.7);
+  background: #ffffff;
+  color: var(--pub-green-900);
+  box-shadow: 0 18px 32px rgba(0, 0, 0, 0.18);
 }
 
 .pub-product-serial {
@@ -1680,7 +1712,8 @@ const currentYear: number = new Date().getFullYear()
   width: 58px;
   height: 58px;
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
   font-size: 18px;
   font-weight: 800;
 }
@@ -1696,9 +1729,18 @@ const currentYear: number = new Date().getFullYear()
 }
 
 .pub-product-meta span {
-  color: rgba(255, 255, 255, 0.66);
+  color: rgba(255, 255, 255, 0.72);
   font-size: 12px;
   line-height: 1.5;
+}
+
+.pub-product-item.is-active .pub-product-serial {
+  background: var(--pub-green-700);
+  color: #ffffff;
+}
+
+.pub-product-item.is-active .pub-product-meta span {
+  color: rgba(20, 32, 25, 0.62);
 }
 
 .pub-product-detail {
@@ -1707,11 +1749,12 @@ const currentYear: number = new Date().getFullYear()
 
 .pub-detail-panel {
   padding: 26px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 30px;
-  background: rgba(255, 255, 255, 0.04);
-  color: white;
+  background: #ffffff;
+  color: var(--pub-green-950);
   min-height: 100%;
+  box-shadow: 0 24px 54px rgba(0, 0, 0, 0.18);
 }
 
 .pub-detail-swap-enter-active,
@@ -1749,14 +1792,14 @@ const currentYear: number = new Date().getFullYear()
   min-height: 52px;
   padding: 0 12px;
   border-radius: 16px;
-  background: rgba(var(--mb-accent-rgb), 0.18);
+  background: var(--pub-green-700);
   color: white;
   font-size: 18px;
   font-weight: 900;
 }
 
 .pub-detail-fitment {
-  color: rgba(255, 255, 255, 0.62);
+  color: rgba(20, 32, 25, 0.62);
   font-size: 13px;
   text-align: right;
 }
@@ -1772,7 +1815,7 @@ const currentYear: number = new Date().getFullYear()
 .pub-detail-desc {
   max-width: 60ch;
   margin: 16px 0 0;
-  color: rgba(255, 255, 255, 0.72);
+  color: var(--pub-muted);
   font-size: 15px;
   line-height: 1.8;
 }
@@ -1788,13 +1831,13 @@ const currentYear: number = new Date().getFullYear()
   display: grid;
   gap: 8px;
   padding: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(7, 54, 31, 0.14);
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--pub-green-50);
 }
 
 .pub-detail-metric span {
-  color: rgba(255, 255, 255, 0.58);
+  color: rgba(20, 32, 25, 0.62);
   font-size: 12px;
 }
 
@@ -1815,9 +1858,9 @@ const currentYear: number = new Date().getFullYear()
   gap: 12px;
   padding: 14px;
   border-radius: 18px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.04);
-  color: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(7, 54, 31, 0.14);
+  background: var(--pub-green-50);
+  color: rgba(20, 32, 25, 0.86);
   font-size: 14px;
   line-height: 1.7;
 }
@@ -1827,7 +1870,7 @@ const currentYear: number = new Date().getFullYear()
   height: 10px;
   margin-top: 7px;
   border-radius: 50%;
-  background: var(--mb-accent);
+  background: var(--pub-green-700);
   flex-shrink: 0;
 }
 
@@ -1839,10 +1882,10 @@ const currentYear: number = new Date().getFullYear()
 
 .pub-tech-card {
   padding: 22px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(7, 54, 31, 0.14);
   border-radius: 24px;
-  background: #111820;
-  box-shadow: 0 18px 32px rgba(0, 0, 0, 0.22);
+  background: #ffffff;
+  box-shadow: 0 8px 24px rgba(7, 54, 31, 0.08);
   transition:
     transform 0.22s ease,
     border-color 0.22s ease,
@@ -1851,13 +1894,13 @@ const currentYear: number = new Date().getFullYear()
 
 .pub-tech-card:hover {
   transform: translateY(-3px);
-  border-color: rgba(var(--mb-accent-rgb), 0.2);
-  box-shadow: 0 22px 40px rgba(0, 0, 0, 0.3);
+  border-color: rgba(var(--mb-accent-rgb), 0.36);
+  box-shadow: 0 16px 36px rgba(7, 54, 31, 0.14);
 }
 
 .pub-tech-title {
   margin: 0;
-  color: white;
+  color: var(--pub-green-950);
   font-size: 22px;
   line-height: 1.05;
   letter-spacing: -0.04em;
@@ -1865,7 +1908,7 @@ const currentYear: number = new Date().getFullYear()
 
 .pub-tech-desc {
   margin: 12px 0 0;
-  color: rgba(255, 255, 255, 0.62);
+  color: var(--pub-muted);
   font-size: 14px;
   line-height: 1.7;
 }
@@ -1892,17 +1935,20 @@ const currentYear: number = new Date().getFullYear()
 
 .pub-network-card {
   padding: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(7, 54, 31, 0.14);
   border-radius: 24px;
-  background: #111820;
+  background: #ffffff;
+  box-shadow: 0 8px 22px rgba(7, 54, 31, 0.07);
   transition:
     transform 0.22s ease,
-    border-color 0.22s ease;
+    border-color 0.22s ease,
+    box-shadow 0.22s ease;
 }
 
 .pub-network-card:hover {
   transform: translateY(-3px);
-  border-color: rgba(var(--mb-accent-rgb), 0.28);
+  border-color: rgba(var(--mb-accent-rgb), 0.34);
+  box-shadow: 0 16px 36px rgba(7, 54, 31, 0.12);
 }
 
 .pub-branch-head {
@@ -1914,7 +1960,7 @@ const currentYear: number = new Date().getFullYear()
 
 .pub-branch-area {
   margin: 10px 0 0;
-  color: rgba(var(--mb-accent-rgb), 0.92);
+  color: var(--pub-green-700);
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -1922,7 +1968,7 @@ const currentYear: number = new Date().getFullYear()
 }
 
 .pub-branch-link {
-  color: rgba(255, 255, 255, 0.72);
+  color: var(--pub-green-800);
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -1930,12 +1976,12 @@ const currentYear: number = new Date().getFullYear()
 }
 
 .pub-branch-link:hover {
-  color: white;
+  color: var(--pub-green-950);
 }
 
 .pub-network-title {
   margin: 0;
-  color: white;
+  color: var(--pub-green-950);
   font-size: 22px;
   line-height: 1.05;
   letter-spacing: -0.04em;
@@ -1958,13 +2004,14 @@ const currentYear: number = new Date().getFullYear()
   justify-content: space-between;
   gap: 18px;
   padding: 22px 24px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 26px;
-  background: #10161d;
+  background: var(--pub-green-900);
+  box-shadow: 0 18px 40px rgba(7, 54, 31, 0.18);
 }
 
 .pub-footer-brand {
-  color: white;
+  color: #ffffff;
   font-size: 18px;
   font-weight: 800;
   letter-spacing: -0.04em;
@@ -1973,7 +2020,7 @@ const currentYear: number = new Date().getFullYear()
 .pub-footer-copy,
 .pub-copyright {
   margin: 6px 0 0;
-  color: rgba(255, 255, 255, 0.58);
+  color: rgba(255, 255, 255, 0.72);
   font-size: 13px;
   line-height: 1.6;
 }
@@ -1994,11 +2041,14 @@ const currentYear: number = new Date().getFullYear()
 }
 
 .pub-section--dark {
-  background: #090e14;
+  background:
+    radial-gradient(circle at 18% 12%, rgba(42, 205, 109, 0.18), transparent 32%),
+    linear-gradient(135deg, var(--pub-green-950), var(--pub-green-900) 58%, var(--pub-green-800));
 }
 
 .pub-section--accent {
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: 1px solid rgba(7, 54, 31, 0.12);
+  background: linear-gradient(180deg, #ffffff 0%, #f7fbf8 100%);
 }
 
 .pub-section-head {
@@ -2010,7 +2060,7 @@ const currentYear: number = new Date().getFullYear()
 .pub-kicker {
   display: inline-flex;
   align-items: center;
-  color: var(--mb-accent);
+  color: var(--pub-green-700);
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.1em;
@@ -2018,12 +2068,13 @@ const currentYear: number = new Date().getFullYear()
 }
 
 .pub-kicker--dark {
-  opacity: 0.84;
+  color: #7de89d;
+  opacity: 1;
 }
 
 .pub-heading {
   margin: 14px 0 0;
-  color: white;
+  color: var(--pub-green-950);
   font-size: clamp(32px, 4.5vw, 58px);
   line-height: 0.96;
   letter-spacing: -0.06em;
@@ -2039,9 +2090,10 @@ const currentYear: number = new Date().getFullYear()
 
 .pub-metric-card {
   padding: 28px 24px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(7, 54, 31, 0.14);
   border-radius: 24px;
-  background: rgba(255, 255, 255, 0.04);
+  background: #ffffff;
+  box-shadow: 0 8px 24px rgba(7, 54, 31, 0.07);
   transition:
     transform 0.22s ease,
     border-color 0.22s ease,
@@ -2050,12 +2102,12 @@ const currentYear: number = new Date().getFullYear()
 
 .pub-metric-card:hover {
   transform: translateY(-4px);
-  border-color: rgba(var(--mb-accent-rgb), 0.26);
-  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.28);
+  border-color: rgba(var(--mb-accent-rgb), 0.34);
+  box-shadow: 0 18px 36px rgba(7, 54, 31, 0.14);
 }
 
 .pub-metric-value {
-  color: white;
+  color: var(--pub-green-900);
   font-size: 38px;
   font-weight: 900;
   letter-spacing: -0.05em;
@@ -2064,7 +2116,7 @@ const currentYear: number = new Date().getFullYear()
 
 .pub-metric-label {
   margin: 10px 0 0;
-  color: rgba(255, 255, 255, 0.62);
+  color: var(--pub-muted);
   font-size: 14px;
   line-height: 1.65;
 }
@@ -2292,9 +2344,9 @@ const currentYear: number = new Date().getFullYear()
     width: min(320px, 82vw);
     border-width: 18px;
     box-shadow:
-      inset 0 0 0 4px rgba(255, 255, 255, 0.04),
-      inset 0 0 0 24px #141c23,
-      0 22px 42px rgba(0, 0, 0, 0.28);
+      inset 0 0 0 4px rgba(255, 255, 255, 0.06),
+      inset 0 0 0 24px #223228,
+      0 22px 42px rgba(0, 0, 0, 0.18);
   }
 
   .pub-wheel-spoke {
