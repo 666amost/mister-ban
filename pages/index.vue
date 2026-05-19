@@ -1143,6 +1143,7 @@ const currentYear: number = new Date().getFullYear()
 }
 
 .pub-btn {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1158,6 +1159,39 @@ const currentYear: number = new Date().getFullYear()
     background-color 0.16s ease,
     border-color 0.16s ease,
     color 0.16s ease;
+}
+
+.pub-btn::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: 18px;
+  padding: 2px;
+  background: conic-gradient(
+    from var(--pub-border-angle),
+    transparent 55%,
+    rgba(35, 210, 110, 0.55) 70%,
+    rgba(35, 210, 110, 0.95) 82%,
+    rgba(35, 210, 110, 0.55) 93%,
+    transparent 100%
+  );
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  animation: pub-btn-border-spin 2.5s linear infinite;
+}
+
+.pub-btn:hover::after,
+.pub-btn:focus-visible::after {
+  opacity: 1;
 }
 
 .pub-btn:hover {
@@ -1332,13 +1366,13 @@ const currentYear: number = new Date().getFullYear()
   position: absolute;
   inset: 0;
   border-radius: 40px;
-  padding: 1.5px;
+  padding: 2px;
   background: conic-gradient(
     from var(--pub-border-angle),
-    transparent 55%,
-    rgba(var(--stage-accent-rgb), 0.5) 72%,
-    rgba(var(--stage-accent-rgb), 0.85) 82%,
-    rgba(var(--stage-accent-rgb), 0.5) 91%,
+    transparent 50%,
+    rgba(var(--stage-accent-rgb), 0.7) 68%,
+    rgba(var(--stage-accent-rgb), 1) 80%,
+    rgba(var(--stage-accent-rgb), 0.7) 90%,
     transparent 100%
   );
   -webkit-mask:
@@ -2195,13 +2229,13 @@ const currentYear: number = new Date().getFullYear()
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  padding: 1.5px;
+  padding: 2px;
   background: conic-gradient(
     from var(--pub-border-angle),
-    transparent 40%,
-    rgba(var(--mb-accent-rgb), 0.65) 62%,
-    rgba(var(--mb-accent-rgb), 1) 70%,
-    rgba(var(--mb-accent-rgb), 0.65) 78%,
+    transparent 35%,
+    rgba(35, 210, 110, 0.7) 58%,
+    rgba(35, 210, 110, 1) 68%,
+    rgba(35, 210, 110, 0.7) 78%,
     transparent 95%
   );
   -webkit-mask:
@@ -2214,7 +2248,7 @@ const currentYear: number = new Date().getFullYear()
   mask-composite: exclude;
   pointer-events: none;
   z-index: 1;
-  animation: pub-switcher-trace 0.75s ease-out forwards;
+  animation: pub-switcher-trace 1s ease-out forwards;
 }
 
 /* Hero copy ambient glow */
