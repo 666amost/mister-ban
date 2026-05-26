@@ -56,6 +56,11 @@ type DailyInput = {
 type DailyPaymentSummary = {
   cash: number
   non_cash: number
+  qris: number
+  debit: number
+  transfer: number
+  credit: number
+  tempo: number
 }
 
 type DailyQtyBreakdown = {
@@ -193,6 +198,12 @@ const paymentTotal = computed(() => {
   return cash + nonCash
 })
 
+const sisaOmzet = computed(() => {
+  const cash = report.value?.payment_summary.cash ?? 0
+  const expense = report.value?.expense_total ?? 0
+  return cash - expense
+})
+
 const stockReceiptDayCount = computed(() => report.value?.stock_receipt_daily?.length ?? 0)
 
 const totalQty = computed(() => {
@@ -327,6 +338,31 @@ await load()
             <div class="meta">
               {{ formatPercent(report.payment_summary.non_cash, paymentTotal) }} dari total pembayaran
             </div>
+          </div>
+          <div class="sumItem">
+            <div class="label">QRIS</div>
+            <div class="value monoNumeric">Rp {{ rupiah(report.payment_summary.qris) }}</div>
+          </div>
+          <div class="sumItem">
+            <div class="label">Debit</div>
+            <div class="value monoNumeric">Rp {{ rupiah(report.payment_summary.debit) }}</div>
+          </div>
+          <div class="sumItem">
+            <div class="label">Transfer</div>
+            <div class="value monoNumeric">Rp {{ rupiah(report.payment_summary.transfer) }}</div>
+          </div>
+          <div class="sumItem">
+            <div class="label">Kredit</div>
+            <div class="value monoNumeric">Rp {{ rupiah(report.payment_summary.credit) }}</div>
+          </div>
+          <div class="sumItem">
+            <div class="label">Tempo</div>
+            <div class="value monoNumeric">Rp {{ rupiah(report.payment_summary.tempo) }}</div>
+          </div>
+          <div class="sumItem sumItemStrong">
+            <div class="label">Sisa Omset</div>
+            <div class="value monoNumeric">Rp {{ rupiah(sisaOmzet) }}</div>
+            <div class="meta">Tunai dikurangi pengeluaran</div>
           </div>
         </div>
       </div>
@@ -613,6 +649,10 @@ await load()
 }
 .sumItemClickable {
   cursor: pointer;
+}
+.sumItemStrong {
+  background: rgba(52, 199, 89, 0.1);
+  border-color: rgba(52, 199, 89, 0.35);
 }
 .sumItemClickable:focus-visible {
   outline: 2px solid var(--mb-accent);

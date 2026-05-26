@@ -94,6 +94,7 @@ type SalesDailySummary = {
   debit: number
   transfer: number
   credit: number
+  tempo: number
 }
 
 const defaultDailySummary = (): SalesDailySummary => ({
@@ -107,6 +108,7 @@ const defaultDailySummary = (): SalesDailySummary => ({
   debit: 0,
   transfer: 0,
   credit: 0,
+  tempo: 0,
 })
 
 function todayIsoDate() {
@@ -1751,6 +1753,10 @@ const detailExpenseTotal = computed(() => {
           <div class="dailySumItem">
             <span class="dailySumLabel">Kredit</span>
             <span class="dailySumValue">Rp {{ rupiah(dailySummary.credit) }}</span>
+          </div>
+          <div class="dailySumItem">
+            <span class="dailySumLabel">Tempo</span>
+            <span class="dailySumValue">Rp {{ rupiah(dailySummary.tempo) }}</span>
           </div>
         </div>
       </div>

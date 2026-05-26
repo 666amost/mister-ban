@@ -214,6 +214,7 @@ export async function getDailyReport({
     debit: number;
     transfer: number;
     credit: number;
+    tempo: number;
   }>(
     `
       SELECT
@@ -222,7 +223,8 @@ export async function getDailyReport({
         COALESCE(SUM(CASE WHEN p.payment_type = 'QRIS' THEN p.amount ELSE 0 END), 0)::int AS qris,
         COALESCE(SUM(CASE WHEN p.payment_type = 'DEBIT' THEN p.amount ELSE 0 END), 0)::int AS debit,
         COALESCE(SUM(CASE WHEN p.payment_type = 'TRANSFER' THEN p.amount ELSE 0 END), 0)::int AS transfer,
-        COALESCE(SUM(CASE WHEN p.payment_type = 'CREDIT' THEN p.amount ELSE 0 END), 0)::int AS credit
+        COALESCE(SUM(CASE WHEN p.payment_type = 'CREDIT' THEN p.amount ELSE 0 END), 0)::int AS credit,
+        COALESCE(SUM(CASE WHEN p.payment_type = 'TEMPO' THEN p.amount ELSE 0 END), 0)::int AS tempo
       FROM (
         SELECT
           UPPER(COALESCE(sp.payment_type, s.payment_type, '')) AS payment_type,
@@ -445,6 +447,7 @@ export async function getDailyReport({
     debit: 0,
     transfer: 0,
     credit: 0,
+    tempo: 0,
   };
   const qtyBreakdown = qtyBreakdownRes.rows[0] ?? {
     ban_qty: 0,
