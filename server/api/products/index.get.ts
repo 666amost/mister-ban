@@ -17,7 +17,7 @@ export default defineEventHandler(async (event) => {
     offset: query.offset,
   });
 
-  optimizeResponse(event, 60);
+  optimizeResponse(event);
 
   return { items, limit: query.limit ?? 50, offset: query.offset ?? 0 };
 });
