@@ -79,6 +79,23 @@ const adjNote = ref("")
 const adjLoading = ref(false)
 const adjError = ref<string | null>(null)
 
+const activeEditorTooltip = ref<{ productId: string; type: "adj" | "price" } | null>(null)
+
+function maskEmail(email: string | null): string {
+  if (!email) return "Unknown"
+  const atIdx = email.indexOf("@")
+  if (atIdx <= 0) return email
+  return email.slice(0, atIdx) + "@XXX"
+}
+
+function toggleEditorTooltip(productId: string, type: "adj" | "price") {
+  if (activeEditorTooltip.value?.productId === productId && activeEditorTooltip.value?.type === type) {
+    activeEditorTooltip.value = null
+  } else {
+    activeEditorTooltip.value = { productId, type }
+  }
+}
+
 function rupiah(value: number) {
   return value.toLocaleString("id-ID")
 }
@@ -275,6 +292,7 @@ async function load(options?: { reset?: boolean }) {
       maxStockDrafts.value = Object.fromEntries(res.items.map((i) => [i.product_id, i.max_stock])) as Record<string, number | null>
     }
     if (adjustingId.value && !res.items.some((i) => i.product_id === adjustingId.value)) cancelAdjust()
+    activeEditorTooltip.value = null
   } catch (error) {
     errorMessage.value = statusMessage(error) ?? "Gagal memuat inventory"
     summary.value = {
@@ -686,8 +704,13 @@ onMounted(async () => {
                 <td style="text-align: right">
                   {{ i.qty_on_hand }}
                   <div v-if="me.user.value?.role === 'ADMIN' && i.last_adj_at" class="lastEditHint">
-                    {{ i.last_adj_qty_delta !== null && i.last_adj_qty_delta > 0 ? '+' : '' }}{{ i.last_adj_qty_delta }} qty
-                    • {{ formatDate(i.last_adj_at) }}
+                    <button type="button" class="editHintBtn" @click="toggleEditorTooltip(i.product_id, 'adj')">
+                      {{ i.last_adj_qty_delta !== null && i.last_adj_qty_delta > 0 ? '+' : '' }}{{ i.last_adj_qty_delta }} qty
+                      • {{ formatDate(i.last_adj_at) }}
+                    </button>
+                    <span v-if="activeEditorTooltip?.productId === i.product_id && activeEditorTooltip?.type === 'adj'" class="editorTooltipText">
+                      {{ maskEmail(i.last_adj_by) }}
+                    </span>
                   </div>
                 </td>
                 <td class="maxStockCell">
@@ -730,7 +753,12 @@ onMounted(async () => {
                   <template v-else>
                     Rp {{ rupiah(i.sell_price ?? 0) }}
                     <div v-if="me.user.value?.role === 'ADMIN' && i.price_updated_at" class="lastEditHint">
-                      {{ formatDate(i.price_updated_at) }}
+                      <button type="button" class="editHintBtn" @click="toggleEditorTooltip(i.product_id, 'price')">
+                        {{ formatDate(i.price_updated_at) }}
+                      </button>
+                      <span v-if="activeEditorTooltip?.productId === i.product_id && activeEditorTooltip?.type === 'price'" class="editorTooltipText">
+                        {{ maskEmail(i.price_updated_by) }}
+                      </span>
                     </div>
                   </template>
                 </td>
@@ -885,6 +913,28 @@ onMounted(async () => {
   font-weight: 400;
   font-style: italic;
   white-space: nowrap;
+}
+.editHintBtn {
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+}
+.editHintBtn:hover {
+  color: rgba(52, 199, 89, 1);
+}
+.editorTooltipText {
+  display: block;
+  margin-top: 2px;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 600;
+  color: var(--mb-muted);
+  letter-spacing: 0.02em;
 }
 .tableWrap {
   margin-top: 12px;
