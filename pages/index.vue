@@ -1,6 +1,8 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { useSeoMeta } from "#imports"
 import { computed, onBeforeUnmount, ref, type CSSProperties } from "vue"
+import type { PublicBranchCard, ProductLine } from "~/types/public"
+import { navGroups, tapeWords, stageLinePaths, stageAccentPaths, heroMetrics, techCards, branchFallbacks, productLines, brandCatalog } from "~/data/pubHomeData"
 
 definePageMeta({ layout: "auth" })
 
@@ -14,338 +16,6 @@ useSeoMeta({
   robots: "index, follow",
 })
 
-type NavMenuItem = {
-  label: string
-  href: string
-  meta: string
-}
-
-type NavGroup = {
-  id: string
-  label: string
-  eyebrow: string
-  title: string
-  description: string
-  items: NavMenuItem[]
-}
-
-type HeroMetric = {
-  value: string
-  label: string
-}
-
-type ProductMetric = {
-  label: string
-  value: string
-}
-
-type StagePalette = {
-  accent: string
-  accentRgb: string
-  accentSoft: string
-  surfaceFrom: string
-  surfaceTo: string
-  surfaceGlow: string
-}
-
-type ProductLine = {
-  id: string
-  serial: string
-  brand: string
-  name: string
-  series: string
-  tagline: string
-  fitment: string
-  summary: string
-  features: string[]
-  metrics: ProductMetric[]
-  imageAlt: string
-  stagePalette: StagePalette
-  imagePath?: string
-}
-
-type TechCard = {
-  title: string
-  description: string
-}
-
-type BranchFallback = {
-  title: string
-  area: string
-  instagram: string | null
-}
-
-type PublicBranchCard = {
-  title: string
-  area: string
-  instagram: string | null
-}
-
-const navGroups: NavGroup[] = [
-  {
-    id: "produk",
-    label: "Brand",
-    eyebrow: "Pilihan Merek",
-    title: "Empat brand ban terpercaya tersedia di semua cabang Mister Ban.",
-    description:
-      "Pilih brand yang sesuai kebutuhan motor Anda, lalu kunjungi cabang terdekat untuk cek stok dan ukuran.",
-    items: [
-      { label: "Kingland Tiger", href: "#produk", meta: "Ban motor untuk jalanan kota" },
-      { label: "IRC SS-530R", href: "#produk", meta: "Pilihan ban harian yang familiar" },
-      { label: "Maxxis MA-3Di", href: "#produk", meta: "Ketahanan lebih lama untuk motor matic" },
-      { label: "Zeneos ZN77", href: "#produk", meta: "Pilihan harga kompetitif" },
-    ],
-  },
-  {
-    id: "teknologi",
-    label: "Layanan",
-    eyebrow: "Layanan Kami",
-    title: "Ban berkualitas untuk motor harian dengan pilihan brand yang sudah terpercaya.",
-    description:
-      "Kami menyediakan berbagai ukuran dan brand ban motor untuk kebutuhan penggantian rutin maupun perjalanan lebih jauh.",
-    items: [
-      { label: "Kingland, IRC, Maxxis, Zeneos", href: "#teknologi", meta: "Empat brand tersedia" },
-      { label: "Stok Tersedia", href: "#jaringan", meta: "Hubungi cabang untuk cek stok" },
-      { label: "Harga Bersaing", href: "#jaringan", meta: "Tanya langsung ke toko" },
-    ],
-  },
-  {
-    id: "jaringan",
-    label: "Cabang",
-    eyebrow: "Cabang Kami",
-    title: "Tujuh cabang aktif di area Jakarta Barat dan Tangerang siap melayani Anda.",
-    description:
-      "Kunjungi atau hubungi cabang Mister Ban terdekat untuk menanyakan stok, ukuran, dan harga ban.",
-    items: [
-      { label: "Dunia Ban Kedoya", href: "#jaringan", meta: "Area Kedoya, Jakarta Barat" },
-      { label: "Mister Ban Meruya", href: "#jaringan", meta: "Area Meruya, Jakarta Barat" },
-      { label: "Gemilang Ban Ciledug", href: "#jaringan", meta: "Area Ciledug, Tangerang" },
-    ],
-  },
-]
-
-const tapeWords: string[] = [
-  "Spesialis Ban Motor",
-  "Kingland Tiger",
-  "IRC SS-530R",
-  "Maxxis MA-3Di",
-  "Zeneos ZN77",
-  "7 Cabang Aktif",
-  "Jakarta Barat",
-  "Tangerang",
-  "Cek Stok ke Toko",
-]
-
-const stageLinePaths: string[] = [
-  "M -120 150 C 120 20 330 30 510 150 S 890 360 1420 120",
-  "M -120 195 C 140 65 350 75 530 195 S 910 405 1420 165",
-  "M -120 240 C 160 110 370 120 550 240 S 930 450 1420 210",
-  "M -120 285 C 180 155 390 165 570 285 S 950 495 1420 255",
-  "M -120 330 C 200 200 410 210 590 330 S 970 540 1420 300",
-  "M -120 375 C 220 245 430 255 610 375 S 990 585 1420 345",
-  "M -120 420 C 240 290 450 300 630 420 S 1010 630 1420 390",
-  "M -120 465 C 260 335 470 345 650 465 S 1030 675 1420 435",
-]
-
-const stageAccentPaths: string[] = [
-  "M -120 360 C 140 220 360 230 560 320 S 920 430 1420 250",
-  "M -120 460 C 170 320 410 330 640 430 S 1000 540 1420 350",
-]
-
-const heroMetrics: HeroMetric[] = [
-  {
-    value: "4 Brand",
-    label: "Kingland, IRC, Maxxis, dan Zeneos tersedia di semua cabang.",
-  },
-  {
-    value: "7 Cabang",
-    label: "Aktif melayani di Jakarta Barat dan Tangerang.",
-  },
-  {
-    value: "Stok Tersedia",
-    label: "Hubungi cabang terdekat untuk cek stok dan harga.",
-  },
-]
-
-const productLines: ProductLine[] = [
-  {
-    id: "kingland-tiger",
-    serial: "01",
-    brand: "Kingland",
-    name: "Kingland Tiger",
-    series: "Urban City",
-    tagline: "Ban motor untuk jalanan kota dengan grip stabil di berbagai kondisi.",
-    fitment: "Motor matic & bebek",
-    summary:
-      "Kingland Tiger Urban City dirancang untuk motor matic dan bebek yang aktif di jalanan kota. Tersedia dalam berbagai ukuran standar, cocok untuk kebutuhan harian maupun perjalanan lebih jauh.",
-    features: [
-      "Tersedia dalam berbagai ukuran standar.",
-      "Cocok untuk motor matic dan bebek.",
-    ],
-    metrics: [
-      { label: "Brand", value: "Kingland" },
-      { label: "Tipe", value: "TT / TL" },
-      { label: "Kategori", value: "Urban" },
-    ],
-    imageAlt: "Foto ban Kingland Tiger",
-    stagePalette: {
-      accent: "#24c466",
-      accentRgb: "36, 196, 102",
-      accentSoft: "#7de89d",
-      surfaceFrom: "#052314",
-      surfaceTo: "#0d3f24",
-      surfaceGlow: "#177c42",
-    },
-    imagePath: "/brand/brand/kingland-tiger.png",
-  },
-  {
-    id: "irc-ss-530r",
-    serial: "02",
-    brand: "IRC",
-    name: "IRC SS-530R",
-    series: "Sport Series",
-    tagline: "Pilihan ban harian yang sudah dipercaya untuk berbagai motor.",
-    fitment: "Motor matic & bebek",
-    summary:
-      "IRC SS-530R memberikan grip yang konsisten untuk pemakaian harian. Salah satu pilihan ban paling sering dicari di cabang Mister Ban, tersedia dalam banyak ukuran.",
-    features: [
-      "Grip stabil di jalan kering dan basah.",
-      "Mudah ditemukan di semua cabang.",
-    ],
-    metrics: [
-      { label: "Brand", value: "IRC" },
-      { label: "Tipe", value: "TT / TL" },
-      { label: "Kategori", value: "Harian" },
-    ],
-    imageAlt: "Foto ban IRC SS-530R",
-    stagePalette: {
-      accent: "#19b85f",
-      accentRgb: "25, 184, 95",
-      accentSoft: "#74e79b",
-      surfaceFrom: "#052314",
-      surfaceTo: "#0b3921",
-      surfaceGlow: "#126d3a",
-    },
-    imagePath: "/brand/brand/IRC-SS-530r.png",
-  },
-  {
-    id: "maxxis-ma-3di",
-    serial: "03",
-    brand: "Maxxis",
-    name: "Maxxis MA-3Di",
-    series: "Diamond Scooter",
-    tagline: "Ketahanan lebih lama untuk motor matic dengan pemakaian intensif.",
-    fitment: "Motor matic",
-    summary:
-      "Maxxis MA-3Di memberikan performa konsisten untuk motor matic yang digunakan setiap hari. Pilihan dari brand Maxxis yang sudah dikenal untuk ketahanan dan kenyamanan berkendara.",
-    features: [
-      "Daya tahan lebih lama dari pemakaian rutin.",
-      "Performa konsisten untuk jarak jauh.",
-    ],
-    metrics: [
-      { label: "Brand", value: "Maxxis" },
-      { label: "Tipe", value: "TL" },
-      { label: "Kategori", value: "Durable" },
-    ],
-    imageAlt: "Foto ban Maxxis MA-3Di",
-    stagePalette: {
-      accent: "#2fd173",
-      accentRgb: "47, 209, 115",
-      accentSoft: "#8af0ad",
-      surfaceFrom: "#061f13",
-      surfaceTo: "#0f4227",
-      surfaceGlow: "#1b8549",
-    },
-    imagePath: "/brand/brand/Maxxis-Ma-3Di.png",
-  },
-  {
-    id: "zeneos-zn77",
-    serial: "04",
-    brand: "Zeneos",
-    name: "Zeneos ZN77",
-    series: "Advanced Grip",
-    tagline: "Pilihan ban motor harian dengan harga yang kompetitif.",
-    fitment: "Motor matic",
-    summary:
-      "Zeneos ZN77 menawarkan performa ban harian yang baik dengan harga terjangkau. Tersedia di semua cabang Mister Ban untuk kebutuhan penggantian rutin.",
-    features: [
-      "Harga kompetitif untuk penggantian rutin.",
-      "Tersedia di semua cabang.",
-    ],
-    metrics: [
-      { label: "Brand", value: "Zeneos" },
-      { label: "Tipe", value: "TL" },
-      { label: "Kategori", value: "Value" },
-    ],
-    imageAlt: "Foto ban Zeneos ZN77",
-    stagePalette: {
-      accent: "#13a957",
-      accentRgb: "19, 169, 87",
-      accentSoft: "#69df91",
-      surfaceFrom: "#041f12",
-      surfaceTo: "#0a351f",
-      surfaceGlow: "#116d38",
-    },
-    imagePath: "/brand/brand/Zeneos-zn77.png",
-  },
-]
-
-const techCards: TechCard[] = [
-  {
-    title: "Empat brand pilihan",
-    description:
-      "Kingland, IRC, Maxxis, dan Zeneos tersedia dan bisa ditanyakan langsung ke cabang.",
-  },
-  {
-    title: "Cek stok langsung",
-    description:
-      "Hubungi cabang terdekat untuk menanyakan stok, ukuran, dan harga ban yang tersedia.",
-  },
-  {
-    title: "Tujuh lokasi aktif",
-    description:
-      "Cabang Mister Ban tersebar di area Jakarta Barat dan Tangerang.",
-  },
-]
-
-const branchFallbacks: BranchFallback[] = [
-  {
-    title: "Dunia Ban Kedoya",
-    area: "Kedoya",
-    instagram: "@dunia_ban_kedoya",
-  },
-  {
-    title: "Dunia Ban Kembangan",
-    area: "Kembangan",
-    instagram: "@dunia_ban_kembangan",
-  },
-  {
-    title: "Mister Ban Meruya",
-    area: "Meruya",
-    instagram: "@misterbanmotor",
-  },
-  {
-    title: "Mister Ban Karang Tengah",
-    area: "Karang Tengah",
-    instagram: "@misterbanmotor",
-  },
-  {
-    title: "Mister Ban Gondrong",
-    area: "Gondrong",
-    instagram: "@m2tc.misterban.gondrong",
-  },
-  {
-    title: "Gemilang Ban Paninggilan",
-    area: "Paninggilan",
-    instagram: "@m2tc.gemilangban.paninggilan",
-  },
-  {
-    title: "Gemilang Ban Ciledug",
-    area: "Ciledug",
-    instagram: "@m2tc.gemilangban.ciledugindah",
-  },
-]
-
 const defaultProductLine = productLines.at(0)
 
 if (!defaultProductLine) {
@@ -353,39 +23,24 @@ if (!defaultProductLine) {
 }
 
 const activeLineId = ref<string>(defaultProductLine.id)
+const activeBrandId = ref<string>(defaultProductLine.id)
 const clickedLineId = ref<string | null>(null)
 let traceTimer: ReturnType<typeof setTimeout> | null = null
-
-const swipeDir = ref<'next' | 'prev'>('next')
+const swipeDir = ref<"next" | "prev">("next")
 
 function handleSwitcherClick(id: string): void {
   const currentIdx = productLines.findIndex((l) => l.id === activeLineId.value)
   const targetIdx = productLines.findIndex((l) => l.id === id)
-  swipeDir.value = targetIdx >= currentIdx ? 'next' : 'prev'
+  swipeDir.value = targetIdx >= currentIdx ? "next" : "prev"
   activeLineId.value = id
+  activeBrandId.value = id
   clickedLineId.value = id
   if (traceTimer) clearTimeout(traceTimer)
   traceTimer = setTimeout(() => { clickedLineId.value = null }, 750)
 }
 
-const touchStartX = ref(0)
-
-function handleStageTouchStart(e: TouchEvent): void {
-  const t = e.touches.item(0)
-  if (!t) return
-  touchStartX.value = t.clientX
-}
-
-function handleStageTouchEnd(e: TouchEvent): void {
-  const t = e.changedTouches.item(0)
-  if (!t) return
-  const delta = t.clientX - touchStartX.value
-  if (Math.abs(delta) < 48) return
-  const idx = productLines.findIndex((l) => l.id === activeLineId.value)
-  const target = delta < 0
-    ? productLines[(idx + 1) % productLines.length]
-    : productLines[(idx - 1 + productLines.length) % productLines.length]
-  if (target) handleSwitcherClick(target.id)
+function handleBrandSwitch(id: string): void {
+  activeBrandId.value = id
 }
 
 const activeLine = computed<ProductLine>(() => {
@@ -396,369 +51,56 @@ const activeStageModel = computed<string>(() => {
   return activeLine.value.name.replace(new RegExp(`^${activeLine.value.brand}\\s*`, "i"), "").toUpperCase()
 })
 
-const activeStageStyle = computed<CSSProperties>(() => {
-  return {
-    "--stage-accent": activeLine.value.stagePalette.accent,
-    "--stage-accent-rgb": activeLine.value.stagePalette.accentRgb,
-    "--stage-accent-soft": activeLine.value.stagePalette.accentSoft,
-    "--stage-surface-from": activeLine.value.stagePalette.surfaceFrom,
-    "--stage-surface-to": activeLine.value.stagePalette.surfaceTo,
-    "--stage-surface-glow": activeLine.value.stagePalette.surfaceGlow,
-  }
-})
+const activeStageStyle = computed<CSSProperties>(() => ({
+  "--stage-accent": activeLine.value.stagePalette.accent,
+  "--stage-accent-rgb": activeLine.value.stagePalette.accentRgb,
+  "--stage-accent-soft": activeLine.value.stagePalette.accentSoft,
+  "--stage-surface-from": activeLine.value.stagePalette.surfaceFrom,
+  "--stage-surface-to": activeLine.value.stagePalette.surfaceTo,
+  "--stage-surface-glow": activeLine.value.stagePalette.surfaceGlow,
+}))
 
-const publicBranches = computed<PublicBranchCard[]>(() => {
-  return branchFallbacks.map((branch) => ({
-    title: branch.title,
-    area: branch.area,
-    instagram: branch.instagram,
-  }))
-})
-
-const activeNavId = ref<string | null>(null)
-let closeNavTimer: ReturnType<typeof setTimeout> | null = null
-
-const activeNav = computed<NavGroup | null>(() => {
-  return navGroups.find((group) => group.id === activeNavId.value) ?? null
-})
-
-function openNav(navId: string) {
-  cancelCloseNav()
-  activeNavId.value = navId
-}
-
-function closeNav() {
-  cancelCloseNav()
-  activeNavId.value = null
-}
-
-function scheduleCloseNav() {
-  cancelCloseNav()
-  closeNavTimer = setTimeout(() => {
-    activeNavId.value = null
-    closeNavTimer = null
-  }, 180)
-}
-
-function cancelCloseNav() {
-  if (closeNavTimer) {
-    clearTimeout(closeNavTimer)
-    closeNavTimer = null
-  }
-}
-
-function buildInstagramUrl(handle: string): string {
-  return `https://instagram.com/${handle.replace(/^@/, "")}`
-}
-
-onBeforeUnmount(() => {
-  cancelCloseNav()
-})
+const publicBranches = computed<PublicBranchCard[]>(() =>
+  branchFallbacks.map((b) => ({ title: b.title, area: b.area, instagram: b.instagram }))
+)
 
 const currentYear: number = new Date().getFullYear()
+
+onBeforeUnmount(() => {
+  if (traceTimer) clearTimeout(traceTimer)
+})
 </script>
 
 <template>
   <main class="pub-page">
-    <header class="pub-topbar">
-      <div class="pub-shell pub-topbar-inner">
-        <NuxtLink to="/" class="pub-brand">
-          <img class="pub-brand-logo" src="/brand/logo.png" alt="Mister Ban" />
-          <span class="pub-brand-copy">
-            <strong>Mister Ban</strong>
-            <span>Spesialis ban motor. 7 cabang aktif.</span>
-          </span>
-        </NuxtLink>
-
-        <div class="pub-nav-wrap" @mouseenter="cancelCloseNav" @mouseleave="scheduleCloseNav" @keydown.esc="closeNav">
-          <nav class="pub-nav" aria-label="Public navigation">
-            <button
-              v-for="group in navGroups"
-              :key="group.id"
-              type="button"
-              class="pub-nav-link"
-              :class="{ 'is-active': group.id === activeNavId }"
-              @mouseenter="openNav(group.id)"
-              @focus="openNav(group.id)"
-            >
-              {{ group.label }}
-            </button>
-          </nav>
-
-          <Transition name="pub-menu">
-            <div v-if="activeNav" class="pub-menu-panel" @mouseenter="cancelCloseNav" @mouseleave="scheduleCloseNav">
-              <div class="pub-menu-grid">
-                <div class="pub-menu-copy">
-                  <div class="pub-menu-eyebrow">{{ activeNav.eyebrow }}</div>
-                  <h2 class="pub-menu-title">{{ activeNav.title }}</h2>
-                  <p class="pub-menu-desc">{{ activeNav.description }}</p>
-                </div>
-
-                <div class="pub-menu-links">
-                  <a v-for="item in activeNav.items" :key="item.label" class="pub-menu-link" :href="item.href" @click="closeNav">
-                    <span class="pub-menu-link-copy">
-                      <strong>{{ item.label }}</strong>
-                      <span>{{ item.meta }}</span>
-                    </span>
-                    <span class="pub-menu-link-arrow">→</span>
-                  </a>
-                </div>
-              </div>
-            </div>
-          </Transition>
-        </div>
-
-        <div class="pub-topbar-actions">
-          <span class="pub-search">7 Cabang Aktif</span>
-        </div>
-      </div>
-    </header>
-
-    <section class="pub-hero">
-      <div class="pub-shell">
-        <div class="pub-hero-grid">
-          <svg class="pub-hero-lines" viewBox="0 0 1320 720" preserveAspectRatio="none" aria-hidden="true">
-            <path v-for="path in stageLinePaths" :key="path" :d="path" class="pub-hero-line" />
-            <path
-              v-for="path in stageAccentPaths"
-              :key="`accent-${path}`"
-              :d="path"
-              class="pub-hero-line pub-hero-line--accent"
-            />
-          </svg>
-
-          <div class="pub-hero-copy">
-            <div class="pub-overline">Ban Motor Berkualitas</div>
-            <h1 class="pub-hero-title">Pilihan ban motor untuk kebutuhan harian Anda.</h1>
-            <p class="pub-hero-desc">
-              Tersedia brand Kingland, IRC, Maxxis, dan Zeneos di cabang Mister Ban Jakarta Barat dan Tangerang.
-            </p>
-
-            <div class="pub-hero-actions">
-              <a class="pub-btn pub-btn--primary" href="#produk">Lihat Pilihan Ban</a>
-              <a class="pub-btn pub-btn--ghost" href="#jaringan">Temukan Cabang</a>
-            </div>
-
-            <div class="pub-switcher">
-              <button
-                v-for="line in productLines"
-                :key="line.id"
-                type="button"
-                class="pub-switcher-item"
-                :class="{ 'is-active': line.id === activeLine.id, 'is-traced': clickedLineId === line.id }"
-                @click="handleSwitcherClick(line.id)"
-              >
-                <span class="pub-switcher-index">{{ line.serial }}</span>
-                <span class="pub-switcher-text">
-                  <strong>{{ line.name }}</strong>
-                  <span>{{ line.fitment }}</span>
-                </span>
-              </button>
-            </div>
-          </div>
-
-          <div class="pub-stage" :style="activeStageStyle">
-            <div class="pub-stage-lane pub-stage-lane--one" />
-            <div class="pub-stage-lane pub-stage-lane--two" />
-            <div class="pub-stage-aura" />
-
-            <div class="pub-stage-frame" @touchstart.passive="handleStageTouchStart" @touchend.passive="handleStageTouchEnd">
-              <Transition :name="`pub-stage-scene-${swipeDir}`" mode="out-in">
-                <div :key="`stage-${activeLine.id}`" class="pub-stage-scene">
-                  <svg class="pub-stage-poster" viewBox="0 0 720 620" preserveAspectRatio="none" aria-hidden="true">
-                    <rect x="0" y="0" width="720" height="620" rx="40" fill="rgba(255, 255, 255, 0.02)" />
-                    <circle cx="552" cy="184" r="176" :fill="activeLine.stagePalette.surfaceGlow" fill-opacity="0.34" />
-                    <circle cx="560" cy="192" r="132" fill="none" class="pub-stage-poster-orbit" />
-                    <circle cx="560" cy="192" r="188" fill="none" class="pub-stage-poster-orbit pub-stage-poster-orbit--soft" />
-                    <path d="M 22 114 C 162 22 322 14 446 92 S 658 266 764 182" class="pub-stage-poster-line" />
-                    <path d="M 6 178 C 166 80 322 72 454 150 S 658 330 760 244" class="pub-stage-poster-line pub-stage-poster-line--soft" />
-                    <path d="M 54 62 H 306" class="pub-stage-poster-rule" />
-                    <path d="M 54 470 H 314" class="pub-stage-poster-rule pub-stage-poster-rule--accent" />
-                    <g class="pub-stage-poster-slashes" transform="translate(328 446)">
-                      <rect x="0" y="0" width="10" height="54" rx="5" />
-                      <rect x="18" y="0" width="10" height="54" rx="5" />
-                      <rect x="36" y="0" width="10" height="54" rx="5" />
-                    </g>
-                    <text x="48" y="164" class="pub-stage-poster-serial">{{ activeLine.serial }}</text>
-                    <text x="56" y="110" class="pub-stage-poster-brand">{{ activeLine.brand.toUpperCase() }}</text>
-                    <text x="56" y="430" class="pub-stage-poster-title">{{ activeStageModel }}</text>
-                    <text x="56" y="514" class="pub-stage-poster-series">{{ activeLine.series.toUpperCase() }}</text>
-
-                    <g
-                      v-for="(metric, index) in activeLine.metrics"
-                      :key="`${activeLine.id}-${metric.label}`"
-                      class="pub-stage-poster-chip"
-                      :transform="`translate(${56 + index * 154} 540)`"
-                    >
-                      <rect width="138" height="52" rx="20" />
-                      <text x="18" y="21" class="pub-stage-poster-chip-label">{{ metric.label }}</text>
-                      <text x="18" y="39" class="pub-stage-poster-chip-value">{{ metric.value }}</text>
-                    </g>
-                  </svg>
-
-                  <div class="pub-stage-visual" :class="`is-${activeLine.id}`">
-                    <img v-if="activeLine.imagePath" class="pub-stage-photo" :src="activeLine.imagePath" :alt="activeLine.imageAlt" />
-
-                    <div v-else class="pub-wheel">
-                      <div class="pub-wheel-ring pub-wheel-ring--outer" />
-                      <div class="pub-wheel-ring pub-wheel-ring--mid" />
-                      <div class="pub-wheel-ring pub-wheel-ring--inner" />
-                      <div class="pub-wheel-spoke pub-wheel-spoke--a" />
-                      <div class="pub-wheel-spoke pub-wheel-spoke--b" />
-                      <div class="pub-wheel-spoke pub-wheel-spoke--c" />
-                      <div class="pub-wheel-core" />
-                    </div>
-                  </div>
-                </div>
-              </Transition>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section class="pub-tape" aria-label="Product themes">
-      <div class="pub-tape-track" aria-hidden="true">
-        <span v-for="word in tapeWords" :key="`a-${word}`" class="pub-tape-word">{{ word }}</span>
-        <span v-for="word in tapeWords" :key="`b-${word}`" class="pub-tape-word">{{ word }}</span>
-      </div>
-    </section>
-
-    <section class="pub-metrics">
-      <div class="pub-shell pub-metric-grid">
-        <article v-for="metric in heroMetrics" :key="metric.value" class="pub-metric-card">
-          <div class="pub-metric-value">{{ metric.value }}</div>
-          <p class="pub-metric-label">{{ metric.label }}</p>
-        </article>
-      </div>
-    </section>
-
-    <section id="produk" class="pub-section pub-section--dark">
-      <div class="pub-shell pub-product-grid">
-        <div class="pub-product-copy">
-          <div class="pub-kicker pub-kicker--dark">Pilihan Ban</div>
-          <h2 class="pub-heading pub-heading--light">Pilih brand yang sesuai dengan motor Anda.</h2>
-          <p class="pub-body pub-body--light">
-            Tersedia pilihan ban untuk motor matic dan bebek dari empat brand terpercaya.
-          </p>
-
-          <div class="pub-product-list">
-            <button
-              v-for="line in productLines"
-              :key="`detail-${line.id}`"
-              type="button"
-              class="pub-product-item"
-              :class="{ 'is-active': line.id === activeLine.id, 'is-traced': clickedLineId === line.id }"
-              @click="handleSwitcherClick(line.id)"
-            >
-              <span class="pub-product-serial">{{ line.serial }}</span>
-              <span class="pub-product-meta">
-                <strong>{{ line.name }}</strong>
-                <span>{{ line.fitment }}</span>
-              </span>
-            </button>
-          </div>
-        </div>
-
-        <div class="pub-product-detail">
-          <Transition name="pub-detail-swap" mode="out-in">
-            <div :key="`detail-${activeLine.id}`" class="pub-detail-panel">
-              <div class="pub-detail-head">
-                <span class="pub-detail-serial">{{ activeLine.serial }}</span>
-                <span class="pub-detail-fitment">{{ activeLine.fitment }}</span>
-              </div>
-
-              <h3 class="pub-detail-title">{{ activeLine.name }}</h3>
-              <p class="pub-detail-desc">{{ activeLine.summary }}</p>
-
-              <div class="pub-detail-metrics">
-                <article v-for="metric in activeLine.metrics" :key="`${activeLine.id}-${metric.label}`" class="pub-detail-metric">
-                  <span>{{ metric.label }}</span>
-                  <strong>{{ metric.value }}</strong>
-                </article>
-              </div>
-
-              <div class="pub-feature-list">
-                <div v-for="feature in activeLine.features" :key="feature" class="pub-feature-item">
-                  <div class="pub-feature-dot" />
-                  <span>{{ feature }}</span>
-                </div>
-              </div>
-            </div>
-          </Transition>
-        </div>
-      </div>
-    </section>
-
-    <section id="teknologi" class="pub-section">
-      <div class="pub-shell">
-        <div class="pub-section-head">
-          <div class="pub-kicker">Layanan Kami</div>
-          <h2 class="pub-heading">Belanja ban motor jadi lebih mudah.</h2>
-          <p class="pub-body">
-            Pilih brand yang sesuai, cek cabang terdekat, lalu datang untuk konsultasi ukuran dan ketersediaan ban.
-          </p>
-        </div>
-
-        <div class="pub-tech-grid">
-          <article v-for="card in techCards" :key="card.title" class="pub-tech-card">
-            <h3 class="pub-tech-title">{{ card.title }}</h3>
-            <p class="pub-tech-desc">{{ card.description }}</p>
-          </article>
-        </div>
-      </div>
-    </section>
-
-    <section id="jaringan" class="pub-section pub-section--accent">
-      <div class="pub-shell pub-network-grid">
-        <div class="pub-network-copy">
-          <div class="pub-kicker">Cabang Kami</div>
-          <h2 class="pub-heading">Datang ke cabang Mister Ban terdekat.</h2>
-          <p class="pub-body">
-            Setiap cabang siap membantu cek stok, ukuran, dan pilihan ban motor yang sesuai.
-          </p>
-
-          <div class="pub-network-actions">
-            <a class="pub-btn pub-btn--primary" href="#produk">Lihat Pilihan Ban</a>
-          </div>
-        </div>
-
-        <div class="pub-network-panel">
-          <article v-for="branch in publicBranches" :key="branch.title" class="pub-network-card">
-            <div class="pub-branch-head">
-              <div>
-                <h3 class="pub-network-title">{{ branch.title }}</h3>
-                <p class="pub-branch-area">Area {{ branch.area }}</p>
-              </div>
-            </div>
-            <div v-if="branch.instagram" class="pub-branch-meta">
-              <a
-                class="pub-branch-link"
-                :href="buildInstagramUrl(branch.instagram)"
-                target="_blank"
-                rel="noreferrer"
-              >
-                {{ branch.instagram }}
-              </a>
-            </div>
-          </article>
-        </div>
-      </div>
-    </section>
-
-    <footer class="pub-footer">
-      <div class="pub-shell pub-footer-inner">
-        <div>
-          <div class="pub-footer-brand">Mister Ban</div>
-          <p class="pub-footer-copy">Pilihan ban motor dari brand terpercaya untuk kebutuhan harian di Jakarta Barat dan Tangerang.</p>
-        </div>
-        <p class="pub-copyright">© {{ currentYear }} Mister Ban. Semua hak dilindungi.</p>
-      </div>
-    </footer>
+    <PubTopbar :nav-groups="navGroups" />
+    <PubHero
+      :product-lines="productLines"
+      :hero-metrics="heroMetrics"
+      :stage-line-paths="stageLinePaths"
+      :stage-accent-paths="stageAccentPaths"
+      :active-line="activeLine"
+      :active-stage-model="activeStageModel"
+      :active-stage-style="activeStageStyle"
+      :clicked-line-id="clickedLineId"
+      :swipe-dir="swipeDir"
+      @switch-line="handleSwitcherClick"
+    />
+    <PubTape :words="tapeWords" />
+    <PubMetrics :metrics="heroMetrics" />
+    <PubSizeFinder :brand-catalog="brandCatalog" />
+    <PubProducts
+      :brand-catalog="brandCatalog"
+      :active-brand-id="activeBrandId"
+      @switch-brand="handleBrandSwitch"
+    />
+    <PubServices :tech-cards="techCards" />
+    <PubBranches :branches="publicBranches" />
+    <PubFooter :current-year="currentYear" />
   </main>
 </template>
 
-<style scoped>
+<style>
 :global(html),
 :global(body) {
   background: #ffffff;
@@ -1532,15 +874,8 @@ const currentYear: number = new Date().getFullYear()
   transform: translate(-50%, -50%);
 }
 
-.pub-wheel-ring--outer {
-  width: 74%;
-  height: 74%;
-}
-
-.pub-wheel-ring--mid {
-  width: 50%;
-  height: 50%;
-}
+.pub-wheel-ring--outer { width: 74%; height: 74%; }
+.pub-wheel-ring--mid { width: 50%; height: 50%; }
 
 .pub-wheel-ring--inner {
   width: 24%;
@@ -1560,17 +895,9 @@ const currentYear: number = new Date().getFullYear()
   background: rgba(255, 255, 255, 0.14);
 }
 
-.pub-wheel-spoke--a {
-  transform: rotate(0deg);
-}
-
-.pub-wheel-spoke--b {
-  transform: rotate(60deg);
-}
-
-.pub-wheel-spoke--c {
-  transform: rotate(120deg);
-}
+.pub-wheel-spoke--a { transform: rotate(0deg); }
+.pub-wheel-spoke--b { transform: rotate(60deg); }
+.pub-wheel-spoke--c { transform: rotate(120deg); }
 
 .pub-wheel-core {
   position: absolute;
@@ -1599,37 +926,14 @@ const currentYear: number = new Date().getFullYear()
   padding: 0 8px;
 }
 
-.pub-stage-visual.is-kingland-tiger {
-  right: 18px;
-  width: min(48%, 312px);
-}
+.pub-stage-visual.is-kingland-tiger { right: 18px; width: min(48%, 312px); }
+.pub-stage-visual.is-irc-ss-530r { right: 18px; width: min(52%, 330px); }
+.pub-stage-visual.is-maxxis-ma-3di { right: 2px; width: min(60%, 420px); }
+.pub-stage-visual.is-zeneos-zn77 { right: 0; width: min(72%, 480px); }
 
-.pub-stage-visual.is-irc-ss-530r {
-  right: 18px;
-  width: min(52%, 330px);
-}
-
-.pub-stage-visual.is-maxxis-ma-3di {
-  right: 2px;
-  width: min(60%, 420px);
-}
-
-.pub-stage-visual.is-zeneos-zn77 {
-  right: 0;
-  width: min(72%, 480px);
-}
-
-.pub-stage-visual.is-kingland-tiger .pub-stage-photo {
-  transform: translateX(0) scale(0.92);
-}
-
-.pub-stage-visual.is-irc-ss-530r .pub-stage-photo {
-  transform: scale(0.94);
-}
-
-.pub-stage-visual.is-maxxis-ma-3di .pub-stage-photo {
-  transform: translateX(10px) rotate(-4deg) scale(0.96);
-}
+.pub-stage-visual.is-kingland-tiger .pub-stage-photo { transform: translateX(0) scale(0.92); }
+.pub-stage-visual.is-irc-ss-530r .pub-stage-photo { transform: scale(0.94); }
+.pub-stage-visual.is-maxxis-ma-3di .pub-stage-photo { transform: translateX(10px) rotate(-4deg) scale(0.96); }
 
 .pub-stage-visual.is-zeneos-zn77 .pub-stage-photo {
   width: 100%;
@@ -1674,10 +978,6 @@ const currentYear: number = new Date().getFullYear()
   text-transform: uppercase;
 }
 
-.pub-heading--light {
-  color: #ffffff;
-}
-
 .pub-body {
   max-width: 62ch;
   margin: 16px 0 0;
@@ -1686,137 +986,12 @@ const currentYear: number = new Date().getFullYear()
   line-height: 1.8;
 }
 
-.pub-body--light {
-  color: rgba(255, 255, 255, 0.76);
-}
+.pub-body--light { color: rgba(255, 255, 255, 0.76); }
+.pub-heading--light { color: #ffffff; }
 
-.pub-product-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
-  gap: 22px;
-  align-items: start;
-}
 
-.pub-product-copy {
-  position: sticky;
-  top: 96px;
-}
 
-.pub-product-list {
-  display: grid;
-  gap: 12px;
-  margin-top: 24px;
-}
-
-.pub-product-item {
-  position: relative;
-  display: grid;
-  grid-template-columns: 58px minmax(0, 1fr);
-  gap: 14px;
-  align-items: center;
-  width: 100%;
-  padding: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 22px;
-  background: rgba(255, 255, 255, 0.08);
-  color: #ffffff;
-  text-align: left;
-  cursor: pointer;
-  transition:
-    transform 0.22s ease,
-    border-color 0.22s ease,
-    background-color 0.22s ease,
-    box-shadow 0.22s ease;
-}
-
-.pub-product-item:hover {
-  transform: translateY(-2px);
-}
-
-.pub-product-item.is-active {
-  border-color: rgba(255, 255, 255, 0.7);
-  background: #ffffff;
-  color: var(--pub-green-900);
-  box-shadow: 0 18px 32px rgba(0, 0, 0, 0.18);
-}
-
-.pub-product-serial {
-  display: grid;
-  place-items: center;
-  width: 58px;
-  height: 58px;
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.14);
-  color: #ffffff;
-  font-size: 18px;
-  font-weight: 800;
-}
-
-.pub-product-meta {
-  display: grid;
-  gap: 4px;
-}
-
-.pub-product-meta strong {
-  font-size: 17px;
-  line-height: 1.1;
-}
-
-.pub-product-meta span {
-  color: rgba(255, 255, 255, 0.72);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.pub-product-item.is-active .pub-product-serial {
-  background: var(--pub-green-700);
-  color: #ffffff;
-}
-
-.pub-product-item.is-active .pub-product-meta span {
-  color: rgba(20, 32, 25, 0.62);
-}
-
-.pub-product-detail {
-  min-width: 0;
-}
-
-.pub-detail-panel {
-  padding: 26px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 30px;
-  background: #ffffff;
-  color: var(--pub-green-950);
-  min-height: 100%;
-  box-shadow: 0 24px 54px rgba(0, 0, 0, 0.18);
-}
-
-.pub-detail-swap-enter-active,
-.pub-detail-swap-leave-active {
-  transition:
-    opacity 0.28s ease,
-    transform 0.3s ease,
-    filter 0.3s ease;
-}
-
-.pub-detail-swap-enter-from {
-  opacity: 0;
-  transform: translateX(20px);
-  filter: blur(10px);
-}
-
-.pub-detail-swap-leave-to {
-  opacity: 0;
-  transform: translateX(-16px);
-  filter: blur(10px);
-}
-
-.pub-detail-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-}
+.pub-detail-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
 
 .pub-detail-serial {
   display: inline-flex;
@@ -1832,11 +1007,7 @@ const currentYear: number = new Date().getFullYear()
   font-weight: 900;
 }
 
-.pub-detail-fitment {
-  color: rgba(20, 32, 25, 0.62);
-  font-size: 13px;
-  text-align: right;
-}
+.pub-detail-fitment { color: rgba(20, 32, 25, 0.62); font-size: 13px; text-align: right; }
 
 .pub-detail-title {
   margin: 20px 0 0;
@@ -1846,13 +1017,7 @@ const currentYear: number = new Date().getFullYear()
   font-weight: 900;
 }
 
-.pub-detail-desc {
-  max-width: 60ch;
-  margin: 16px 0 0;
-  color: var(--pub-muted);
-  font-size: 15px;
-  line-height: 1.8;
-}
+.pub-detail-desc { max-width: 60ch; margin: 16px 0 0; color: var(--pub-muted); font-size: 15px; line-height: 1.8; }
 
 .pub-detail-metrics {
   display: grid;
@@ -1870,21 +1035,10 @@ const currentYear: number = new Date().getFullYear()
   background: var(--pub-green-50);
 }
 
-.pub-detail-metric span {
-  color: rgba(20, 32, 25, 0.62);
-  font-size: 12px;
-}
+.pub-detail-metric span { color: rgba(20, 32, 25, 0.62); font-size: 12px; }
+.pub-detail-metric strong { font-size: 18px; line-height: 1.1; }
 
-.pub-detail-metric strong {
-  font-size: 18px;
-  line-height: 1.1;
-}
-
-.pub-feature-list {
-  display: grid;
-  gap: 12px;
-  margin-top: 24px;
-}
+.pub-feature-list { display: grid; gap: 12px; margin-top: 24px; }
 
 .pub-feature-item {
   display: flex;
@@ -1932,20 +1086,8 @@ const currentYear: number = new Date().getFullYear()
   box-shadow: 0 16px 36px rgba(7, 54, 31, 0.14);
 }
 
-.pub-tech-title {
-  margin: 0;
-  color: var(--pub-green-950);
-  font-size: 22px;
-  line-height: 1.05;
-  letter-spacing: -0.04em;
-}
-
-.pub-tech-desc {
-  margin: 12px 0 0;
-  color: var(--pub-muted);
-  font-size: 14px;
-  line-height: 1.7;
-}
+.pub-tech-title { margin: 0; color: var(--pub-green-950); font-size: 22px; line-height: 1.05; letter-spacing: -0.04em; }
+.pub-tech-desc { margin: 12px 0 0; color: var(--pub-muted); font-size: 14px; line-height: 1.7; }
 
 .pub-network-grid {
   display: grid;
@@ -1954,12 +1096,7 @@ const currentYear: number = new Date().getFullYear()
   align-items: start;
 }
 
-.pub-network-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-top: 24px;
-}
+.pub-network-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
 
 .pub-network-panel {
   display: grid;
@@ -1985,12 +1122,7 @@ const currentYear: number = new Date().getFullYear()
   box-shadow: 0 16px 36px rgba(7, 54, 31, 0.12);
 }
 
-.pub-branch-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 14px;
-}
+.pub-branch-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
 
 .pub-branch-area {
   margin: 10px 0 0;
@@ -2001,36 +1133,12 @@ const currentYear: number = new Date().getFullYear()
   text-transform: uppercase;
 }
 
-.pub-branch-link {
-  color: var(--pub-green-800);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-decoration: none;
-}
+.pub-branch-link { color: var(--pub-green-800); font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-decoration: none; }
+.pub-branch-link:hover { color: var(--pub-green-950); }
+.pub-network-title { margin: 0; color: var(--pub-green-950); font-size: 22px; line-height: 1.05; letter-spacing: -0.04em; }
+.pub-branch-meta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
 
-.pub-branch-link:hover {
-  color: var(--pub-green-950);
-}
-
-.pub-network-title {
-  margin: 0;
-  color: var(--pub-green-950);
-  font-size: 22px;
-  line-height: 1.05;
-  letter-spacing: -0.04em;
-}
-
-.pub-branch-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 16px;
-}
-
-.pub-footer {
-  padding: 20px 0 40px;
-}
+.pub-footer { padding: 20px 0 40px; }
 
 .pub-footer-inner {
   display: flex;
@@ -2044,12 +1152,7 @@ const currentYear: number = new Date().getFullYear()
   box-shadow: 0 18px 40px rgba(7, 54, 31, 0.18);
 }
 
-.pub-footer-brand {
-  color: #ffffff;
-  font-size: 18px;
-  font-weight: 800;
-  letter-spacing: -0.04em;
-}
+.pub-footer-brand { color: #ffffff; font-size: 18px; font-weight: 800; letter-spacing: -0.04em; }
 
 .pub-footer-copy,
 .pub-copyright {
@@ -2059,20 +1162,11 @@ const currentYear: number = new Date().getFullYear()
   line-height: 1.6;
 }
 
-.pub-copyright {
-  margin: 0;
-  text-align: right;
-}
+.pub-copyright { margin: 0; text-align: right; }
 
-/* ─── Missing base definitions ─── */
+.pub-metrics { padding: 0 0 24px; }
 
-.pub-metrics {
-  padding: 0 0 24px;
-}
-
-.pub-section {
-  padding: 80px 0;
-}
+.pub-section { padding: 80px 0; }
 
 .pub-section--dark {
   background:
@@ -2085,11 +1179,7 @@ const currentYear: number = new Date().getFullYear()
   background: linear-gradient(180deg, #ffffff 0%, #f7fbf8 100%);
 }
 
-.pub-section-head {
-  max-width: 580px;
-  margin: 0 auto 52px;
-  text-align: center;
-}
+.pub-section-head { max-width: 580px; margin: 0 auto 52px; text-align: center; }
 
 .pub-kicker {
   display: inline-flex;
@@ -2101,10 +1191,7 @@ const currentYear: number = new Date().getFullYear()
   text-transform: uppercase;
 }
 
-.pub-kicker--dark {
-  color: #7de89d;
-  opacity: 1;
-}
+.pub-kicker--dark { color: #7de89d; opacity: 1; }
 
 .pub-heading {
   margin: 14px 0 0;
@@ -2140,32 +1227,12 @@ const currentYear: number = new Date().getFullYear()
   box-shadow: 0 18px 36px rgba(7, 54, 31, 0.14);
 }
 
-.pub-metric-value {
-  color: var(--pub-green-900);
-  font-size: 38px;
-  font-weight: 900;
-  letter-spacing: -0.05em;
-  line-height: 1;
-}
-
-.pub-metric-label {
-  margin: 10px 0 0;
-  color: var(--pub-muted);
-  font-size: 14px;
-  line-height: 1.65;
-}
-
-/* ─── Animations ─── */
+.pub-metric-value { color: var(--pub-green-900); font-size: 38px; font-weight: 900; letter-spacing: -0.05em; line-height: 1; }
+.pub-metric-label { margin: 10px 0 0; color: var(--pub-muted); font-size: 14px; line-height: 1.65; }
 
 @keyframes pub-fade-up {
-  from {
-    opacity: 0;
-    transform: translateY(22px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(22px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes pub-line-draw {
@@ -2193,7 +1260,6 @@ const currentYear: number = new Date().getFullYear()
   to { transform: translateX(-50%); }
 }
 
-/* Entry animations */
 .pub-overline { animation: pub-fade-up 0.7s ease both; }
 .pub-hero-title { animation: pub-fade-up 0.7s 0.08s ease both; }
 .pub-hero-desc { animation: pub-fade-up 0.7s 0.18s ease both; }
@@ -2201,21 +1267,9 @@ const currentYear: number = new Date().getFullYear()
 .pub-switcher { animation: pub-fade-up 0.7s 0.38s ease both; }
 .pub-stage { animation: pub-fade-up 0.8s 0.12s ease both; }
 
-/* Hero SVG line draw */
-.pub-hero-line {
-  stroke-dasharray: 1800;
-  animation: pub-line-draw 2.2s ease-out both;
-}
-
-.pub-hero-line--accent {
-  stroke-dasharray: 1800;
-  animation: pub-line-draw 2.2s 0.4s ease-out both;
-}
-
-/* Stage card float */
-.pub-stage-frame {
-  animation: pub-stage-float 7s ease-in-out infinite;
-}
+.pub-hero-line { stroke-dasharray: 1800; animation: pub-line-draw 2.2s ease-out both; }
+.pub-hero-line--accent { stroke-dasharray: 1800; animation: pub-line-draw 2.2s 0.4s ease-out both; }
+.pub-stage-frame { animation: pub-stage-float 7s ease-in-out infinite; }
 
 @keyframes pub-switcher-trace {
   0% { --pub-border-angle: 0deg; opacity: 1; }
@@ -2223,8 +1277,7 @@ const currentYear: number = new Date().getFullYear()
   100% { --pub-border-angle: 360deg; opacity: 0; }
 }
 
-.pub-switcher-item.is-traced::after,
-.pub-product-item.is-traced::after {
+.pub-switcher-item.is-traced::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -2251,7 +1304,6 @@ const currentYear: number = new Date().getFullYear()
   animation: pub-switcher-trace 1s ease-out forwards;
 }
 
-/* Hero copy ambient glow */
 .pub-hero-copy::before {
   content: "";
   position: absolute;
@@ -2266,190 +1318,44 @@ const currentYear: number = new Date().getFullYear()
 }
 
 @media (max-width: 1180px) {
-  .pub-menu-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .pub-metric-grid,
-  .pub-tech-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .pub-product-grid,
-  .pub-network-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .pub-product-copy {
-    position: static;
-  }
-
-  .pub-network-panel {
-    grid-template-columns: 1fr;
-  }
+  .pub-menu-grid { grid-template-columns: 1fr; }
+  .pub-metric-grid, .pub-tech-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pub-network-grid { grid-template-columns: 1fr; }
+  .pub-network-panel { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 960px) {
-  .pub-topbar-inner,
-  .pub-footer-inner {
-    flex-wrap: wrap;
-  }
-
-  .pub-nav-wrap {
-    order: 3;
-    flex: 0 0 100%;
-    justify-content: flex-start;
-  }
-
-  .pub-menu-panel {
-    left: 0;
-    transform: none;
-    width: min(760px, 100%);
-  }
-
-  .pub-hero-grid {
-    grid-template-columns: 1fr;
-    min-height: auto;
-  }
-
-  .pub-hero-title {
-    max-width: 11ch;
-  }
-
-  .pub-stage {
-    min-height: 520px;
-  }
-
-  .pub-switcher,
-  .pub-detail-metrics {
-    grid-template-columns: 1fr;
-  }
+  .pub-topbar-inner, .pub-footer-inner { flex-wrap: wrap; }
+  .pub-nav-wrap { order: 3; flex: 0 0 100%; justify-content: flex-start; }
+  .pub-menu-panel { left: 0; transform: none; width: min(760px, 100%); }
+  .pub-hero-grid { grid-template-columns: 1fr; min-height: auto; }
+  .pub-hero-title { max-width: 11ch; }
+  .pub-stage { min-height: 520px; }
+  .pub-switcher, .pub-detail-metrics { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 720px) {
-  .pub-shell {
-    width: min(100%, calc(100% - 20px));
-  }
-
-  .pub-brand-copy span,
-  .pub-search {
-    display: none;
-  }
-
-  .pub-hero {
-    padding-top: 18px;
-  }
-
-  .pub-hero-title,
-  .pub-heading,
-  .pub-detail-title {
-    max-width: none;
-    font-size: 42px;
-  }
-
-  .pub-stage {
-    min-height: auto;
-    padding-bottom: 16px;
-  }
-
-  .pub-stage-frame {
-    min-height: 360px;
-    border-radius: 28px;
-  }
-
-  .pub-stage-frame::after {
-    border-radius: 28px;
-  }
-
-  .pub-tape-track {
-    animation-duration: 18s;
-  }
-
-  .pub-stage-frame,
-  .pub-metric-card,
-  .pub-tech-card,
-  .pub-network-card,
-  .pub-detail-panel,
-  .pub-footer-inner {
-    border-radius: 22px;
-  }
-
-  .pub-wheel {
-    width: min(320px, 82vw);
-    border-width: 18px;
-    box-shadow:
-      inset 0 0 0 4px rgba(255, 255, 255, 0.06),
-      inset 0 0 0 24px #223228,
-      0 22px 42px rgba(0, 0, 0, 0.18);
-  }
-
-  .pub-wheel-spoke {
-    width: 150px;
-    margin-left: -75px;
-  }
-
-  .pub-menu-panel {
-    top: calc(100% + 10px);
-    left: 0;
-    right: 0;
-    width: auto;
-    transform: none;
-    max-height: calc(100dvh - 160px);
-    overflow-y: auto;
-  }
-
-  .pub-stage-poster-brand {
-    font-size: 24px;
-  }
-
-  .pub-stage-poster-title {
-    font-size: 58px;
-  }
-
-  .pub-stage-poster-series {
-    font-size: 20px;
-  }
-
-  .pub-stage-poster-chip {
-    display: none;
-  }
-
-  .pub-stage-visual,
-  .pub-stage-visual.is-kingland-tiger,
-  .pub-stage-visual.is-irc-ss-530r,
-  .pub-stage-visual.is-maxxis-ma-3di,
-  .pub-stage-visual.is-zeneos-zn77 {
-    top: 16px;
-    right: 0;
-    left: 36%;
-    bottom: 72px;
-    width: auto;
-    padding: 0;
-  }
-
-  .pub-stage-photo {
-    max-height: 240px;
-  }
-
-  .pub-stage-visual.is-zeneos-zn77 .pub-stage-photo {
-    height: auto;
-    max-height: 240px;
-    transform-origin: center bottom;
-  }
-
-  .pub-metric-grid,
-  .pub-tech-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .pub-network-actions {
-    flex-direction: column;
-  }
-
-  .pub-btn--outline,
-  .pub-network-actions .pub-btn,
-  .pub-hero-actions .pub-btn {
-    width: 100%;
-  }
+  .pub-shell { width: min(100%, calc(100% - 20px)); }
+  .pub-brand-copy span, .pub-search { display: none; }
+  .pub-hero { padding-top: 18px; }
+  .pub-hero-title, .pub-heading, .pub-detail-title { max-width: none; font-size: 42px; }
+  .pub-stage { min-height: auto; padding-bottom: 16px; }
+  .pub-stage-frame { min-height: 360px; border-radius: 28px; }
+  .pub-stage-frame::after { border-radius: 28px; }
+  .pub-tape-track { animation-duration: 18s; }
+  .pub-stage-frame, .pub-metric-card, .pub-tech-card, .pub-network-card, .pub-footer-inner { border-radius: 22px; }
+  .pub-wheel { width: min(320px, 82vw); border-width: 18px; box-shadow: inset 0 0 0 4px rgba(255, 255, 255, 0.06), inset 0 0 0 24px #223228, 0 22px 42px rgba(0, 0, 0, 0.18); }
+  .pub-wheel-spoke { width: 150px; margin-left: -75px; }
+  .pub-menu-panel { top: calc(100% + 10px); left: 0; right: 0; width: auto; transform: none; max-height: calc(100dvh - 160px); overflow-y: auto; }
+  .pub-stage-poster-brand { font-size: 24px; }
+  .pub-stage-poster-title { font-size: 58px; }
+  .pub-stage-poster-series { font-size: 20px; }
+  .pub-stage-poster-chip { display: none; }
+  .pub-stage-visual, .pub-stage-visual.is-kingland-tiger, .pub-stage-visual.is-irc-ss-530r, .pub-stage-visual.is-maxxis-ma-3di, .pub-stage-visual.is-zeneos-zn77 { top: 16px; right: 0; left: 36%; bottom: 72px; width: auto; padding: 0; }
+  .pub-stage-photo { max-height: 240px; }
+  .pub-stage-visual.is-zeneos-zn77 .pub-stage-photo { height: auto; max-height: 240px; transform-origin: center bottom; }
+  .pub-metric-grid, .pub-tech-grid { grid-template-columns: 1fr; }
+  .pub-network-actions { flex-direction: column; }
+  .pub-btn--outline, .pub-network-actions .pub-btn, .pub-hero-actions .pub-btn { width: 100%; }
 }
 </style>
