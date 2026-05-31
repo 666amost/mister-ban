@@ -29,9 +29,9 @@ export function getPool() {
 
   const pool = new Pool({ 
     connectionString: databaseUrl,
-    max: process.env.NODE_ENV === 'production' ? 1 : 10,
+    max: process.env.NODE_ENV === 'production' ? 5 : 10,
     idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 5000,
+    connectionTimeoutMillis: 8000,
   });
   
   globalThis.__mbPool = pool;

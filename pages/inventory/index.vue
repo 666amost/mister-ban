@@ -82,7 +82,7 @@ const adjError = ref<string | null>(null)
 const activeEditorTooltip = ref<{ productId: string; type: "adj" | "price" } | null>(null)
 
 function maskEmail(email: string | null): string {
-  if (!email) return "Unknown"
+  if (!email) return "Akun dihapus"
   const atIdx = email.indexOf("@")
   if (atIdx <= 0) return email
   return email.slice(0, atIdx) + "@XXX"
@@ -575,6 +575,11 @@ const brandPickerOptions = computed(() => {
   return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0])).map(([brand, count]) => ({ brand, count }))
 })
 
+const adjItem = computed(() => {
+  if (!adjustingId.value) return null
+  return items.value.find((i) => i.product_id === adjustingId.value) ?? null
+})
+
 onMounted(async () => {
   await load({ reset: true })
 })
@@ -763,41 +768,57 @@ onMounted(async () => {
                   </template>
                 </td>
                 <td v-if="me.user.value?.role === 'ADMIN'" style="text-align: right">
-                  <button class="mb-btn" type="button" :disabled="priceEditMode" @click="startAdjust(i)">Adjust</button>
-                </td>
-              </tr>
-              <tr v-if="me.user.value?.role === 'ADMIN' && adjustingId === i.product_id && !priceEditMode">
-                <td :colspan="6">
-                  <div class="adjRow">
-                    <label class="field smallField">
-                      <span>Qty Delta</span>
-                      <input v-model.number="adjQtyDelta" class="mb-input" type="number" step="1" placeholder="+10 atau -5" />
-                    </label>
-                    <label class="field smallField">
-                      <span title="Hanya berpengaruh saat tambah stok (Qty Delta positif)">Harga Beli (Rp)</span>
-                      <input v-model.number="adjUnitCost" class="mb-input" type="number" min="0" step="1" />
-                    </label>
-                    <label class="field noteField">
-                      <span>Note</span>
-                      <input v-model="adjNote" class="mb-input" placeholder="Optional" />
-                    </label>
-                    <button class="mb-btnPrimary" type="button" :disabled="adjLoading" @click="submitAdjust(i.product_id)">
-                      {{ adjLoading ? "Saving..." : "Save" }}
-                    </button>
-                    <button class="mb-btn" type="button" :disabled="adjLoading" @click="clearAvgCost(i.product_id)">
-                      Kosongkan Avg Cost
-                    </button>
-                    <button class="mb-btn" type="button" :disabled="adjLoading" @click="cancelAdjust">Cancel</button>
-                    <span v-if="adjError" class="errorInline">{{ adjError }}</span>
-                  </div>
-                  <div class="hint">
-                    <strong>Harga Modal (Avg Cost):</strong> Saat tambah stok (+), modal dihitung ulang. Saat kurang stok (-), modal tetap.
-                  </div>
+                  <button
+                    class="mb-btn"
+                    type="button"
+                    :disabled="priceEditMode"
+                    :class="{ adjActiveBtn: adjustingId === i.product_id }"
+                    @click="adjustingId === i.product_id ? cancelAdjust() : startAdjust(i)"
+                  >
+                    {{ adjustingId === i.product_id ? 'Cancel' : 'Adjust' }}
+                  </button>
                 </td>
               </tr>
             </template>
           </tbody>
         </table>
+      </div>
+
+      <div v-if="me.user.value?.role === 'ADMIN' && adjItem && !priceEditMode" class="adjPanel">
+        <div class="adjPanelHeader">
+          <div class="adjPanelTitle">
+            Adjust Stok — <span class="adjPanelProduct">{{ productDisplayName(adjItem.brand, adjItem.name) }}</span>
+            <span class="adjPanelSize">{{ adjItem.size }}</span>
+            <span class="adjPanelQty">Stok saat ini: <strong>{{ adjItem.qty_on_hand }}</strong></span>
+          </div>
+        </div>
+        <div class="adjRow">
+          <label class="field smallField">
+            <span>Qty Delta</span>
+            <input v-model.number="adjQtyDelta" class="mb-input" type="number" step="1" placeholder="+10 atau -5" />
+          </label>
+          <label class="field smallField">
+            <span title="Hanya berpengaruh saat tambah stok (Qty Delta positif)">Harga Beli (Rp)</span>
+            <input v-model.number="adjUnitCost" class="mb-input" type="number" min="0" step="1" />
+          </label>
+          <label class="field noteField">
+            <span>Note</span>
+            <input v-model="adjNote" class="mb-input" placeholder="Optional" />
+          </label>
+          <div class="adjPanelActions">
+            <button class="mb-btnPrimary" type="button" :disabled="adjLoading" @click="submitAdjust(adjItem.product_id)">
+              {{ adjLoading ? "Saving..." : "Save" }}
+            </button>
+            <button class="mb-btn" type="button" :disabled="adjLoading" @click="clearAvgCost(adjItem.product_id)">
+              Kosongkan Avg Cost
+            </button>
+            <button class="mb-btn" type="button" :disabled="adjLoading" @click="cancelAdjust">Cancel</button>
+            <span v-if="adjError" class="errorInline">{{ adjError }}</span>
+          </div>
+        </div>
+        <div class="hint">
+          <strong>Harga Modal (Avg Cost):</strong> Saat tambah stok (+), modal dihitung ulang. Saat kurang stok (-), modal tetap.
+        </div>
       </div>
 
       <div v-else class="empty">Tidak ada data.</div>
@@ -886,7 +907,50 @@ onMounted(async () => {
   gap: 10px;
   align-items: end;
   flex-wrap: wrap;
-  padding: 10px 0;
+  padding: 10px 0 4px;
+}
+.adjPanel {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(52, 199, 89, 0.35);
+  border-radius: 12px;
+  background: rgba(52, 199, 89, 0.06);
+}
+.adjPanelHeader {
+  margin-bottom: 4px;
+}
+.adjPanelTitle {
+  font-size: 12px;
+  color: var(--mb-muted);
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.adjPanelProduct {
+  font-weight: 700;
+  color: var(--mb-text);
+  font-size: 13px;
+}
+.adjPanelSize {
+  font-size: 11px;
+  color: var(--mb-muted);
+}
+.adjPanelQty {
+  font-size: 11px;
+  color: var(--mb-muted);
+  margin-left: auto;
+}
+.adjPanelActions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.adjActiveBtn {
+  background: rgba(255, 59, 48, 0.12) !important;
+  color: var(--mb-danger) !important;
+  border-color: rgba(255, 59, 48, 0.3) !important;
 }
 .smallField {
   min-width: 160px;
