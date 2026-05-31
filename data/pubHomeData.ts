@@ -50,8 +50,6 @@ export const tapeWords: string[] = [
   "Pirelli",
   "Michelin",
   "Aspira",
-  "Bridgestone",
-  "Dunlop",
   "Cek Stok ke Toko",
 ]
 
@@ -324,26 +322,5 @@ export const brandCatalog: BrandCatalog[] = [
       { type: "K59A12", sizes: ["80/90-14", "90/90-14", "100/90-12"] },
     ],
   },
-  {
-    id: "corsa",
-    name: "Corsa",
-    types: [
-      { type: "R46", sizes: ["90/80-14"] },
-    ],
-  },
-  {
-    id: "deli-tire",
-    name: "Deli Tire",
-    types: [],
-  },
-  {
-    id: "dunlop",
-    name: "Dunlop",
-    types: [],
-  },
-  {
-    id: "bridgestone",
-    name: "Bridgestone",
-    types: [],
-  },
 ]
+

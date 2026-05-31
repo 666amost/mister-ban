@@ -75,7 +75,7 @@ watch(sizeFilter, (newFilter) => {
           <div class="pub-kicker pub-kicker--dark">Pilihan Ban</div>
           <h2 class="pub-heading pub-heading--light">Pilih brand yang sesuai dengan motor Anda.</h2>
           <p class="pub-body pub-body--light">
-            Tersedia {{ props.brandCatalog.length }} brand ban motor pilihan di semua cabang Mister Ban.
+            Tersedia berbagai macam merk ban motor pilihan di semua cabang Mister Ban.
           </p>
         </div>
         <div class="pub-filter-tabs">
