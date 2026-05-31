@@ -47,3 +47,28 @@ export async function storeExists(db: DbConn, storeId: string) {
   );
   return rows.length > 0;
 }
+
+export type CreateStoreInput = {
+  name: string;
+  code?: string | null;
+  address?: string | null;
+  city?: string | null;
+};
+
+export async function createStore(
+  db: DbConn,
+  input: CreateStoreInput,
+): Promise<StoreDetailRow> {
+  const { rows } = await db.query(
+    `INSERT INTO stores (name, code, address, city, status)
+     VALUES ($1, $2, $3, $4, 'active')
+     RETURNING id, name, code, address, city, operating_hours, status`,
+    [
+      input.name,
+      input.code ?? null,
+      input.address ?? null,
+      input.city ?? null,
+    ],
+  );
+  return rows[0] as StoreDetailRow;
+}

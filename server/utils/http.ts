@@ -11,3 +11,7 @@ export function unauthorized(message = "Unauthorized") {
 export function forbidden(message = "Forbidden") {
   return createError({ statusCode: 403, statusMessage: message });
 }
+
+export function notFound(message = "Not Found") {
+  return createError({ statusCode: 404, statusMessage: message });
+}

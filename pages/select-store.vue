@@ -34,6 +34,85 @@ const errorMessage = ref<string | null>(null);
 const isLoading = ref(false);
 const isSelecting = ref(false);
 
+const isCreateOpen = ref(false);
+const isCreating = ref(false);
+const createError = ref<string | null>(null);
+const createForm = ref({
+  name: "",
+  code: "",
+  address: "",
+  city: "",
+  source_store_id: "",
+  copy_inventory: false,
+});
+
+const isDeleteOpen = ref(false);
+const deleteSelectedId = ref("");
+const deleteStep = ref<"select" | "confirm">("select");
+const isDeleting = ref(false);
+const deleteError = ref<string | null>(null);
+
+const deleteTargetStore = computed(
+  () => stores.value.find((s) => s.id === deleteSelectedId.value) ?? null,
+);
+
+function openDeleteModal() {
+  deleteSelectedId.value = "";
+  deleteStep.value = "select";
+  deleteError.value = null;
+  isDeleteOpen.value = true;
+}
+
+async function confirmDeleteStore() {
+  if (!deleteSelectedId.value) return;
+  isDeleting.value = true;
+  deleteError.value = null;
+  try {
+    await $fetch(`/api/admin/stores/${deleteSelectedId.value}`, { method: "DELETE" });
+    if (selectedStoreId.value === deleteSelectedId.value) selectedStoreId.value = "";
+    isDeleteOpen.value = false;
+    await loadStores();
+  } catch (err: unknown) {
+    deleteError.value = statusMessage(err) ?? "Gagal menghapus toko";
+  } finally {
+    isDeleting.value = false;
+  }
+}
+
+function openCreateModal() {
+  createForm.value = { name: "", code: "", address: "", city: "", source_store_id: "", copy_inventory: false };
+  createError.value = null;
+  isCreateOpen.value = true;
+}
+
+async function submitCreateStore() {
+  if (!createForm.value.name.trim()) {
+    createError.value = "Nama toko wajib diisi";
+    return;
+  }
+  isCreating.value = true;
+  createError.value = null;
+  try {
+    await $fetch("/api/admin/stores", {
+      method: "POST",
+      body: {
+        name: createForm.value.name.trim(),
+        code: createForm.value.code.trim() || null,
+        address: createForm.value.address.trim() || null,
+        city: createForm.value.city.trim() || null,
+        source_store_id: createForm.value.source_store_id || null,
+        copy_inventory: createForm.value.source_store_id ? createForm.value.copy_inventory : false,
+      },
+    });
+    isCreateOpen.value = false;
+    await loadStores();
+  } catch (err: unknown) {
+    createError.value = statusMessage(err) ?? "Gagal membuat toko";
+  } finally {
+    isCreating.value = false;
+  }
+}
+
 function statusMessage(error: unknown) {
   if (!error || typeof error !== "object") return null;
   const e = error as Record<string, unknown>;
@@ -253,9 +332,13 @@ async function logout() {
             Pilih toko untuk masuk ke dashboard & menjalankan transaksi.
           </p>
         </div>
-        <button class="mb-btn" :disabled="isLoading" @click="loadStores">
-          {{ isLoading ? "Loading..." : "Refresh" }}
-        </button>
+        <div class="headActions">
+          <button class="mb-btn" :disabled="isLoading" @click="loadStores">
+            {{ isLoading ? "Loading..." : "Refresh" }}
+          </button>
+          <button class="mb-btnPrimary" @click="openCreateModal">+ Tambah Toko</button>
+          <button class="mb-btnDanger" @click="openDeleteModal">Hapus Toko</button>
+        </div>
       </div>
 
       <div class="controls">
@@ -309,6 +392,108 @@ async function logout() {
 
       <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
       </section>
+
+      <Teleport to="body">
+        <div v-if="isDeleteOpen" class="modalOverlay" @click.self="isDeleteOpen = false">
+          <div class="modalBox" role="dialog" aria-modal="true" aria-labelledby="deleteModalTitle">
+            <div class="modalHead">
+              <h2 id="deleteModalTitle" class="cardTitle">Hapus Toko</h2>
+              <button type="button" class="modalClose" aria-label="Tutup" @click="isDeleteOpen = false">✕</button>
+            </div>
+
+            <div v-if="deleteStep === 'select'" class="createForm">
+              <label class="field">
+                <span>Pilih toko yang akan dihapus</span>
+                <select v-model="deleteSelectedId" class="mb-input">
+                  <option value="">— Pilih toko —</option>
+                  <option v-for="s in stores" :key="s.id" :value="s.id">{{ s.name }}</option>
+                </select>
+              </label>
+              <p class="deleteWarningNote">
+                Toko hanya bisa dihapus jika belum memiliki transaksi penjualan atau penerimaan stok.
+              </p>
+              <div class="modalActions">
+                <button type="button" class="mb-btn" @click="isDeleteOpen = false">Batal</button>
+                <button
+                  type="button"
+                  class="mb-btnDanger"
+                  :disabled="!deleteSelectedId"
+                  @click="deleteStep = 'confirm'"
+                >
+                  Lanjut
+                </button>
+              </div>
+            </div>
+
+            <div v-else class="createForm">
+              <div class="deleteConfirmBox">
+                <div class="deleteConfirmStore">{{ deleteTargetStore?.name }}</div>
+                <p class="deleteConfirmDesc">
+                  Tindakan ini akan menghapus toko beserta seluruh data produk dan inventaris terkait secara permanen.
+                  Data penjualan yang sudah ada tidak akan dihapus (toko hanya bisa dihapus jika belum ada transaksi).
+                </p>
+              </div>
+              <p v-if="deleteError" class="error">{{ deleteError }}</p>
+              <div class="modalActions">
+                <button type="button" class="mb-btn" :disabled="isDeleting" @click="deleteStep = 'select'">Kembali</button>
+                <button
+                  type="button"
+                  class="mb-btnDanger"
+                  :disabled="isDeleting"
+                  @click="confirmDeleteStore"
+                >
+                  {{ isDeleting ? "Menghapus..." : "Ya, Hapus Toko" }}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="isCreateOpen" class="modalOverlay" @click.self="isCreateOpen = false">
+          <div class="modalBox" role="dialog" aria-modal="true" aria-labelledby="createModalTitle">
+            <div class="modalHead">
+              <h2 id="createModalTitle" class="cardTitle">Tambah Toko Baru</h2>
+              <button type="button" class="modalClose" aria-label="Tutup" @click="isCreateOpen = false">✕</button>
+            </div>
+            <form class="createForm" @submit.prevent="submitCreateStore">
+              <label class="field">
+                <span>Nama Toko <span class="required">*</span></span>
+                <input v-model="createForm.name" class="mb-input" type="text" placeholder="cth. Mister Ban Bekasi" required />
+              </label>
+              <label class="field">
+                <span>Kode Toko</span>
+                <input v-model="createForm.code" class="mb-input" type="text" placeholder="cth. MB-BKS" />
+              </label>
+              <label class="field">
+                <span>Kota</span>
+                <input v-model="createForm.city" class="mb-input" type="text" placeholder="cth. Bekasi" />
+              </label>
+              <label class="field">
+                <span>Alamat</span>
+                <input v-model="createForm.address" class="mb-input" type="text" placeholder="cth. Jl. Ahmad Yani No. 1" />
+              </label>
+              <label class="field">
+                <span>Salin produk &amp; harga dari toko</span>
+                <select v-model="createForm.source_store_id" class="mb-input">
+                  <option value="">— Mulai kosong —</option>
+                  <option v-for="s in stores" :key="s.id" :value="s.id">{{ s.name }}</option>
+                </select>
+              </label>
+              <label v-if="createForm.source_store_id" class="fieldCheck">
+                <input v-model="createForm.copy_inventory" type="checkbox" />
+                <span>Termasuk salin stok inventory</span>
+              </label>
+              <p v-if="createError" class="error">{{ createError }}</p>
+              <div class="modalActions">
+                <button type="button" class="mb-btn" :disabled="isCreating" @click="isCreateOpen = false">Batal</button>
+                <button type="submit" class="mb-btnPrimary" :disabled="isCreating">
+                  {{ isCreating ? "Menyimpan..." : "Simpan Toko" }}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </Teleport>
 
       <section class="mb-card card">
         <button
@@ -406,6 +591,12 @@ async function logout() {
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+}
+.headActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
 }
 .cardTitle {
   margin: 0;
@@ -569,6 +760,104 @@ async function logout() {
 
 .chartLoading {
   margin-top: 12px;
+}
+
+.required {
+  color: var(--mb-danger);
+}
+
+.mb-btnDanger {
+  border-radius: 10px;
+  border: 1px solid var(--mb-danger);
+  background: var(--mb-danger);
+  color: #fff;
+  padding: 9px 16px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 120ms ease;
+}
+.mb-btnDanger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.deleteWarningNote {
+  font-size: 12px;
+  opacity: 0.75;
+  margin: 0;
+}
+
+.deleteConfirmBox {
+  border-radius: 12px;
+  border: 1px solid rgba(255, 59, 48, 0.35);
+  background: rgba(255, 59, 48, 0.06);
+  padding: 14px;
+  display: grid;
+  gap: 8px;
+}
+.deleteConfirmStore {
+  font-size: 16px;
+  font-weight: 800;
+}
+.deleteConfirmDesc {
+  font-size: 12px;
+  opacity: 0.8;
+  margin: 0;
+  line-height: 1.6;
+}
+
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 16px;
+}
+.modalBox {
+  background: var(--mb-surface);
+  border: 1px solid var(--mb-border2);
+  border-radius: 18px;
+  padding: 24px;
+  width: 100%;
+  max-width: 480px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.modalHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+.modalClose {
+  background: none;
+  border: 1px solid var(--mb-border2);
+  border-radius: 8px;
+  color: var(--mb-text);
+  cursor: pointer;
+  padding: 4px 10px;
+  font-size: 14px;
+}
+.createForm {
+  display: grid;
+  gap: 14px;
+}
+.fieldCheck {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.modalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
 }
 
 .collapse-enter-active,
