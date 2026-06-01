@@ -337,7 +337,7 @@ async function logout() {
             {{ isLoading ? "Loading..." : "Refresh" }}
           </button>
           <button class="mb-btnPrimary" @click="openCreateModal">+ Tambah Toko</button>
-          <button class="mb-btnDanger" @click="openDeleteModal">Hapus Toko</button>
+          <button class="mb-btnDanger isHidden" @click="openDeleteModal">Hapus Toko</button>
         </div>
       </div>
 
@@ -780,6 +780,10 @@ async function logout() {
 .mb-btnDanger:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.isHidden {
+  display: none;
 }
 
 .deleteWarningNote {
