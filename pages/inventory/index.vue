@@ -575,10 +575,7 @@ const brandPickerOptions = computed(() => {
   return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0])).map(([brand, count]) => ({ brand, count }))
 })
 
-const adjItem = computed(() => {
-  if (!adjustingId.value) return null
-  return items.value.find((i) => i.product_id === adjustingId.value) ?? null
-})
+const tableColspan = computed(() => (me.user.value?.role === "ADMIN" ? 7 : 5))
 
 onMounted(async () => {
   await load({ reset: true })
@@ -779,49 +776,54 @@ onMounted(async () => {
                   </button>
                 </td>
               </tr>
+              <Transition name="adjInline" appear>
+                <tr v-if="me.user.value?.role === 'ADMIN' && adjustingId === i.product_id && !priceEditMode">
+                  <td :colspan="tableColspan" class="adjRowCell">
+                    <div class="adjPanel">
+                      <div class="adjPanelHeader">
+                        <div class="adjPanelTitle">
+                          Adjust Stok — <span class="adjPanelProduct">{{ productDisplayName(i.brand, i.name) }}</span>
+                          <span class="adjPanelSize">{{ i.size }}</span>
+                          <span class="adjPanelQty">Stok saat ini: <strong>{{ i.qty_on_hand }}</strong></span>
+                        </div>
+                      </div>
+                      <div class="adjRow">
+                        <label class="field smallField">
+                          <span>Qty Delta</span>
+                          <input v-model.number="adjQtyDelta" class="mb-input" type="number" step="1" placeholder="+10 atau -5" />
+                        </label>
+                        <label class="field smallField">
+                          <span title="Hanya berpengaruh saat tambah stok (Qty Delta positif)">Harga Beli (Rp)</span>
+                          <input v-model.number="adjUnitCost" class="mb-input" type="number" min="0" step="1" />
+                        </label>
+                        <label class="field noteField">
+                          <span>Note</span>
+                          <input v-model="adjNote" class="mb-input" placeholder="Optional" />
+                        </label>
+                        <div class="adjPanelActions">
+                          <button class="mb-btnPrimary" type="button" :disabled="adjLoading" @click="submitAdjust(i.product_id)">
+                            {{ adjLoading ? "Saving..." : "Save" }}
+                          </button>
+                          <button class="mb-btn" type="button" :disabled="adjLoading" @click="clearAvgCost(i.product_id)">
+                            Kosongkan Avg Cost
+                          </button>
+                          <button class="mb-btn" type="button" :disabled="adjLoading" @click="cancelAdjust">Cancel</button>
+                          <span v-if="adjError" class="errorInline">{{ adjError }}</span>
+                        </div>
+                      </div>
+                      <div class="hint">
+                        <strong>Harga Modal (Avg Cost):</strong> Saat tambah stok (+), modal dihitung ulang. Saat kurang stok (-), modal tetap.
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              </Transition>
             </template>
           </tbody>
         </table>
       </div>
 
-      <div v-if="me.user.value?.role === 'ADMIN' && adjItem && !priceEditMode" class="adjPanel">
-        <div class="adjPanelHeader">
-          <div class="adjPanelTitle">
-            Adjust Stok — <span class="adjPanelProduct">{{ productDisplayName(adjItem.brand, adjItem.name) }}</span>
-            <span class="adjPanelSize">{{ adjItem.size }}</span>
-            <span class="adjPanelQty">Stok saat ini: <strong>{{ adjItem.qty_on_hand }}</strong></span>
-          </div>
-        </div>
-        <div class="adjRow">
-          <label class="field smallField">
-            <span>Qty Delta</span>
-            <input v-model.number="adjQtyDelta" class="mb-input" type="number" step="1" placeholder="+10 atau -5" />
-          </label>
-          <label class="field smallField">
-            <span title="Hanya berpengaruh saat tambah stok (Qty Delta positif)">Harga Beli (Rp)</span>
-            <input v-model.number="adjUnitCost" class="mb-input" type="number" min="0" step="1" />
-          </label>
-          <label class="field noteField">
-            <span>Note</span>
-            <input v-model="adjNote" class="mb-input" placeholder="Optional" />
-          </label>
-          <div class="adjPanelActions">
-            <button class="mb-btnPrimary" type="button" :disabled="adjLoading" @click="submitAdjust(adjItem.product_id)">
-              {{ adjLoading ? "Saving..." : "Save" }}
-            </button>
-            <button class="mb-btn" type="button" :disabled="adjLoading" @click="clearAvgCost(adjItem.product_id)">
-              Kosongkan Avg Cost
-            </button>
-            <button class="mb-btn" type="button" :disabled="adjLoading" @click="cancelAdjust">Cancel</button>
-            <span v-if="adjError" class="errorInline">{{ adjError }}</span>
-          </div>
-        </div>
-        <div class="hint">
-          <strong>Harga Modal (Avg Cost):</strong> Saat tambah stok (+), modal dihitung ulang. Saat kurang stok (-), modal tetap.
-        </div>
-      </div>
-
-      <div v-else class="empty">Tidak ada data.</div>
+      <div v-if="!items.length" class="empty">Tidak ada data.</div>
       <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
 
       <div class="paginationBar">
@@ -910,11 +912,25 @@ onMounted(async () => {
   padding: 10px 0 4px;
 }
 .adjPanel {
-  margin-top: 12px;
+  margin-top: 0;
   padding: 12px 14px;
   border: 1px solid rgba(52, 199, 89, 0.35);
   border-radius: 12px;
   background: rgba(52, 199, 89, 0.06);
+}
+.adjRowCell {
+  padding: 8px !important;
+  background: rgba(52, 199, 89, 0.03);
+}
+.adjInline-enter-active,
+.adjInline-leave-active {
+  transition: opacity 0.18s ease, transform 0.18s ease;
+  will-change: opacity, transform;
+}
+.adjInline-enter-from,
+.adjInline-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
 }
 .adjPanelHeader {
   margin-bottom: 4px;
