@@ -1543,7 +1543,7 @@ const detailExpenseTotal = computed(() => {
       </div>
 
       <div class="formSection">
-        <div class="formRow">
+        <div v-if="isAdmin" class="formRow">
           <label class="formField">
             <span class="formLabel">{{ isStockReceiptOnly ? "Tanggal Barang Masuk" : "Tanggal Transaksi" }}</span>
             <input
