@@ -146,7 +146,9 @@ export async function listInventory(
         WHERE store_id = sp.store_id
           AND product_id = sp.product_id
           AND ref_type = 'MANUAL_ADJUST'
-        ORDER BY txn_at DESC
+          AND txn_type = 'ADJUST'
+          AND ref_id IS NULL
+        ORDER BY txn_at DESC, created_at DESC, id DESC
         LIMIT 1
       ) la ON true
       LEFT JOIN users u_adj ON u_adj.id = la.created_by
