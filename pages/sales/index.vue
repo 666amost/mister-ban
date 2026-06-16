@@ -126,6 +126,12 @@ function todayIsoDate() {
   return `${year}-${month}-${day}`
 }
 
+function activeSaleInputDate() {
+  if (isAdmin.value) return saleDate.value || todayIsoDate()
+  // Staff cannot pick dates; recompute at submit time to avoid stale PWA/tab state.
+  return todayIsoDate()
+}
+
 const me = useMe()
 
 const saleDate = ref(todayIsoDate())
@@ -767,10 +773,12 @@ async function submit() {
   if (isStockReceiptOnly.value) {
     submitLoading.value = true
     try {
+      const effectiveSaleDate = activeSaleInputDate()
+      saleDate.value = effectiveSaleDate
       await $fetch<{ receipt_id: string }>("/api/sales/stock-receipts", {
         method: "POST",
         body: {
-          receipt_date: saleDate.value || undefined,
+          receipt_date: effectiveSaleDate || undefined,
           items: parsedStockReceiptItems.value,
         },
       })
@@ -827,16 +835,18 @@ async function submit() {
 
   submitLoading.value = true
   try {
+    const effectiveSaleDate = activeSaleInputDate()
+    saleDate.value = effectiveSaleDate
     const res = await $fetch<{ sale_id: string }>("/api/sales", {
       method: "POST",
       body: expenseOnly
         ? {
             expense_only: true,
-            sale_date: saleDate.value || undefined,
+            sale_date: effectiveSaleDate || undefined,
             expenses: expenses.value,
           }
         : {
-            sale_date: saleDate.value || undefined,
+            sale_date: effectiveSaleDate || undefined,
             plate_no: plateNo.value.trim(),
             ...(isSplitPayment.value ? { payments: payments.value } : { payment_type: paymentType.value }),
             items: selected.value.map((x) => ({ product_id: x.product.product_id, qty: x.qty })),

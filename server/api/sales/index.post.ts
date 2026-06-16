@@ -25,12 +25,13 @@ export default defineEventHandler(async (event) => {
   const storeId = resolveStoreId(event, user);
   const body = await readBodyWithSchema(event, createSaleBodySchema);
   const expenseOnly = body.expense_only === true;
+  const saleDate = user.role === "ADMIN" ? (body.sale_date ?? todayIsoDate()) : todayIsoDate();
 
   try {
     return await createSale({
       storeId,
       userId: user.id,
-      saleDate: body.sale_date ?? todayIsoDate(),
+      saleDate,
       paymentType: expenseOnly ? "CASH" : body.payment_type,
       payments: expenseOnly ? undefined : body.payments,
       plateNo: expenseOnly ? "PENGELUARAN" : (body.plate_no ?? ""),

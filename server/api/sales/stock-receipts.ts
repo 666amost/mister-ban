@@ -62,10 +62,11 @@ export default defineEventHandler(async (event) => {
 
   if (method === "POST") {
     const body = await readBodyWithSchema(event, createStockReceiptBodySchema);
+    const receiptDate = user.role === "ADMIN" ? (body.receipt_date ?? todayIsoDate()) : todayIsoDate();
     return await createStockReceipt({
       storeId,
       userId: user.id,
-      receiptDate: body.receipt_date ?? todayIsoDate(),
+      receiptDate,
       items: body.items,
     });
   }
