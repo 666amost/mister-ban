@@ -20,6 +20,7 @@ type IconName =
   | "suppliers"
   | "reports"
   | "theme"
+  | "settings"
   | "users"
 
 type NavItem = {
@@ -94,7 +95,10 @@ const navGroups = computed<NavGroup[]>(() => {
       {
         label: "Admin",
         adminOnly: true,
-        items: [{ to: "/admin/users", label: "Users", icon: "users", keywords: ["user", "akun"] }],
+        items: [
+          { to: "/admin/settings", label: "Pengaturan", icon: "settings", keywords: ["toko", "struk", "instagram"] },
+          { to: "/admin/users", label: "Users", icon: "users", keywords: ["user", "akun"] },
+        ],
       },
     )
   }
@@ -147,6 +151,7 @@ const bottomOverflowItems = computed<BottomOverflowItem[]>(() => {
     { key: "daily-report", to: "/reports/daily", label: "Daily Report", icon: "reports", kind: "link" },
     { key: "monthly-report", to: "/reports/monthly", label: "Monthly Report", icon: "reports", kind: "link" },
     { key: "users", to: "/admin/users", label: "Users", icon: "users", kind: "link" },
+    { key: "settings", to: "/admin/settings", label: "Pengaturan", icon: "settings", kind: "link" },
     { key: "switch-store", to: "/select-store", label: "Ganti Toko", icon: "inventory", kind: "link" },
     { key: "theme", label: mobileThemeLabel.value, icon: "theme", kind: "action" },
   ]

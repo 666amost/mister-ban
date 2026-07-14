@@ -8,6 +8,8 @@ export type StoreDetailRow = StoreListRow & {
   city: string | null;
   operating_hours: string | null;
   status: "active" | "inactive" | null;
+  receipt_instagram_mode: "default" | "custom" | "hidden";
+  receipt_instagram: string | null;
 };
 
 export async function listStores(db: DbConn): Promise<StoreListRow[]> {
@@ -30,7 +32,9 @@ export async function getStoreById(
         address,
         city,
         operating_hours,
-        status
+        status,
+        receipt_instagram_mode,
+        receipt_instagram
       FROM stores
       WHERE id = $1
       LIMIT 1
@@ -62,7 +66,8 @@ export async function createStore(
   const { rows } = await db.query(
     `INSERT INTO stores (name, code, address, city, status)
      VALUES ($1, $2, $3, $4, 'active')
-     RETURNING id, name, code, address, city, operating_hours, status`,
+     RETURNING id, name, code, address, city, operating_hours, status,
+       receipt_instagram_mode, receipt_instagram`,
     [
       input.name,
       input.code ?? null,

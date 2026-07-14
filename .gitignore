@@ -17,6 +17,7 @@ Thumbs.db
 *.md
 *.README.md
 *.sql
+!db/migrations/0011_store_receipt_settings.sql
 *.txt
 
 # Project data / scripts

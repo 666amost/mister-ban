@@ -330,7 +330,11 @@ export default defineEventHandler(async (event) => {
           )
           .join("")}`
       : `<div>Pembayaran: ${escapeHtml(String(payments[0]?.payment_type ?? detail.sale.payment_type))}</div>`;
-  const instagram = storeInstagram(storeName, storeCity, storeAddress);
+  const instagram = store?.receipt_instagram_mode === "hidden"
+    ? ""
+    : store?.receipt_instagram_mode === "custom"
+      ? store.receipt_instagram?.trim() || ""
+      : storeInstagram(storeName, storeCity, storeAddress);
   const instagramHtml = instagram ? `<div>IG: ${escapeHtml(instagram)}</div>` : "";
 
   const plainContentWidth = paperPreset === "57-roll" ? "40mm" : "44mm";
