@@ -40,12 +40,13 @@ export default defineEventHandler(async (event) => {
   if (method === "GET") {
     const query = getQueryWithSchema(event, stockReceiptsListQuerySchema);
     const isAdmin = user.role === "ADMIN";
-    const allDates = query.all_dates === "true" && isAdmin;
+    const lastThreeMonths =
+      (query.history_range === "last_3_months" || query.all_dates === "true") && isAdmin;
     const dateVal = query.date ?? todayIsoDate();
     const items = await listStockReceipts({
       storeId,
       date: dateVal,
-      allDates,
+      lastThreeMonths,
       q: query.q,
       limit: query.limit ?? 50,
       offset: query.offset ?? 0,
@@ -54,7 +55,7 @@ export default defineEventHandler(async (event) => {
     return {
       items,
       date: dateVal,
-      all_dates: allDates,
+      history_range: lastThreeMonths ? "last_3_months" : "today",
       limit: query.limit ?? 50,
       offset: query.offset ?? 0,
     };

@@ -167,7 +167,7 @@ const qtySummary = ref<SalesQtySummary>({ ban_qty: 0, oli_qty: 0, kampas_qty: 0,
 const dailySummary = ref<SalesDailySummary>(defaultDailySummary())
 const historyQuery = ref("")
 const lastHistoryQuery = ref<string>("")
-const searchAllDates = ref(false)
+const showLastThreeMonths = ref(true)
 
 const submitLoading = ref(false)
 const errorMessage = ref<string | null>(null)
@@ -455,7 +455,7 @@ const stockReceiptHistorySummary = computed(() => ({
   totalQty: stockReceipts.value.reduce((sum, receipt) => sum + receipt.total_qty, 0),
   totalReceipts: stockReceipts.value.length,
 }))
-const stockReceiptSummaryTitle = computed(() => searchAllDates.value ? "Barang Masuk" : "Barang Masuk Hari Ini")
+const stockReceiptSummaryTitle = computed(() => showLastThreeMonths.value && isAdmin.value ? "Barang Masuk (3 Bulan)" : "Barang Masuk Hari Ini")
 
 async function runSearch() {
   searchLoading.value = true
@@ -547,8 +547,8 @@ async function loadSales() {
       limit: "50",
       q: lastHistoryQuery.value || undefined,
     }
-    if (isAdmin.value && searchAllDates.value) {
-      query.all_dates = "true"
+    if (isAdmin.value && showLastThreeMonths.value) {
+      query.history_range = "last_3_months"
     }
     const [salesRes, stockReceiptRes] = await Promise.all([
       $fetch<{ items: SaleRow[]; qty_summary: SalesQtySummary; daily_summary?: SalesDailySummary }>("/api/sales", {
@@ -1665,11 +1665,14 @@ const detailExpenseTotal = computed(() => {
 
     <div class="tabContent" :class="{ hidden: activeTab !== 'history' }">
       <div class="historyHeader">
-        <span class="historyTitle">{{ searchAllDates ? 'Semua Sales' : 'Sales Hari Ini' }}</span>
+        <div class="historyHeading">
+          <span class="historyTitle">{{ showLastThreeMonths && isAdmin ? 'Sales 3 Bulan Terakhir' : 'Sales Hari Ini' }}</span>
+          <span class="historyRangeHint">{{ showLastThreeMonths && isAdmin ? 'Maksimal sampai hari ini' : 'Transaksi hari ini' }}</span>
+        </div>
         <div class="historyHeaderActions">
-          <label v-if="isAdmin" class="allDatesToggle">
-            <input v-model="searchAllDates" type="checkbox" @change="loadSales()" />
-            <span>Semua tanggal</span>
+          <label v-if="isAdmin" class="historyRangeToggle">
+            <input v-model="showLastThreeMonths" type="checkbox" @change="loadSales()" />
+            <span>3 bulan terakhir</span>
           </label>
           <button
             class="refreshBtn"
@@ -1912,7 +1915,7 @@ const detailExpenseTotal = computed(() => {
           <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
         </svg>
         <span v-if="historyQuery.trim()">Tidak ada transaksi yang cocok</span>
-        <span v-else>Belum ada transaksi hari ini</span>
+        <span v-else>{{ showLastThreeMonths && isAdmin ? 'Belum ada transaksi dalam 3 bulan terakhir' : 'Belum ada transaksi hari ini' }}</span>
       </div>
     </div>
 
@@ -3397,7 +3400,15 @@ const detailExpenseTotal = computed(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
   margin-bottom: 12px;
+}
+
+.historyHeading {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
 }
 
 .historyTitle {
@@ -3405,11 +3416,17 @@ const detailExpenseTotal = computed(() => {
   font-size: 18px;
 }
 
+.historyRangeHint {
+  color: var(--mb-muted);
+  font-size: 11px;
+}
+
 .historySearchBar {
   margin-bottom: 8px;
 }
 
 .dailySummaryPanel {
+  container-type: inline-size;
   margin-bottom: 12px;
   padding: 10px;
   border: 1px solid var(--mb-border2);
@@ -3419,7 +3436,7 @@ const detailExpenseTotal = computed(() => {
 
 .dailySummaryGrid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 128px), 1fr));
   gap: 8px;
 }
 
@@ -3989,15 +4006,37 @@ const detailExpenseTotal = computed(() => {
   cursor: not-allowed;
 }
 
-@media (max-width: 420px) {
-  .dailySummaryGrid {
-    grid-template-columns: 1fr;
-  }
-}
-
 @media (max-width: 720px) {
+  .historyHeader {
+    align-items: flex-start;
+  }
+
+  .historyHeaderActions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .historySearchWrap {
+    height: 46px;
+  }
+
+  .dailySummaryPanel {
+    padding: 8px;
+  }
+
+  .dailySumItem {
+    min-width: 0;
+    padding: 9px;
+  }
+
+  .dailySumValue {
+    font-size: 14px;
+  }
+
   .saleCard {
     grid-template-columns: 1fr;
+    gap: 8px;
+    padding: 13px 14px;
   }
 
   .saleMeta {
@@ -4015,7 +4054,10 @@ const detailExpenseTotal = computed(() => {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-top: 10px;
+    gap: 10px;
+    margin-top: 4px;
+    padding-top: 10px;
+    border-top: 1px solid var(--mb-border2);
   }
 
   .saleTotal {
@@ -4727,16 +4769,31 @@ const detailExpenseTotal = computed(() => {
   gap: 12px;
 }
 
-.allDatesToggle {
-  display: flex;
+.historyRangeToggle {
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--mb-border2);
+  border-radius: 999px;
+  background: var(--mb-surface);
   font-size: 12px;
-  color: var(--mb-muted);
+  color: var(--mb-text);
+  font-weight: 700;
   cursor: pointer;
+  white-space: nowrap;
 }
 
-.allDatesToggle input {
+.historyRangeToggle:has(input:checked) {
+  border-color: rgba(52, 199, 89, 0.45);
+  background: rgba(52, 199, 89, 0.1);
+}
+
+.historyRangeToggle input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
   accent-color: var(--mb-accent);
 }
 
@@ -4884,10 +4941,6 @@ const detailExpenseTotal = computed(() => {
 }
 
 @media (min-width: 768px) {
-  .dailySummaryGrid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-
   .salesPage {
     max-width: 600px;
     margin: 0 auto;

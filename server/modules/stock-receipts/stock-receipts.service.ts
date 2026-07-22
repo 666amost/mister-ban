@@ -126,14 +126,14 @@ export async function createStockReceipt({
 export async function listStockReceipts({
   storeId,
   date,
-  allDates,
+  lastThreeMonths,
   q,
   limit,
   offset,
 }: {
   storeId: string;
   date: string;
-  allDates: boolean;
+  lastThreeMonths: boolean;
   q?: string;
   limit: number;
   offset: number;
@@ -160,7 +160,10 @@ export async function listStockReceipts({
       FROM stock_receipts sr
       LEFT JOIN stock_receipt_items sri ON sri.stock_receipt_id = sr.id
       WHERE sr.store_id = $1
-        AND ($2::boolean OR sr.receipt_date = $3::date)
+        AND (
+          ($2::boolean AND sr.receipt_date BETWEEN ($3::date - INTERVAL '3 months')::date AND $3::date)
+          OR (NOT $2::boolean AND sr.receipt_date = $3::date)
+        )
         AND (
           $4::text IS NULL
           OR EXISTS (
@@ -175,7 +178,7 @@ export async function listStockReceipts({
       LIMIT $5
       OFFSET $6
     `,
-    [storeId, allDates, date, q ?? null, limit, offset],
+    [storeId, lastThreeMonths, date, q ?? null, limit, offset],
   );
 
   return rows;

@@ -356,19 +356,17 @@ export async function getSalesQtySummary({
   db,
   storeId,
   date,
-  allDates,
+  lastThreeMonths,
 }: {
   db: DbConn;
   storeId: string;
   date: string;
-  allDates?: boolean;
+  lastThreeMonths?: boolean;
 }): Promise<SalesQtySummary> {
-  const params: Array<string> = [storeId];
-  let dateFilter = "";
-  if (!allDates) {
-    dateFilter = "AND s.sale_date = $2::date";
-    params.push(date);
-  }
+  const params: Array<string> = [storeId, date];
+  const dateFilter = lastThreeMonths
+    ? "AND s.sale_date BETWEEN ($2::date - INTERVAL '3 months')::date AND $2::date"
+    : "AND s.sale_date = $2::date";
 
   const { rows } = await db.query<SalesQtySummary>(
     `
@@ -400,19 +398,17 @@ export async function getSalesDailySummary({
   db,
   storeId,
   date,
-  allDates,
+  lastThreeMonths,
 }: {
   db: DbConn;
   storeId: string;
   date: string;
-  allDates?: boolean;
+  lastThreeMonths?: boolean;
 }): Promise<SalesDailySummary> {
-  const params: Array<string> = [storeId];
-  let dateFilter = "";
-  if (!allDates) {
-    dateFilter = "AND s.sale_date = $2::date";
-    params.push(date);
-  }
+  const params: Array<string> = [storeId, date];
+  const dateFilter = lastThreeMonths
+    ? "AND s.sale_date BETWEEN ($2::date - INTERVAL '3 months')::date AND $2::date"
+    : "AND s.sale_date = $2::date";
 
   const { rows } = await db.query<SalesDailySummary>(
     `
@@ -497,7 +493,7 @@ export async function listSales({
   db,
   storeId,
   date,
-  allDates,
+  lastThreeMonths,
   hideExpenseOnly,
   q,
   limit,
@@ -506,7 +502,7 @@ export async function listSales({
   db: DbConn;
   storeId: string;
   date: string;
-  allDates?: boolean;
+  lastThreeMonths?: boolean;
   hideExpenseOnly?: boolean;
   q?: string;
   limit: number;
@@ -518,12 +514,12 @@ export async function listSales({
   const params: Array<string | number | boolean | null> = [storeId];
   let nextParam = 2;
 
-  let dateFilter = "";
-  if (!allDates) {
-    dateFilter = `AND s.sale_date = $${nextParam}::date`;
-    params.push(date);
-    nextParam += 1;
-  }
+  const dateParam = nextParam;
+  params.push(date);
+  nextParam += 1;
+  const dateFilter = lastThreeMonths
+    ? `AND s.sale_date BETWEEN ($${dateParam}::date - INTERVAL '3 months')::date AND $${dateParam}::date`
+    : `AND s.sale_date = $${dateParam}::date`;
 
   const searchParam = nextParam;
   params.push(search);
