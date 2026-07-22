@@ -167,7 +167,7 @@ const qtySummary = ref<SalesQtySummary>({ ban_qty: 0, oli_qty: 0, kampas_qty: 0,
 const dailySummary = ref<SalesDailySummary>(defaultDailySummary())
 const historyQuery = ref("")
 const lastHistoryQuery = ref<string>("")
-const showLastThreeMonths = ref(true)
+const showLastThreeMonths = ref(false)
 
 const submitLoading = ref(false)
 const errorMessage = ref<string | null>(null)
