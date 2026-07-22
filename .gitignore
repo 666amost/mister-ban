@@ -18,6 +18,7 @@ Thumbs.db
 *.README.md
 *.sql
 !db/migrations/0011_store_receipt_settings.sql
+!db/migrations/0012_global_plate_search_indexes.sql
 *.txt
 
 # Project data / scripts

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted } from "vue";
+import { onBeforeUnmount, onMounted } from "vue";
 
 definePageMeta({ layout: "auth" })
 
@@ -13,6 +13,28 @@ type StoreSummary = {
 };
 type SummaryTab = "day" | "month";
 type SummaryCache = Record<string, StoreSummary[]>;
+type InventorySearchResult = {
+  product_id: string;
+  sku: string;
+  product_name: string;
+  size: string;
+  brand: string;
+  product_type: string;
+  store_id: string;
+  store_name: string;
+  qty_on_hand: number;
+  sell_price: number;
+};
+type PlateSearchResult = {
+  plate_no: string;
+  store_id: string;
+  store_name: string;
+  last_visit: string | null;
+};
+type GlobalSearchResponse = {
+  inventory: InventorySearchResult[];
+  plates: PlateSearchResult[];
+};
 
 const me = useMe();
 const storeContext = useStoreContext();
@@ -29,6 +51,11 @@ const isDailySummaryLoading = ref(false);
 const isMonthlySummaryLoading = ref(false);
 const isSummaryOpen = ref(false);
 const search = ref("");
+const globalSearchResults = ref<GlobalSearchResponse>({ inventory: [], plates: [] });
+const isGlobalSearchLoading = ref(false);
+const globalSearchError = ref<string | null>(null);
+let searchTimer: ReturnType<typeof setTimeout> | null = null;
+let searchRequestId = 0;
 const selectedStoreId = ref("");
 const errorMessage = ref<string | null>(null);
 const isLoading = ref(false);
@@ -282,8 +309,77 @@ onMounted(async () => {
 const filteredStores = computed(() => {
   const q = search.value.trim().toLowerCase();
   if (!q) return stores.value;
-  return stores.value.filter((s) => s.name.toLowerCase().includes(q));
+  const resultStoreIds = new Set([
+    ...globalSearchResults.value.inventory.map((item) => item.store_id),
+    ...globalSearchResults.value.plates.map((item) => item.store_id),
+  ]);
+  return stores.value.filter(
+    (store) =>
+      store.name.toLowerCase().includes(q) || resultStoreIds.has(store.id),
+  );
 });
+
+const hasGlobalSearchResults = computed(
+  () =>
+    globalSearchResults.value.inventory.length > 0 ||
+    globalSearchResults.value.plates.length > 0,
+);
+
+watch(search, (value) => {
+  if (searchTimer) clearTimeout(searchTimer);
+  const query = value.trim();
+
+  if (query.length < 2) {
+    searchRequestId += 1;
+    isGlobalSearchLoading.value = false;
+    globalSearchError.value = null;
+    globalSearchResults.value = { inventory: [], plates: [] };
+    return;
+  }
+
+  searchTimer = setTimeout(() => loadGlobalSearch(query), 300);
+});
+
+onBeforeUnmount(() => {
+  if (searchTimer) clearTimeout(searchTimer);
+  searchRequestId += 1;
+});
+
+async function loadGlobalSearch(query: string) {
+  const requestId = ++searchRequestId;
+  isGlobalSearchLoading.value = true;
+  globalSearchError.value = null;
+
+  try {
+    const result = await $fetch<GlobalSearchResponse>("/api/search/global", {
+      query: { q: query },
+    });
+    if (requestId === searchRequestId) globalSearchResults.value = result;
+  } catch (error: unknown) {
+    if (requestId !== searchRequestId) return;
+    globalSearchResults.value = { inventory: [], plates: [] };
+    globalSearchError.value = statusMessage(error) ?? "Gagal mencari data semua toko";
+  } finally {
+    if (requestId === searchRequestId) isGlobalSearchLoading.value = false;
+  }
+}
+
+function formatSearchDate(value: string | null) {
+  if (!value) return "Belum ada tanggal transaksi";
+  return new Intl.DateTimeFormat("id-ID", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(new Date(`${value}T00:00:00`));
+}
+
+function selectStoreFromSearch(storeId: string) {
+  selectedStoreId.value = storeId;
+  document.getElementById(`store-${storeId}`)?.scrollIntoView({
+    behavior: "smooth",
+    block: "center",
+  });
+}
 
 async function enterStore() {
   if (!selectedStoreId.value) return;
@@ -343,14 +439,78 @@ async function logout() {
 
       <div class="controls">
         <label class="field">
-          <span>Cari toko</span>
+          <span>Cari toko, stok produk, atau plat nomor</span>
           <input
             v-model="search"
             class="mb-input"
             type="text"
-            placeholder="Ketik nama toko..."
+            placeholder="Contoh: IRC NR91 atau B 12454..."
+            autocomplete="off"
           />
+          <small class="searchHelp">Pencarian plat memerlukan minimal 3 huruf atau angka.</small>
         </label>
+      </div>
+
+      <div v-if="search.trim().length >= 2" class="globalResults" aria-live="polite">
+        <div class="globalResultsHead">
+          <strong>Hasil pencarian semua toko</strong>
+          <span v-if="isGlobalSearchLoading">Mencari...</span>
+          <span v-else-if="hasGlobalSearchResults">
+            {{ globalSearchResults.inventory.length + globalSearchResults.plates.length }} hasil
+          </span>
+        </div>
+
+        <p v-if="globalSearchError" class="error searchError">{{ globalSearchError }}</p>
+
+        <template v-else-if="!isGlobalSearchLoading">
+          <section v-if="globalSearchResults.inventory.length" class="resultGroup">
+            <h2>Stok Produk</h2>
+            <div class="resultGrid">
+              <button
+                v-for="item in globalSearchResults.inventory"
+                :key="`${item.store_id}-${item.product_id}`"
+                type="button"
+                class="searchResultItem"
+                @click="selectStoreFromSearch(item.store_id)"
+              >
+                <span class="resultMain">
+                  <strong>{{ item.brand }} {{ item.product_name }}</strong>
+                  <small>{{ item.sku }} · {{ item.product_type }} · {{ item.size }}</small>
+                </span>
+                <span class="resultLocation">
+                  <strong>{{ item.qty_on_hand }} pcs</strong>
+                  <small>{{ item.store_name }}</small>
+                </span>
+              </button>
+            </div>
+          </section>
+
+          <section v-if="globalSearchResults.plates.length" class="resultGroup">
+            <h2>Plat Nomor</h2>
+            <div class="resultGrid">
+              <button
+                v-for="item in globalSearchResults.plates"
+                :key="`${item.store_id}-${item.plate_no}`"
+                type="button"
+                class="searchResultItem"
+                @click="selectStoreFromSearch(item.store_id)"
+              >
+                <span class="resultMain">
+                  <strong class="plateNumber">{{ item.plate_no }}</strong>
+                  <small>{{ formatSearchDate(item.last_visit) }}</small>
+                </span>
+                <span class="resultLocation">
+                  <strong>{{ item.store_name }}</strong>
+                  <small>Klik untuk pilih toko</small>
+                </span>
+              </button>
+            </div>
+          </section>
+
+          <div v-if="!hasGlobalSearchResults" class="searchEmpty">
+            Stok tersedia atau plat nomor tersebut tidak ditemukan di semua toko.
+          </div>
+        </template>
       </div>
 
       <div
@@ -361,6 +521,7 @@ async function logout() {
       >
         <button
           v-for="s in filteredStores"
+          :id="`store-${s.id}`"
           :key="s.id"
           type="button"
           class="storeItem"
@@ -375,7 +536,9 @@ async function logout() {
           </div>
         </button>
       </div>
-      <div v-else class="empty">Belum ada toko. Jalankan seed data dulu.</div>
+      <div v-else class="empty">
+        {{ search.trim() ? "Tidak ada toko yang cocok dengan pencarian." : "Belum ada toko. Jalankan seed data dulu." }}
+      </div>
 
       <div class="actions">
         <div v-if="storeContext.store.value?.name" class="current">
@@ -686,6 +849,93 @@ async function logout() {
   gap: 6px;
   font-size: 12px;
 }
+.searchHelp {
+  opacity: 0.68;
+}
+
+.globalResults {
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px solid var(--mb-border2);
+  border-radius: 14px;
+  background: rgba(52, 199, 89, 0.04);
+}
+.globalResultsHead {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+}
+.globalResultsHead span {
+  opacity: 0.75;
+}
+.resultGroup {
+  margin-top: 14px;
+}
+.resultGroup h2 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  opacity: 0.72;
+}
+.resultGrid {
+  display: grid;
+  gap: 8px;
+}
+.searchResultItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid var(--mb-border2);
+  border-radius: 11px;
+  background: var(--mb-surface2);
+  color: var(--mb-text);
+  text-align: left;
+  cursor: pointer;
+}
+.searchResultItem:hover {
+  border-color: rgba(52, 199, 89, 0.7);
+}
+.resultMain,
+.resultLocation {
+  display: grid;
+  gap: 4px;
+}
+.resultMain {
+  min-width: 0;
+}
+.resultMain strong,
+.resultMain small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.resultMain small,
+.resultLocation small {
+  opacity: 0.72;
+}
+.resultLocation {
+  flex-shrink: 0;
+  text-align: right;
+}
+.plateNumber {
+  letter-spacing: 0.08em;
+}
+.searchEmpty {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px dashed var(--mb-border2);
+  border-radius: 10px;
+  font-size: 12px;
+  opacity: 0.8;
+}
+.searchError {
+  margin-top: 10px;
+}
 
 .storeGrid {
   margin-top: 14px;
@@ -891,6 +1141,15 @@ async function logout() {
   .periodPicker {
     max-width: 100%;
     width: 100%;
+  }
+
+  .searchResultItem {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .resultLocation {
+    text-align: left;
   }
 }
 </style>
