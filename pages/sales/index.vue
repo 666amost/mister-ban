@@ -382,10 +382,14 @@ function isExpenseOnlySale(sale: SaleRow) {
   return !hasProduct && !hasCustom && hasExpense
 }
 
-function saleDisplayTotal(sale: SaleRow) {
-  if (!isExpenseOnlySale(sale)) return sale.total
+function saleExpenseTotal(sale: SaleRow) {
   if (typeof sale.expense_total === "number") return sale.expense_total
   return (sale.expenses ?? []).reduce((sum, e) => sum + (e.amount || 0), 0)
+}
+
+function saleDisplayTotal(sale: SaleRow) {
+  if (!isExpenseOnlySale(sale)) return sale.total
+  return saleExpenseTotal(sale)
 }
 
 function hhmm(value: string) {
@@ -1842,6 +1846,10 @@ const detailExpenseTotal = computed(() => {
           v-for="s in sales" 
           :key="s.id" 
           class="saleCard"
+          :class="{
+            saleCardExpense: isExpenseOnlySale(s),
+            saleCardDiscount: !isExpenseOnlySale(s) && s.discount > 0,
+          }"
           role="button"
           tabindex="0"
           @click="openSaleDetail(s)"
@@ -1863,7 +1871,9 @@ const detailExpenseTotal = computed(() => {
               <span class="saleTime">{{ hhmm(s.created_at) }} WIB</span>
               <span v-if="!isExpenseOnlySale(s)" class="salePayment">{{ paymentLabel(s) }}</span>
               <span v-if="isExpenseOnlySale(s)" class="saleExpenseOnly">Pengeluaran</span>
-              <span v-if="s.discount > 0" class="saleDiscount">-{{ rupiah(s.discount) }}</span>
+              <span v-if="!isExpenseOnlySale(s) && s.discount > 0" class="saleDiscount">
+                Diskon -Rp {{ rupiah(s.discount) }}
+              </span>
             </div>
             <div v-if="s.expenses && s.expenses.length" class="saleExpensesDetail">
               <div v-for="(exp, ei) in s.expenses" :key="ei" class="saleExpenseDetailRow">
@@ -1873,7 +1883,9 @@ const detailExpenseTotal = computed(() => {
             </div>
           </div>
           <div class="saleRight">
-            <div class="saleTotal">Rp {{ rupiah(saleDisplayTotal(s)) }}</div>
+            <div class="saleTotal" :class="{ saleTotalExpense: isExpenseOnlySale(s) }">
+              {{ isExpenseOnlySale(s) ? "-Rp" : "Rp" }} {{ rupiah(saleDisplayTotal(s)) }}
+            </div>
             <div class="saleActions">
               <button
                 v-if="isAdmin"
@@ -3695,6 +3707,8 @@ const detailExpenseTotal = computed(() => {
 }
 
 .saleCard {
+  position: relative;
+  overflow: hidden;
   display: grid;
   grid-template-columns: 1fr auto;
   align-items: flex-start;
@@ -3709,6 +3723,22 @@ const detailExpenseTotal = computed(() => {
   transition: all 0.15s ease;
 }
 
+.saleCardExpense {
+  border-color: var(--mb-badge-expense-border);
+  background:
+    linear-gradient(105deg, var(--mb-badge-expense-bg), transparent 72%),
+    var(--mb-surface);
+  box-shadow: inset 4px 0 0 var(--mb-danger);
+}
+
+.saleCardDiscount {
+  border-color: rgba(245, 158, 11, 0.58);
+  background:
+    linear-gradient(105deg, rgba(245, 158, 11, 0.24), rgba(245, 158, 11, 0.07) 72%),
+    var(--mb-surface);
+  box-shadow: inset 4px 0 0 #f59e0b;
+}
+
 .saleCard:focus-visible {
   outline: 3px solid rgba(52, 199, 89, 0.25);
   outline-offset: 2px;
@@ -3721,6 +3751,20 @@ const detailExpenseTotal = computed(() => {
 
 .saleInfo {
   min-width: 0;
+}
+
+.saleDiscount {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border: 1px solid rgba(245, 158, 11, 0.52);
+  border-radius: 6px;
+  background: rgba(245, 158, 11, 0.2);
+  color: var(--mb-text);
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1.3;
+  white-space: nowrap;
 }
 
 .saleItemsTop {
@@ -3779,9 +3823,10 @@ const detailExpenseTotal = computed(() => {
 
 .saleExpenseOnly {
   padding: 2px 8px;
+  border: 1px solid var(--mb-badge-expense-border);
   border-radius: 6px;
-  background: rgba(255, 149, 0, 0.14);
-  color: #9b5a00;
+  background: var(--mb-badge-expense-bg);
+  color: var(--mb-badge-expense-fg);
   font-weight: 700;
   font-size: 11px;
 }
@@ -3802,6 +3847,11 @@ const detailExpenseTotal = computed(() => {
 .saleTotal {
   font-weight: 800;
   font-size: 16px;
+  white-space: nowrap;
+}
+
+.saleTotalExpense {
+  color: var(--mb-danger);
 }
 
 .saleActions {
@@ -4811,11 +4861,6 @@ const detailExpenseTotal = computed(() => {
   white-space: nowrap;
 }
 
-.saleDiscount {
-  color: #ff3b30;
-  font-size: 11px;
-}
-
 .saleService {
   color: var(--mb-accent);
   font-size: 11px;
@@ -4845,9 +4890,9 @@ const detailExpenseTotal = computed(() => {
 }
 
 .saleExpenseDetailAmount {
+  color: var(--mb-badge-expense-fg);
+  font-weight: 800;
   white-space: nowrap;
-  color: #ff3b30;
-  font-weight: 600;
 }
 
 .editItemsList {
