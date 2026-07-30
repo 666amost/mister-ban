@@ -383,13 +383,18 @@ function isExpenseOnlySale(sale: SaleRow) {
 }
 
 function saleExpenseTotal(sale: SaleRow) {
-  if (typeof sale.expense_total === "number") return sale.expense_total
-  return (sale.expenses ?? []).reduce((sum, e) => sum + (e.amount || 0), 0)
+  const detailTotal = (sale.expenses ?? []).reduce((sum, e) => sum + (e.amount || 0), 0)
+  if (typeof sale.expense_total === "number" && sale.expense_total > 0) return sale.expense_total
+  return detailTotal
 }
 
 function saleDisplayTotal(sale: SaleRow) {
   if (!isExpenseOnlySale(sale)) return sale.total
   return saleExpenseTotal(sale)
+}
+
+function hasCustomSaleItems(sale: SaleRow) {
+  return (sale.custom_items?.length ?? 0) > 0
 }
 
 function hhmm(value: string) {
@@ -1847,8 +1852,9 @@ const detailExpenseTotal = computed(() => {
           :key="s.id" 
           class="saleCard"
           :class="{
-            saleCardExpense: isExpenseOnlySale(s),
-            saleCardDiscount: !isExpenseOnlySale(s) && s.discount > 0,
+            saleCardExpense: saleExpenseTotal(s) > 0,
+            saleCardDiscount: saleExpenseTotal(s) <= 0 && s.discount > 0,
+            saleCardCustom: saleExpenseTotal(s) <= 0 && s.discount <= 0 && hasCustomSaleItems(s),
           }"
           role="button"
           tabindex="0"
@@ -1871,6 +1877,7 @@ const detailExpenseTotal = computed(() => {
               <span class="saleTime">{{ hhmm(s.created_at) }} WIB</span>
               <span v-if="!isExpenseOnlySale(s)" class="salePayment">{{ paymentLabel(s) }}</span>
               <span v-if="isExpenseOnlySale(s)" class="saleExpenseOnly">Pengeluaran</span>
+              <span v-if="hasCustomSaleItems(s)" class="saleCustom">Custom</span>
               <span v-if="!isExpenseOnlySale(s) && s.discount > 0" class="saleDiscount">
                 Diskon -Rp {{ rupiah(s.discount) }}
               </span>
@@ -3731,7 +3738,8 @@ const detailExpenseTotal = computed(() => {
   box-shadow: inset 4px 0 0 var(--mb-danger);
 }
 
-.saleCardDiscount {
+.saleCardDiscount,
+.saleCardCustom {
   border-color: rgba(245, 158, 11, 0.58);
   background:
     linear-gradient(105deg, rgba(245, 158, 11, 0.24), rgba(245, 158, 11, 0.07) 72%),
@@ -3753,7 +3761,8 @@ const detailExpenseTotal = computed(() => {
   min-width: 0;
 }
 
-.saleDiscount {
+.saleDiscount,
+.saleCustom {
   display: inline-flex;
   align-items: center;
   padding: 2px 7px;
