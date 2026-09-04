@@ -1,100 +1,44 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from "vue"
-import type { NavGroup } from "~/types/public"
+import { ref } from "vue"
 
-const props = defineProps<{
-  navGroups: NavGroup[]
-}>()
+const menuOpen = ref(false)
 
-const activeNavId = ref<string | null>(null)
-let closeNavTimer: ReturnType<typeof setTimeout> | null = null
-
-const activeNav = computed<NavGroup | null>(() => {
-  return props.navGroups.find((group) => group.id === activeNavId.value) ?? null
-})
-
-function openNav(navId: string): void {
-  cancelCloseNav()
-  activeNavId.value = navId
+function closeMenu(): void {
+  menuOpen.value = false
 }
-
-function closeNav(): void {
-  cancelCloseNav()
-  activeNavId.value = null
-}
-
-function scheduleCloseNav(): void {
-  cancelCloseNav()
-  closeNavTimer = setTimeout(() => {
-    activeNavId.value = null
-    closeNavTimer = null
-  }, 180)
-}
-
-function cancelCloseNav(): void {
-  if (closeNavTimer) {
-    clearTimeout(closeNavTimer)
-    closeNavTimer = null
-  }
-}
-
-onBeforeUnmount(() => {
-  cancelCloseNav()
-})
 </script>
 
 <template>
-  <header class="pub-topbar">
-    <div class="pub-shell pub-topbar-inner">
-      <NuxtLink to="/" class="pub-brand">
-        <img class="pub-brand-logo" src="/brand/logo.png" alt="Mister Ban" />
-        <span class="pub-brand-copy">
+  <header class="public-header">
+    <div class="public-shell public-header__inner">
+      <NuxtLink to="/" class="public-brand" aria-label="Mister Ban - Beranda" @click="closeMenu">
+        <img src="/brand/logo-160.png" width="44" height="44" alt="" class="public-brand__logo" />
+        <span>
           <strong>Mister Ban</strong>
-          <span>Spesialis ban motor. 7 cabang aktif.</span>
+          <small>Spesialis ban motor</small>
         </span>
       </NuxtLink>
 
-      <div class="pub-nav-wrap" @mouseenter="cancelCloseNav" @mouseleave="scheduleCloseNav" @keydown.esc="closeNav">
-        <nav class="pub-nav" aria-label="Public navigation">
-          <button
-            v-for="group in navGroups"
-            :key="group.id"
-            type="button"
-            class="pub-nav-link"
-            :class="{ 'is-active': group.id === activeNavId }"
-            @mouseenter="openNav(group.id)"
-            @focus="openNav(group.id)"
-          >
-            {{ group.label }}
-          </button>
-        </nav>
+      <button
+        type="button"
+        class="public-menu-toggle"
+        :class="{ 'is-open': menuOpen }"
+        :aria-expanded="menuOpen"
+        aria-controls="public-navigation"
+        :aria-label="menuOpen ? 'Tutup navigasi' : 'Buka navigasi'"
+        @click="menuOpen = !menuOpen"
+      >
+        <span />
+        <span />
+        <span />
+      </button>
 
-        <Transition name="pub-menu">
-          <div v-if="activeNav" class="pub-menu-panel" @mouseenter="cancelCloseNav" @mouseleave="scheduleCloseNav">
-            <div class="pub-menu-grid">
-              <div class="pub-menu-copy">
-                <div class="pub-menu-eyebrow">{{ activeNav.eyebrow }}</div>
-                <h2 class="pub-menu-title">{{ activeNav.title }}</h2>
-                <p class="pub-menu-desc">{{ activeNav.description }}</p>
-              </div>
-
-              <div class="pub-menu-links">
-                <a v-for="item in activeNav.items" :key="item.label" class="pub-menu-link" :href="item.href" @click="closeNav">
-                  <span class="pub-menu-link-copy">
-                    <strong>{{ item.label }}</strong>
-                    <span>{{ item.meta }}</span>
-                  </span>
-                  <span class="pub-menu-link-arrow">→</span>
-                </a>
-              </div>
-            </div>
-          </div>
-        </Transition>
-      </div>
-
-      <div class="pub-topbar-actions">
-        <span class="pub-search">7 Cabang Aktif</span>
-      </div>
+      <nav id="public-navigation" class="public-nav" :class="{ 'is-open': menuOpen }" aria-label="Navigasi utama">
+        <a href="/#cek-ban" @click="closeMenu">Cek Ban</a>
+        <a href="/#merek" @click="closeMenu">Pilihan Merek</a>
+        <a href="/#cabang" @click="closeMenu">Cabang</a>
+        <a href="/#cek-ban" class="public-button public-button--small" @click="closeMenu">Cari Ban Saya</a>
+      </nav>
     </div>
   </header>
 </template>

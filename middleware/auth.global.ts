@@ -2,7 +2,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
   const me = useMe();
   const storeContext = useStoreContext();
 
-  if (to.path === "/") return;
+  if (to.path === "/" || to.path.startsWith("/cabang/")) return;
 
   if (to.path === "/login") {
     try {

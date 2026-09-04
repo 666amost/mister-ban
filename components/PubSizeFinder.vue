@@ -1,464 +1,491 @@
 <script setup lang="ts">
-import { ref, computed } from "vue"
-import type { BrandCatalog, MotorFitment } from "~/types/public"
-import { motorFitments, sizeHints, motorCategoryLabels } from "~/data/motorFitmentData"
+import { computed, ref } from "vue"
+import { motorCategoryLabels, motorFitments } from "~/data/motorFitmentData"
+import type {
+  MotorFitment,
+  PublicBranch,
+  PublicBranchRecommendation,
+  PublicRecommendationResponse,
+  PublicRecommendedProduct,
+  PublicStockStatus,
+} from "~/types/public"
 
-const props = defineProps<{
-  brandCatalog: BrandCatalog[]
-}>()
+const props = withDefaults(
+  defineProps<{
+    branches: PublicBranch[]
+    preferredBranchCode?: string
+  }>(),
+  { preferredBranchCode: "" },
+)
+
+type UserLocation = { latitude: number; longitude: number }
+type PositionFilter = "front" | "rear"
 
 const searchQuery = ref("")
-const selectedFitment = ref<MotorFitment | null>(null)
-const showDropdown = ref(false)
+const selectedMotor = ref<MotorFitment | null>(null)
+const recommendation = ref<PublicRecommendationResponse | null>(null)
+const showSuggestions = ref(false)
+const isLoading = ref(false)
+const errorMessage = ref("")
+const activePosition = ref<PositionFilter>("front")
+const selectedFrontProductKey = ref("")
+const selectedRearProductKey = ref("")
+const selectedCity = ref("all")
+const userLocation = ref<UserLocation | null>(null)
+const locationMessage = ref("")
+const locating = ref(false)
+const showAllProducts = ref(false)
+const showAllBranches = ref(false)
+let requestSequence = 0
 
-const filteredMotors = computed<MotorFitment[]>(() => {
-  const q = searchQuery.value.toLowerCase().trim()
-  if (q.length < 2) return []
+const popularMotorIds = ["beat", "vario-125", "nmax", "aerox", "scoopy"]
+const popularMotors = motorFitments.filter((motor) => popularMotorIds.includes(motor.id))
+
+const filteredMotors = computed(() => {
+  const query = searchQuery.value.trim().toLowerCase()
+  if (!query) return popularMotors
   return motorFitments
-    .filter((m) => m.name.toLowerCase().includes(q) || m.aliases.some((a) => a.includes(q)))
+    .filter(
+      (motor) =>
+        motor.name.toLowerCase().includes(query) ||
+        motor.aliases.some((alias) => alias.toLowerCase().includes(query)),
+    )
     .slice(0, 8)
 })
 
-function selectMotor(fitment: MotorFitment): void {
-  selectedFitment.value = fitment
-  searchQuery.value = fitment.name
-  showDropdown.value = false
-}
+const hasCoordinateData = computed(() =>
+  props.branches.some((branch) => branch.latitude !== null && branch.longitude !== null),
+)
 
-function handleInput(): void {
-  selectedFitment.value = null
-  showDropdown.value = true
-}
+const cities = computed(() =>
+  [...new Set(props.branches.map((branch) => branch.city).filter(Boolean))].sort(),
+)
 
-function handleBlur(): void {
-  setTimeout(() => {
-    showDropdown.value = false
-  }, 150)
-}
-
-function brandsWithSize(size: string): BrandCatalog[] {
-  return props.brandCatalog.filter((b) => b.types.some((t) => t.sizes.includes(size)))
-}
-
-const brandsWithBoth = computed<BrandCatalog[]>(() => {
-  if (!selectedFitment.value) return []
-  const { front, rear } = selectedFitment.value
-  const frontSet = new Set(brandsWithSize(front).map((b) => b.id))
-  return brandsWithSize(rear).filter((b) => frontSet.has(b.id))
+const recommendationByBranch = computed(() => {
+  const entries = recommendation.value?.branches ?? []
+  return new Map(entries.map((entry) => [entry.branchCode, entry]))
 })
 
-const brandsWithFrontOnly = computed<BrandCatalog[]>(() => {
-  if (!selectedFitment.value) return []
-  const { front, rear } = selectedFitment.value
-  const rearIds = new Set(brandsWithSize(rear).map((b) => b.id))
-  return brandsWithSize(front).filter((b) => !rearIds.has(b.id))
+const selectedFrontProduct = computed(() =>
+  recommendation.value?.products.find((product) => product.key === selectedFrontProductKey.value) ?? null,
+)
+
+const selectedRearProduct = computed(() =>
+  recommendation.value?.products.find((product) => product.key === selectedRearProductKey.value) ?? null,
+)
+
+const selectedProducts = computed(() =>
+  [selectedFrontProduct.value, selectedRearProduct.value].filter(
+    (product): product is PublicRecommendedProduct => product !== null,
+  ),
+)
+
+const branchHeading = computed(() => {
+  if (selectedProducts.value.length === 2) return "Cabang dengan kedua pilihan"
+  if (selectedProducts.value.length === 1) return "Cabang dengan ban pilihan Anda"
+  return "Cabang yang tersedia"
 })
-</script>
 
-<template>
-  <section id="cari-ukuran" class="pub-section pub-finder-section">
-    <div class="pub-shell">
-      <div class="pub-finder-layout">
-        <div class="pub-finder-head">
-          <div class="pub-kicker">Size Finder</div>
-          <h2 class="pub-heading pub-finder-heading">Temukan ukuran ban untuk motor Anda.</h2>
-          <p class="pub-finder-body">
-            Ketik nama motor untuk melihat ukuran ban yang sesuai dan brand yang tersedia di Mister Ban.
-          </p>
+const rankedBranches = computed(() => {
+  const rows = props.branches
+    .filter((branch) => selectedCity.value === "all" || branch.city === selectedCity.value)
+    .filter(
+      (branch) =>
+        selectedProducts.value.length === 0 ||
+        selectedProducts.value.every((product) => productStatusAtBranch(product, branch.code) !== null),
+    )
+    .map((branch) => {
+      const stock = recommendationByBranch.value.get(branch.code) ?? emptyBranchRecommendation(branch.code)
+      const distance = calculateDistance(branch)
+      const displayStatus = selectedStatusAtBranch(branch.code, stock.setStatus)
+      return { branch, stock, displayStatus, distance }
+    })
 
-          <div class="pub-finder-input-wrap">
-            <input
-              v-model="searchQuery"
-              type="text"
-              class="pub-finder-input"
-              placeholder="Contoh: Vario 125, NMAX, Beat…"
-              autocomplete="off"
-              @input="handleInput"
-              @focus="showDropdown = true"
-              @blur="handleBlur"
-            />
-            <div v-if="showDropdown && filteredMotors.length > 0" class="pub-finder-dropdown">
-              <button
-                v-for="motor in filteredMotors"
-                :key="motor.id"
-                type="button"
-                class="pub-finder-dropdown-item"
-                @mousedown.prevent="selectMotor(motor)"
-              >
-                <span class="pub-dropdown-name">{{ motor.name }}</span>
-                <span class="pub-dropdown-cat">{{ motorCategoryLabels[motor.category] }}</span>
-              </button>
-            </div>
-          </div>
+  return rows.sort((left, right) => {
+    const leftPreferred = left.branch.code === props.preferredBranchCode ? 1 : 0
+    const rightPreferred = right.branch.code === props.preferredBranchCode ? 1 : 0
+    if (leftPreferred !== rightPreferred) return rightPreferred - leftPreferred
+    const stockDifference = stockRank(right.displayStatus) - stockRank(left.displayStatus)
+    if (stockDifference !== 0) return stockDifference
+    if (left.distance !== null && right.distance !== null) return left.distance - right.distance
+    if (left.distance !== null) return -1
+    if (right.distance !== null) return 1
+    return left.branch.name.localeCompare(right.branch.name, "id")
+  })
+})
 
-          <Transition name="pub-finder-fade">
-            <div v-if="selectedFitment" class="pub-finder-result">
-              <div class="pub-result-header">
-                <h3 class="pub-result-model">{{ selectedFitment.name }}</h3>
-                <span class="pub-result-cat">{{ motorCategoryLabels[selectedFitment.category] }}</span>
-              </div>
-              <div class="pub-fitment-row">
-                <div class="pub-fitment-card">
-                  <span class="pub-fitment-label">Ban Depan</span>
-                  <strong class="pub-fitment-size">{{ selectedFitment.front }}</strong>
-                </div>
-                <div class="pub-fitment-sep">·</div>
-                <div class="pub-fitment-card">
-                  <span class="pub-fitment-label">Ban Belakang</span>
-                  <strong class="pub-fitment-size">{{ selectedFitment.rear }}</strong>
-                </div>
-              </div>
+const visibleBranches = computed(() =>
+  showAllBranches.value ? rankedBranches.value : rankedBranches.value.slice(0, 4),
+)
 
-              <div v-if="brandsWithBoth.length > 0 || brandsWithFrontOnly.length > 0" class="pub-result-brands">
-                <p class="pub-brands-label">Brand yang tersedia:</p>
-                <div class="pub-brands-chips">
-                  <span
-                    v-for="brand in brandsWithBoth"
-                    :key="brand.id"
-                    class="pub-brand-chip pub-brand-chip--full"
-                  >{{ brand.name }}</span>
-                  <span
-                    v-for="brand in brandsWithFrontOnly"
-                    :key="`partial-${brand.id}`"
-                    class="pub-brand-chip pub-brand-chip--partial"
-                  >{{ brand.name }}</span>
-                </div>
-              </div>
+const productsForPosition = computed(() => {
+  const products = recommendation.value?.products ?? []
+  const matching = products.filter(
+    (product) => product.position === activePosition.value || product.position === "both",
+  )
+  return showAllProducts.value ? matching : matching.slice(0, 8)
+})
 
-              <div v-else class="pub-result-empty">
-                Hubungi cabang untuk konfirmasi ketersediaan ukuran ini.
-              </div>
-            </div>
-          </Transition>
-        </div>
+const productCountForPosition = computed(() =>
+  (recommendation.value?.products ?? []).filter(
+    (product) => product.position === activePosition.value || product.position === "both",
+  ).length,
+)
 
-        <div class="pub-hints-panel">
-          <div class="pub-hints-title">Panduan ukuran cepat</div>
-          <div class="pub-hints-list">
-            <div v-for="hint in sizeHints" :key="hint.label" class="pub-hint-row">
-              <span class="pub-hint-label">{{ hint.label }}</span>
-              <span class="pub-hint-sizes">
-                <span class="pub-hint-chip">D: {{ hint.front }}</span>
-                <span class="pub-hint-chip">B: {{ hint.rear }}</span>
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-</template>
+const fallbackContact = computed(() => {
+  const branch = rankedBranches.value[0]?.branch ?? props.branches[0]
+  return branch ? contactLink(branch) : "#cabang"
+})
 
-<style scoped>
-.pub-finder-section {
-  border-top: 1px solid rgba(7, 54, 31, 0.1);
-  background: linear-gradient(180deg, var(--pub-green-75, #edf7f0) 0%, #ffffff 100%);
-}
+async function selectMotor(motor: MotorFitment): Promise<void> {
+  const sequence = ++requestSequence
+  selectedMotor.value = motor
+  searchQuery.value = motor.name
+  showSuggestions.value = false
+  recommendation.value = null
+  errorMessage.value = ""
+  activePosition.value = "front"
+  selectedFrontProductKey.value = ""
+  selectedRearProductKey.value = ""
+  showAllProducts.value = false
+  showAllBranches.value = false
+  isLoading.value = true
 
-.pub-finder-layout {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 60px;
-  align-items: start;
-}
-
-@media (max-width: 800px) {
-  .pub-finder-layout {
-    grid-template-columns: 1fr;
-    gap: 40px;
+  try {
+    const response = await $fetch<PublicRecommendationResponse>("/api/public/recommendations", {
+      query: { motorId: motor.id },
+    })
+    if (sequence === requestSequence) recommendation.value = response
+  } catch {
+    if (sequence === requestSequence) {
+      errorMessage.value = "Data stok belum dapat dimuat. Anda tetap dapat menghubungi cabang untuk konfirmasi."
+    }
+  } finally {
+    if (sequence === requestSequence) isLoading.value = false
   }
 }
 
-.pub-finder-heading {
-  font-size: clamp(26px, 3.5vw, 46px);
-  margin-bottom: 16px;
+function handleInput(): void {
+  selectedMotor.value = null
+  recommendation.value = null
+  selectedFrontProductKey.value = ""
+  selectedRearProductKey.value = ""
+  errorMessage.value = ""
+  showSuggestions.value = true
 }
 
-.pub-finder-body {
-  font-size: 15px;
-  color: var(--pub-muted);
-  line-height: 1.6;
-  margin: 0 0 24px;
+function closeSuggestions(): void {
+  window.setTimeout(() => {
+    showSuggestions.value = false
+  }, 120)
 }
 
-.pub-finder-input-wrap {
-  position: relative;
-  width: 100%;
-  max-width: 480px;
+function useMyLocation(): void {
+  if (!navigator.geolocation || !hasCoordinateData.value) return
+  locating.value = true
+  locationMessage.value = ""
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      userLocation.value = {
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+      }
+      locationMessage.value = "Cabang diurutkan berdasarkan perkiraan jarak."
+      locating.value = false
+    },
+    () => {
+      locationMessage.value = "Lokasi tidak tersedia. Silakan pilih area secara manual."
+      locating.value = false
+    },
+    { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 },
+  )
 }
 
-.pub-finder-input {
-  width: 100%;
-  padding: 14px 18px;
-  font-size: 15px;
-  border: 1.5px solid rgba(7, 54, 31, 0.22);
-  border-radius: 12px;
-  background: #fff;
-  color: var(--pub-green-950);
-  outline: none;
-  transition: border-color 0.15s;
-  box-sizing: border-box;
+function calculateDistance(branch: PublicBranch): number | null {
+  if (!userLocation.value || branch.latitude === null || branch.longitude === null) return null
+  const earthRadius = 6371
+  const latitudeDelta = toRadians(branch.latitude - userLocation.value.latitude)
+  const longitudeDelta = toRadians(branch.longitude - userLocation.value.longitude)
+  const startLatitude = toRadians(userLocation.value.latitude)
+  const endLatitude = toRadians(branch.latitude)
+  const value =
+    Math.sin(latitudeDelta / 2) ** 2 +
+    Math.cos(startLatitude) * Math.cos(endLatitude) * Math.sin(longitudeDelta / 2) ** 2
+  return earthRadius * 2 * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value))
 }
 
-.pub-finder-input:focus {
-  border-color: var(--pub-green-600);
-  box-shadow: 0 0 0 3px rgba(17, 131, 66, 0.1);
+function toRadians(value: number): number {
+  return (value * Math.PI) / 180
 }
 
-.pub-finder-input::placeholder {
-  color: rgba(20, 32, 25, 0.38);
+function stockRank(status: PublicStockStatus): number {
+  if (status === "available") return 2
+  if (status === "limited") return 1
+  return 0
 }
 
-.pub-finder-dropdown {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
-  right: 0;
-  background: #fff;
-  border: 1.5px solid rgba(7, 54, 31, 0.18);
-  border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(7, 54, 31, 0.12);
-  z-index: 20;
-  overflow: hidden;
+function emptyBranchRecommendation(branchCode: string): PublicBranchRecommendation {
+  return {
+    branchCode,
+    frontStatus: "contact",
+    rearStatus: "contact",
+    setStatus: "contact",
+  }
 }
 
-.pub-finder-dropdown-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  padding: 11px 16px;
-  border: none;
-  background: none;
-  cursor: pointer;
-  text-align: left;
-  transition: background 0.12s;
-  gap: 12px;
+function statusLabel(status: PublicStockStatus): string {
+  if (status === "available") return "Tersedia"
+  if (status === "limited") return "Stok terbatas"
+  return "Hubungi toko"
 }
 
-.pub-finder-dropdown-item:hover {
-  background: var(--pub-green-75, #edf7f0);
+function productBranchCount(product: PublicRecommendedProduct): number {
+  return product.availableBranchCount
 }
 
-.pub-finder-dropdown-item + .pub-finder-dropdown-item {
-  border-top: 1px solid rgba(7, 54, 31, 0.07);
+function productStatusAtBranch(
+  product: PublicRecommendedProduct,
+  branchCode: string,
+): Exclude<PublicStockStatus, "contact"> | null {
+  return (product.availability ?? []).find(([code]) => code === branchCode)?.[1] ?? null
 }
 
-.pub-dropdown-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--pub-green-950);
+function selectedStatusAtBranch(branchCode: string, fallback: PublicStockStatus): PublicStockStatus {
+  if (selectedProducts.value.length === 0) return fallback
+  const statuses = selectedProducts.value
+    .map((product) => productStatusAtBranch(product, branchCode))
+    .filter((status): status is Exclude<PublicStockStatus, "contact"> => status !== null)
+  if (statuses.length !== selectedProducts.value.length) return "contact"
+  return statuses.every((status) => status === "available") ? "available" : "limited"
 }
 
-.pub-dropdown-cat {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  color: var(--pub-green-700);
-  background: rgba(11, 113, 58, 0.1);
-  border-radius: 999px;
-  padding: 2px 8px;
-  white-space: nowrap;
+function isProductSelected(product: PublicRecommendedProduct): boolean {
+  return activePosition.value === "front"
+    ? selectedFrontProductKey.value === product.key
+    : selectedRearProductKey.value === product.key
 }
 
-.pub-finder-result {
-  margin-top: 20px;
-  padding: 20px;
-  background: #fff;
-  border: 1.5px solid rgba(7, 54, 31, 0.14);
-  border-radius: 14px;
-  box-shadow: 0 4px 16px rgba(7, 54, 31, 0.07);
+function selectProduct(product: PublicRecommendedProduct): void {
+  if (activePosition.value === "front") {
+    selectedFrontProductKey.value = selectedFrontProductKey.value === product.key ? "" : product.key
+  } else {
+    selectedRearProductKey.value = selectedRearProductKey.value === product.key ? "" : product.key
+  }
+  showAllBranches.value = false
 }
 
-.pub-result-header {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  margin-bottom: 16px;
-  flex-wrap: wrap;
+function clearProductSelection(position: PositionFilter): void {
+  if (position === "front") selectedFrontProductKey.value = ""
+  else selectedRearProductKey.value = ""
+  showAllBranches.value = false
 }
 
-.pub-result-model {
-  margin: 0;
-  font-size: 17px;
-  font-weight: 800;
-  color: var(--pub-green-950);
+function instagramUrl(handle: string): string {
+  return `https://instagram.com/${handle.replace(/^@/, "")}`
 }
 
-.pub-result-cat {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--pub-green-700);
-  background: rgba(11, 113, 58, 0.08);
-  border: 1px solid rgba(11, 113, 58, 0.18);
-  border-radius: 999px;
-  padding: 2px 10px;
+function whatsappMessage(branch: PublicBranch): string {
+  const motor = selectedMotor.value
+  if (!motor) return `Halo ${branch.name}, saya ingin konsultasi ban motor.`
+  const lines = [
+    `Halo ${branch.name}, saya cek ban melalui website Mister Ban.`,
+    `Motor: ${motor.name}`,
+    `Ukuran depan: ${motor.front}`,
+    `Ukuran belakang: ${motor.rear}`,
+  ]
+  if (selectedFrontProduct.value) {
+    lines.push(`Pilihan depan: ${selectedFrontProduct.value.brand} ${selectedFrontProduct.value.type}`)
+  }
+  if (selectedRearProduct.value) {
+    lines.push(`Pilihan belakang: ${selectedRearProduct.value.brand} ${selectedRearProduct.value.type}`)
+  }
+  lines.push("Apakah bannya masih tersedia?")
+  return lines.join("\n")
 }
 
-.pub-fitment-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
+function contactLink(branch: PublicBranch): string {
+  if (branch.whatsapp) {
+    return `https://wa.me/${branch.whatsapp}?text=${encodeURIComponent(whatsappMessage(branch))}`
+  }
+  if (branch.instagram) return instagramUrl(branch.instagram)
+  return branch.mapsUrl
 }
 
-.pub-fitment-card {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+function contactLabel(branch: PublicBranch): string {
+  if (branch.whatsapp) return "Tanya via WhatsApp"
+  if (branch.instagram) return "Tanya via Instagram"
+  return "Lihat lokasi"
 }
 
-.pub-fitment-label {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--pub-muted);
+function formatUpdatedAt(value: string): string {
+  return new Intl.DateTimeFormat("id-ID", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Asia/Jakarta",
+  }).format(new Date(value))
 }
+</script>
 
-.pub-fitment-size {
-  font-size: 22px;
-  font-weight: 900;
-  letter-spacing: -0.02em;
-  color: var(--pub-green-950);
-  font-variant-numeric: tabular-nums;
-}
+<template>
+  <div id="cek-ban" class="finder-card">
+    <div class="finder-card__heading">
+      <span class="finder-step">1</span>
+      <div>
+        <p class="public-kicker">Pilih motor</p>
+        <h2>Motor apa yang Anda pakai?</h2>
+      </div>
+    </div>
 
-.pub-fitment-sep {
-  font-size: 20px;
-  color: rgba(20, 32, 25, 0.2);
-  margin-top: 16px;
-}
+    <label class="finder-label" for="motor-search">Nama atau tipe motor</label>
+    <div class="finder-search">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.35-4.35m2.35-5.65a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z" /></svg>
+      <input
+        id="motor-search"
+        v-model="searchQuery"
+        type="search"
+        placeholder="Contoh: Beat, NMAX, Vario"
+        autocomplete="off"
+        aria-autocomplete="list"
+        :aria-expanded="showSuggestions"
+        aria-controls="motor-suggestions"
+        @input="handleInput"
+        @focus="showSuggestions = true"
+        @blur="closeSuggestions"
+      />
+      <span v-if="isLoading" class="finder-spinner" aria-label="Memuat" />
 
-.pub-result-brands {
-  margin-top: 16px;
-  padding-top: 14px;
-  border-top: 1px solid rgba(7, 54, 31, 0.1);
-}
+      <div v-if="showSuggestions" id="motor-suggestions" class="finder-suggestions" role="listbox">
+        <button
+          v-for="motor in filteredMotors"
+          :key="motor.id"
+          type="button"
+          role="option"
+          @mousedown.prevent="selectMotor(motor)"
+        >
+          <span><strong>{{ motor.name }}</strong><small>{{ motorCategoryLabels[motor.category] }}</small></span>
+          <span aria-hidden="true">Pilih</span>
+        </button>
+        <div v-if="searchQuery.trim().length >= 2 && filteredMotors.length === 0" class="finder-not-found">
+          <strong>Motor belum ada di daftar.</strong>
+          <span>Tim cabang dapat membantu mengecek ukuran secara langsung.</span>
+          <a :href="fallbackContact" target="_blank" rel="noreferrer">Konsultasi dengan cabang</a>
+        </div>
+      </div>
+    </div>
 
-.pub-brands-label {
-  margin: 0 0 8px;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--pub-muted);
-}
+    <div v-if="!selectedMotor" class="finder-popular">
+      <span>Sering dicari:</span>
+      <button v-for="motor in popularMotors" :key="motor.id" type="button" @click="selectMotor(motor)">
+        {{ motor.name.replace(/^(Honda|Yamaha)\s/, "") }}
+      </button>
+    </div>
 
-.pub-brands-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
+    <p v-if="errorMessage" class="finder-alert" role="alert">{{ errorMessage }}</p>
 
-.pub-brand-chip {
-  padding: 5px 12px;
-  border-radius: 999px;
-  font-size: 12.5px;
-  font-weight: 700;
-}
+    <div v-if="selectedMotor" class="finder-result" aria-live="polite">
+      <div class="finder-result__title">
+        <div><small>Hasil untuk</small><h3>{{ selectedMotor.name }}</h3></div>
+        <span>{{ motorCategoryLabels[selectedMotor.category] }}</span>
+      </div>
 
-.pub-brand-chip--full {
-  background: rgba(17, 131, 66, 0.1);
-  border: 1px solid rgba(17, 131, 66, 0.28);
-  color: var(--pub-green-700);
-}
+      <div class="finder-sizes">
+        <article><span>Ban depan</span><strong>{{ selectedMotor.front }}</strong></article>
+        <article><span>Ban belakang</span><strong>{{ selectedMotor.rear }}</strong></article>
+      </div>
+      <p class="finder-note">Ukuran dapat berbeda menurut tahun atau varian. Cocokkan kembali dengan tulisan pada ban atau buku kendaraan.</p>
 
-.pub-brand-chip--partial {
-  background: rgba(20, 32, 25, 0.05);
-  border: 1px solid rgba(20, 32, 25, 0.14);
-  color: var(--pub-muted);
-}
+      <template v-if="recommendation">
+        <div class="finder-divider" />
+        <div class="finder-subheading">
+          <div>
+            <span class="finder-step">2</span>
+            <div><p class="public-kicker">Pilih ban</p><h3>Klik ban yang Anda inginkan</h3></div>
+          </div>
+          <small>Diperbarui {{ formatUpdatedAt(recommendation.updatedAt) }}</small>
+        </div>
 
-.pub-result-empty {
-  margin-top: 14px;
-  font-size: 13px;
-  color: var(--pub-muted);
-}
+        <div class="finder-tabs" role="tablist" aria-label="Posisi ban">
+          <button type="button" :class="{ 'is-active': activePosition === 'front' }" @click="activePosition = 'front'; showAllProducts = false">
+            Depan · {{ selectedMotor.front }}{{ selectedFrontProductKey ? " · ✓" : "" }}
+          </button>
+          <button type="button" :class="{ 'is-active': activePosition === 'rear' }" @click="activePosition = 'rear'; showAllProducts = false">
+            Belakang · {{ selectedMotor.rear }}{{ selectedRearProductKey ? " · ✓" : "" }}
+          </button>
+        </div>
 
-.pub-hints-panel {
-  padding: 24px;
-  background: #fff;
-  border: 1px solid rgba(7, 54, 31, 0.12);
-  border-radius: 16px;
-}
+        <div v-if="productsForPosition.length" class="finder-products">
+          <button
+            v-for="product in productsForPosition"
+            :key="product.key"
+            type="button"
+            class="finder-product"
+            :class="{ 'is-selected': isProductSelected(product) }"
+            :aria-pressed="isProductSelected(product)"
+            @click="selectProduct(product)"
+          >
+            <div><span>{{ product.brand }}</span><strong>{{ product.type }}</strong></div>
+            <div class="finder-product__meta">
+              <b>{{ product.size }}</b>
+              <small>{{ isProductSelected(product) ? "Dipilih" : `Ada di ${productBranchCount(product)} cabang` }}</small>
+            </div>
+          </button>
+        </div>
+        <p v-else class="finder-empty">Belum ada stok untuk ukuran ini. Hubungi cabang untuk pilihan lain.</p>
+        <button v-if="productCountForPosition > 8" type="button" class="finder-more" @click="showAllProducts = !showAllProducts">
+          {{ showAllProducts ? "Tampilkan lebih sedikit" : `Lihat semua ${productCountForPosition} pilihan` }}
+        </button>
 
-.pub-hints-title {
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--pub-green-700);
-  margin-bottom: 16px;
-}
+        <div class="finder-divider" />
+        <div class="finder-subheading finder-subheading--branches">
+          <div>
+            <span class="finder-step">3</span>
+            <div><p class="public-kicker">Pilih toko</p><h3>{{ branchHeading }}</h3></div>
+          </div>
+          <button v-if="hasCoordinateData" type="button" class="finder-location" :disabled="locating" @click="useMyLocation">
+            {{ locating ? "Mencari lokasi…" : "Gunakan lokasi saya" }}
+          </button>
+        </div>
 
-.pub-hints-list {
-  display: grid;
-  gap: 0;
-}
+        <div v-if="selectedProducts.length" class="finder-selected-products" aria-label="Ban yang dipilih">
+          <button v-if="selectedFrontProduct" type="button" @click="clearProductSelection('front')">
+            Depan: {{ selectedFrontProduct.brand }} {{ selectedFrontProduct.type }} <span aria-hidden="true">×</span>
+          </button>
+          <button v-if="selectedRearProduct" type="button" @click="clearProductSelection('rear')">
+            Belakang: {{ selectedRearProduct.brand }} {{ selectedRearProduct.type }} <span aria-hidden="true">×</span>
+          </button>
+        </div>
 
-.pub-hint-row {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 0;
-  border-bottom: 1px solid rgba(7, 54, 31, 0.07);
-}
+        <div class="finder-area-filter">
+          <label for="branch-city">Area</label>
+          <select id="branch-city" v-model="selectedCity">
+            <option value="all">Semua area</option>
+            <option v-for="city in cities" :key="city" :value="city">{{ city }}</option>
+          </select>
+          <span v-if="locationMessage">{{ locationMessage }}</span>
+        </div>
 
-.pub-hint-row:last-child {
-  border-bottom: none;
-  padding-bottom: 0;
-}
-
-.pub-hint-row:first-child {
-  padding-top: 0;
-}
-
-.pub-hint-label {
-  font-size: 12.5px;
-  color: var(--pub-green-950);
-  line-height: 1.4;
-  flex: 1;
-}
-
-.pub-hint-sizes {
-  display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  flex-shrink: 0;
-}
-
-.pub-hint-chip {
-  font-size: 11px;
-  font-family: ui-monospace, "Cascadia Code", monospace;
-  font-weight: 600;
-  color: var(--pub-green-950);
-  background: rgba(7, 54, 31, 0.06);
-  border: 1px solid rgba(7, 54, 31, 0.12);
-  border-radius: 5px;
-  padding: 3px 7px;
-  white-space: nowrap;
-  letter-spacing: 0.01em;
-}
-
-.pub-finder-fade-enter-active {
-  transition: opacity 0.2s ease, transform 0.2s ease;
-}
-
-.pub-finder-fade-leave-active {
-  transition: opacity 0.15s ease;
-}
-
-.pub-finder-fade-enter-from {
-  opacity: 0;
-  transform: translateY(-6px);
-}
-
-.pub-finder-fade-leave-to {
-  opacity: 0;
-}
-</style>
+        <div class="finder-branches">
+          <article v-for="item in visibleBranches" :key="item.branch.code" class="finder-branch">
+            <div class="finder-branch__top">
+              <div><strong>{{ item.branch.name }}</strong><span>{{ item.branch.city }}</span></div>
+              <span class="stock-badge" :class="`is-${item.displayStatus}`">{{ statusLabel(item.displayStatus) }}</span>
+            </div>
+            <p>{{ item.branch.address }}</p>
+            <small v-if="item.distance !== null">Sekitar {{ item.distance.toFixed(1) }} km dari Anda</small>
+            <div class="finder-branch__actions">
+              <a :href="item.branch.mapsUrl" target="_blank" rel="noreferrer">Petunjuk arah</a>
+              <a :href="contactLink(item.branch)" target="_blank" rel="noreferrer" class="is-primary">{{ contactLabel(item.branch) }}</a>
+            </div>
+          </article>
+        </div>
+        <div v-if="rankedBranches.length === 0" class="finder-empty finder-empty--branches">
+          <strong>Tidak ada cabang untuk pilihan ini.</strong>
+          <span>Hapus salah satu pilihan ban atau pilih area lain.</span>
+        </div>
+        <button v-if="rankedBranches.length > 4" type="button" class="finder-more" @click="showAllBranches = !showAllBranches">
+          {{ showAllBranches ? "Tampilkan lebih sedikit" : `Lihat semua ${rankedBranches.length} cabang` }}
+        </button>
+      </template>
+    </div>
+  </div>
+</template>

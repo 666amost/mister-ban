@@ -80,3 +80,48 @@ export type MotorFitment = {
   front: string
   rear: string
 }
+
+export type PublicStockStatus = "available" | "limited" | "contact"
+
+export type PublicBranch = {
+  code: string
+  slug: string
+  name: string
+  address: string
+  city: string
+  operatingHours: string[]
+  instagram: string | null
+  whatsapp: string | null
+  latitude: number | null
+  longitude: number | null
+  mapsUrl: string
+}
+
+export type PublicBranchesResponse = {
+  branches: PublicBranch[]
+  updatedAt: string
+}
+
+export type PublicRecommendedProduct = {
+  key: string
+  brand: string
+  type: string
+  size: string
+  position: "front" | "rear" | "both"
+  availableBranchCount: number
+  availability: Array<[branchCode: string, status: Exclude<PublicStockStatus, "contact">]>
+}
+
+export type PublicBranchRecommendation = {
+  branchCode: string
+  frontStatus: PublicStockStatus
+  rearStatus: PublicStockStatus
+  setStatus: PublicStockStatus
+}
+
+export type PublicRecommendationResponse = {
+  motor: MotorFitment
+  products: PublicRecommendedProduct[]
+  branches: PublicBranchRecommendation[]
+  updatedAt: string
+}

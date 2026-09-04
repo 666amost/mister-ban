@@ -1,47 +1,56 @@
 <script setup lang="ts">
-import type { PublicBranchCard } from "~/types/public"
+import type { PublicBranch } from "~/types/public"
 
 defineProps<{
-  branches: PublicBranchCard[]
+  branches: PublicBranch[]
 }>()
 
-function buildInstagramUrl(handle: string): string {
+function instagramUrl(handle: string): string {
   return `https://instagram.com/${handle.replace(/^@/, "")}`
+}
+
+function contactLink(branch: PublicBranch): string {
+  if (branch.whatsapp) {
+    const message = `Halo ${branch.name}, saya ingin konsultasi ban motor sebelum datang ke toko.`
+    return `https://wa.me/${branch.whatsapp}?text=${encodeURIComponent(message)}`
+  }
+  return branch.instagram ? instagramUrl(branch.instagram) : branch.mapsUrl
+}
+
+function contactLabel(branch: PublicBranch): string {
+  if (branch.whatsapp) return "WhatsApp"
+  if (branch.instagram) return "Instagram"
+  return "Lihat Maps"
 }
 </script>
 
 <template>
-  <section id="jaringan" class="pub-section pub-section--accent">
-    <div class="pub-shell pub-network-grid">
-      <div class="pub-network-copy">
-        <div class="pub-kicker">Cabang Kami</div>
-        <h2 class="pub-heading">Datang ke cabang Mister Ban terdekat.</h2>
-        <p class="pub-body">
-          Setiap cabang siap membantu cek stok, ukuran, dan pilihan ban motor yang sesuai.
-        </p>
-
-        <div class="pub-network-actions">
-          <a class="pub-btn pub-btn--primary" href="#produk">Lihat Pilihan Ban</a>
+  <section id="cabang" class="public-section public-branches-section">
+    <div class="public-shell">
+      <div class="public-section-heading public-section-heading--split">
+        <div>
+          <p class="public-kicker">Lokasi toko</p>
+          <h2>Cabang Mister Ban.</h2>
+          <p>Lihat alamat, jam buka, dan petunjuk arah.</p>
         </div>
+        <a href="#cek-ban" class="public-text-link">Cek stok berdasarkan motor <span aria-hidden="true">→</span></a>
       </div>
 
-      <div class="pub-network-panel">
-        <article v-for="branch in branches" :key="branch.title" class="pub-network-card">
-          <div class="pub-branch-head">
-            <div>
-              <h3 class="pub-network-title">{{ branch.title }}</h3>
-              <p class="pub-branch-area">Area {{ branch.area }}</p>
-            </div>
+      <div class="public-branch-grid">
+        <article v-for="branch in branches" :key="branch.code" class="public-branch-card">
+          <div class="public-branch-card__top">
+            <span>{{ branch.city }}</span>
+            <NuxtLink :to="`/cabang/${branch.slug}`">Detail cabang</NuxtLink>
           </div>
-          <div v-if="branch.instagram" class="pub-branch-meta">
-            <a
-              class="pub-branch-link"
-              :href="buildInstagramUrl(branch.instagram)"
-              target="_blank"
-              rel="noreferrer"
-            >
-              {{ branch.instagram }}
-            </a>
+          <h3>{{ branch.name }}</h3>
+          <p>{{ branch.address }}</p>
+          <div v-if="branch.operatingHours.length" class="public-hours">
+            <span>Jam operasional</span>
+            <strong>{{ branch.operatingHours.join(" · ") }}</strong>
+          </div>
+          <div class="public-branch-card__actions">
+            <a :href="branch.mapsUrl" target="_blank" rel="noreferrer">Petunjuk arah</a>
+            <a :href="contactLink(branch)" target="_blank" rel="noreferrer">{{ contactLabel(branch) }}</a>
           </div>
         </article>
       </div>

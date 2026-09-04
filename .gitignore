@@ -17,6 +17,7 @@ Thumbs.db
 *.md
 *.README.md
 *.sql
+!PUBLIC_SITE_CONTENT_GUIDE.md
 !db/migrations/0011_store_receipt_settings.sql
 !db/migrations/0012_global_plate_search_indexes.sql
 *.txt
@@ -24,3 +25,4 @@ Thumbs.db
 # Project data / scripts
 /masterdata/
 /scripts/
+PUBLIC_SITE_CONTENT_GUIDE.md
