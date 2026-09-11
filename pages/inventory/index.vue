@@ -3,6 +3,14 @@ import { onMounted } from "vue"
 
 definePageMeta({ middleware: "admin" })
 
+type InventoryAdjustmentHistoryEntry = {
+  id: string
+  txn_at: string
+  qty_delta: number
+  created_by: string | null
+  note: string | null
+}
+
 type InventoryRow = {
   product_id: string
   sku: string
@@ -17,6 +25,7 @@ type InventoryRow = {
   last_adj_at: string | null
   last_adj_qty_delta: number | null
   last_adj_by: string | null
+  adjustment_history: InventoryAdjustmentHistoryEntry[]
   price_updated_at: string | null
   price_updated_by: string | null
 }
@@ -706,13 +715,15 @@ onMounted(async () => {
                 <td style="text-align: right">
                   {{ i.qty_on_hand }}
                   <div v-if="me.user.value?.role === 'ADMIN' && i.last_adj_at" class="lastEditHint">
-                    <button type="button" class="editHintBtn" @click="toggleEditorTooltip(i.product_id, 'adj')">
+                    <button
+                      type="button"
+                      class="editHintBtn"
+                      :aria-expanded="activeEditorTooltip?.productId === i.product_id && activeEditorTooltip?.type === 'adj'"
+                      @click="toggleEditorTooltip(i.product_id, 'adj')"
+                    >
                       {{ i.last_adj_qty_delta !== null && i.last_adj_qty_delta > 0 ? '+' : '' }}{{ i.last_adj_qty_delta }} qty
                       • {{ formatDate(i.last_adj_at) }}
                     </button>
-                    <span v-if="activeEditorTooltip?.productId === i.product_id && activeEditorTooltip?.type === 'adj'" class="editorTooltipText">
-                      {{ maskEmail(i.last_adj_by) }}
-                    </span>
                   </div>
                 </td>
                 <td class="maxStockCell">
@@ -776,6 +787,49 @@ onMounted(async () => {
                   </button>
                 </td>
               </tr>
+              <Transition name="adjInline" appear>
+                <tr
+                  v-if="activeEditorTooltip?.productId === i.product_id && activeEditorTooltip?.type === 'adj'"
+                  class="adjustmentHistoryRow"
+                >
+                  <td :colspan="tableColspan" class="adjustmentHistoryCell">
+                    <div class="adjustmentHistory">
+                      <div class="adjustmentHistoryHeader">
+                        <div>
+                          <div class="adjustmentHistoryTitle">2 riwayat stok terakhir</div>
+                          <div class="adjustmentHistoryProduct">
+                            {{ productDisplayName(i.brand, i.name) }} <span>{{ i.size }}</span>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          class="adjustmentHistoryClose"
+                          aria-label="Tutup riwayat stok"
+                          @click="toggleEditorTooltip(i.product_id, 'adj')"
+                        >
+                          ×
+                        </button>
+                      </div>
+                      <div class="adjustmentHistoryList">
+                        <div
+                          v-for="entry in i.adjustment_history"
+                          :key="entry.id"
+                          class="adjustmentHistoryItem"
+                        >
+                          <div class="adjustmentHistoryMain">
+                            <strong :class="entry.qty_delta > 0 ? 'qtyPositive' : 'qtyNegative'">
+                              {{ entry.qty_delta > 0 ? '+' : '' }}{{ entry.qty_delta }} qty
+                            </strong>
+                            <span>{{ formatDate(entry.txn_at) }}</span>
+                          </div>
+                          <div class="adjustmentHistoryMeta">{{ maskEmail(entry.created_by) }}</div>
+                          <div v-if="entry.note" class="adjustmentHistoryNote">{{ entry.note }}</div>
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              </Transition>
               <Transition name="adjInline" appear>
                 <tr v-if="me.user.value?.role === 'ADMIN' && adjustingId === i.product_id && !priceEditMode">
                   <td :colspan="tableColspan" class="adjRowCell">
@@ -987,6 +1041,7 @@ onMounted(async () => {
   color: var(--mb-muted);
 }
 .lastEditHint {
+  position: relative;
   margin-top: 3px;
   font-size: 11px;
   color: rgba(52, 199, 89, 0.9);
@@ -1015,6 +1070,103 @@ onMounted(async () => {
   font-weight: 600;
   color: var(--mb-muted);
   letter-spacing: 0.02em;
+}
+.adjustmentHistory {
+  display: grid;
+  gap: 10px;
+  padding: 11px 13px;
+  border: 1px solid rgba(52, 199, 89, 0.3);
+  border-radius: 10px;
+  background: rgba(52, 199, 89, 0.05);
+  color: var(--mb-text);
+  font-style: normal;
+  text-align: left;
+  white-space: normal;
+}
+.adjustmentHistoryRow td {
+  border-bottom-color: var(--mb-table-border);
+}
+.adjustmentHistoryCell {
+  padding: 7px 8px 9px !important;
+  background: rgba(52, 199, 89, 0.02);
+}
+.adjustmentHistoryHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.adjustmentHistoryTitle {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--mb-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.adjustmentHistoryProduct {
+  margin-top: 3px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.adjustmentHistoryProduct span {
+  margin-left: 4px;
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--mb-muted);
+}
+.adjustmentHistoryClose {
+  width: 25px;
+  height: 25px;
+  padding: 0;
+  border: 1px solid var(--mb-border2);
+  border-radius: 7px;
+  background: var(--mb-surface2);
+  color: var(--mb-muted);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+}
+.adjustmentHistoryList {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.adjustmentHistoryItem {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--mb-border2);
+  border-radius: 8px;
+  background: var(--mb-surface2);
+}
+.adjustmentHistoryMain {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 10px;
+  color: var(--mb-muted);
+}
+.adjustmentHistoryMain strong {
+  font-size: 11px;
+}
+.qtyPositive {
+  color: rgba(52, 199, 89, 1);
+}
+.qtyNegative {
+  color: var(--mb-danger);
+}
+.adjustmentHistoryMeta {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--mb-muted);
+}
+.adjustmentHistoryNote {
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--mb-text);
+  overflow-wrap: anywhere;
 }
 .tableWrap {
   margin-top: 12px;
@@ -1234,6 +1386,10 @@ th {
 
   .priceInput {
     width: 120px;
+  }
+
+  .adjustmentHistoryList {
+    grid-template-columns: 1fr;
   }
 
   .paginationBar {

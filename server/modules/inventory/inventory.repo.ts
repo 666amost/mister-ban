@@ -21,8 +21,17 @@ export type InventoryRow = {
   last_adj_at: string | null;
   last_adj_qty_delta: number | null;
   last_adj_by: string | null;
+  adjustment_history: InventoryAdjustmentHistoryEntry[];
   price_updated_at: string | null;
   price_updated_by: string | null;
+};
+
+export type InventoryAdjustmentHistoryEntry = {
+  id: string;
+  txn_at: string;
+  qty_delta: number;
+  created_by: string | null;
+  note: string | null;
 };
 
 export type LowStockRow = {
@@ -131,7 +140,8 @@ export async function listInventory(
         sp.max_stock,
         la.txn_at AS last_adj_at,
         la.qty_delta AS last_adj_qty_delta,
-        u_adj.email AS last_adj_by,
+        la.created_by_email AS last_adj_by,
+        la.adjustment_history,
         sp.sell_price_updated_at AS price_updated_at,
         u_price.email AS price_updated_by
       FROM store_products sp
@@ -141,17 +151,42 @@ export async function listInventory(
         ON ib.store_id = sp.store_id
        AND ib.product_id = sp.product_id
       LEFT JOIN LATERAL (
-        SELECT txn_at, qty_delta, created_by
-        FROM inventory_ledger
-        WHERE store_id = sp.store_id
-          AND product_id = sp.product_id
-          AND ref_type = 'MANUAL_ADJUST'
-          AND txn_type = 'ADJUST'
-          AND ref_id IS NULL
-        ORDER BY txn_at DESC, created_at DESC, id DESC
-        LIMIT 1
+        SELECT
+          (array_agg(recent.txn_at ORDER BY recent.txn_at DESC, recent.created_at DESC, recent.id DESC))[1] AS txn_at,
+          (array_agg(recent.qty_delta ORDER BY recent.txn_at DESC, recent.created_at DESC, recent.id DESC))[1] AS qty_delta,
+          (array_agg(recent.created_by_email ORDER BY recent.txn_at DESC, recent.created_at DESC, recent.id DESC))[1] AS created_by_email,
+          COALESCE(
+            jsonb_agg(
+              jsonb_build_object(
+                'id', recent.id,
+                'txn_at', recent.txn_at,
+                'qty_delta', recent.qty_delta,
+                'created_by', recent.created_by_email,
+                'note', recent.note
+              )
+              ORDER BY recent.txn_at DESC, recent.created_at DESC, recent.id DESC
+            ),
+            '[]'::jsonb
+          ) AS adjustment_history
+        FROM (
+          SELECT
+            il.id,
+            il.txn_at,
+            il.qty_delta,
+            il.note,
+            il.created_at,
+            u.email AS created_by_email
+          FROM inventory_ledger il
+          LEFT JOIN users u ON u.id = il.created_by
+          WHERE il.store_id = sp.store_id
+            AND il.product_id = sp.product_id
+            AND il.ref_type = 'MANUAL_ADJUST'
+            AND il.txn_type = 'ADJUST'
+            AND il.ref_id IS NULL
+          ORDER BY il.txn_at DESC, il.created_at DESC, il.id DESC
+          LIMIT 2
+        ) recent
       ) la ON true
-      LEFT JOIN users u_adj ON u_adj.id = la.created_by
       LEFT JOIN users u_price ON u_price.id = sp.sell_price_updated_by
       WHERE sp.store_id = $1
         AND sp.status = 'active'
