@@ -357,16 +357,20 @@ export async function getSalesQtySummary({
   storeId,
   date,
   lastThreeMonths,
+  allHistory,
 }: {
   db: DbConn;
   storeId: string;
   date: string;
   lastThreeMonths?: boolean;
+  allHistory?: boolean;
 }): Promise<SalesQtySummary> {
-  const params: Array<string> = [storeId, date];
-  const dateFilter = lastThreeMonths
-    ? "AND s.sale_date BETWEEN ($2::date - INTERVAL '3 months')::date AND $2::date"
-    : "AND s.sale_date = $2::date";
+  const params: Array<string> = allHistory ? [storeId] : [storeId, date];
+  const dateFilter = allHistory
+    ? ""
+    : lastThreeMonths
+      ? "AND s.sale_date BETWEEN ($2::date - INTERVAL '3 months')::date AND $2::date"
+      : "AND s.sale_date = $2::date";
 
   const { rows } = await db.query<SalesQtySummary>(
     `
@@ -399,16 +403,20 @@ export async function getSalesDailySummary({
   storeId,
   date,
   lastThreeMonths,
+  allHistory,
 }: {
   db: DbConn;
   storeId: string;
   date: string;
   lastThreeMonths?: boolean;
+  allHistory?: boolean;
 }): Promise<SalesDailySummary> {
-  const params: Array<string> = [storeId, date];
-  const dateFilter = lastThreeMonths
-    ? "AND s.sale_date BETWEEN ($2::date - INTERVAL '3 months')::date AND $2::date"
-    : "AND s.sale_date = $2::date";
+  const params: Array<string> = allHistory ? [storeId] : [storeId, date];
+  const dateFilter = allHistory
+    ? ""
+    : lastThreeMonths
+      ? "AND s.sale_date BETWEEN ($2::date - INTERVAL '3 months')::date AND $2::date"
+      : "AND s.sale_date = $2::date";
 
   const { rows } = await db.query<SalesDailySummary>(
     `
@@ -494,6 +502,7 @@ export async function listSales({
   storeId,
   date,
   lastThreeMonths,
+  allHistory,
   hideExpenseOnly,
   q,
   limit,
@@ -503,6 +512,7 @@ export async function listSales({
   storeId: string;
   date: string;
   lastThreeMonths?: boolean;
+  allHistory?: boolean;
   hideExpenseOnly?: boolean;
   q?: string;
   limit: number;
@@ -514,12 +524,15 @@ export async function listSales({
   const params: Array<string | number | boolean | null> = [storeId];
   let nextParam = 2;
 
-  const dateParam = nextParam;
-  params.push(date);
-  nextParam += 1;
-  const dateFilter = lastThreeMonths
-    ? `AND s.sale_date BETWEEN ($${dateParam}::date - INTERVAL '3 months')::date AND $${dateParam}::date`
-    : `AND s.sale_date = $${dateParam}::date`;
+  let dateFilter = "";
+  if (!allHistory) {
+    const dateParam = nextParam;
+    params.push(date);
+    nextParam += 1;
+    dateFilter = lastThreeMonths
+      ? `AND s.sale_date BETWEEN ($${dateParam}::date - INTERVAL '3 months')::date AND $${dateParam}::date`
+      : `AND s.sale_date = $${dateParam}::date`;
+  }
 
   const searchParam = nextParam;
   params.push(search);
@@ -673,7 +686,7 @@ export async function listSales({
           WHERE se3.sale_id = s.id
         )
       )
-    ORDER BY s.created_at DESC
+    ORDER BY s.sale_date DESC, s.created_at DESC
     LIMIT $${limitParam} OFFSET $${offsetParam}
   `;
 

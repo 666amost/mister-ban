@@ -42,11 +42,13 @@ export default defineEventHandler(async (event) => {
     const isAdmin = user.role === "ADMIN";
     const lastThreeMonths =
       (query.history_range === "last_3_months" || query.all_dates === "true") && isAdmin;
+    const allHistory = query.history_range === "all" && isAdmin;
     const dateVal = query.date ?? todayIsoDate();
     const items = await listStockReceipts({
       storeId,
       date: dateVal,
       lastThreeMonths,
+      allHistory,
       q: query.q,
       limit: query.limit ?? 50,
       offset: query.offset ?? 0,
@@ -55,7 +57,7 @@ export default defineEventHandler(async (event) => {
     return {
       items,
       date: dateVal,
-      history_range: lastThreeMonths ? "last_3_months" : "today",
+      history_range: allHistory ? "all" : lastThreeMonths ? "last_3_months" : query.date ? "date" : "today",
       limit: query.limit ?? 50,
       offset: query.offset ?? 0,
     };

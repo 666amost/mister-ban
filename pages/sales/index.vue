@@ -65,6 +65,7 @@ type PaymentType = "CASH" | "TRANSFER" | "QRIS" | "DEBIT" | "CREDIT" | "TEMPO"
 type ExpenseItem = { item_name: string; amount: number }
 type PaymentItem = { payment_type: PaymentType; amount: number }
 type InputMode = "sale" | "expense" | "receipt"
+type HistoryRange = "today" | "yesterday" | "custom" | "last_3_months" | "all"
 type StockReceiptItem = { item_name: string; qty: number; unit_label: string }
 type StockReceiptRow = {
   id: string
@@ -75,6 +76,14 @@ type StockReceiptRow = {
   items: StockReceiptItem[]
 }
 type StockReceiptParseResult = { items: StockReceiptItem[]; errors: string[] }
+
+const historyRangeOptions: Array<{ value: HistoryRange; label: string }> = [
+  { value: "today", label: "Hari ini" },
+  { value: "yesterday", label: "Kemarin" },
+  { value: "custom", label: "Pilih tanggal" },
+  { value: "last_3_months", label: "3 bulan terakhir" },
+  { value: "all", label: "Semua riwayat" },
+]
 
 type SalesQtySummary = {
   ban_qty: number
@@ -126,6 +135,12 @@ function todayIsoDate() {
   return `${year}-${month}-${day}`
 }
 
+function yesterdayIsoDate() {
+  const date = new Date(`${todayIsoDate()}T12:00:00Z`)
+  date.setUTCDate(date.getUTCDate() - 1)
+  return date.toISOString().slice(0, 10)
+}
+
 function activeSaleInputDate() {
   if (isAdmin.value) return saleDate.value || todayIsoDate()
   // Staff cannot pick dates; recompute at submit time to avoid stale PWA/tab state.
@@ -167,7 +182,8 @@ const qtySummary = ref<SalesQtySummary>({ ban_qty: 0, oli_qty: 0, kampas_qty: 0,
 const dailySummary = ref<SalesDailySummary>(defaultDailySummary())
 const historyQuery = ref("")
 const lastHistoryQuery = ref<string>("")
-const showLastThreeMonths = ref(false)
+const historyRange = ref<HistoryRange>("today")
+const historyDate = ref(todayIsoDate())
 
 const submitLoading = ref(false)
 const errorMessage = ref<string | null>(null)
@@ -427,12 +443,14 @@ function formatDate(value: string) {
     return new Date(Date.UTC(year, month - 1, day, 12, 0, 0)).toLocaleDateString("id-ID", {
       day: "2-digit",
       month: "short",
+      year: "numeric",
       timeZone: "Asia/Jakarta",
     })
   }
   return new Date(value).toLocaleDateString("id-ID", {
     day: "2-digit",
     month: "short",
+    year: "numeric",
     timeZone: "Asia/Jakarta",
   })
 }
@@ -464,7 +482,65 @@ const stockReceiptHistorySummary = computed(() => ({
   totalQty: stockReceipts.value.reduce((sum, receipt) => sum + receipt.total_qty, 0),
   totalReceipts: stockReceipts.value.length,
 }))
-const stockReceiptSummaryTitle = computed(() => showLastThreeMonths.value && isAdmin.value ? "Barang Masuk (3 Bulan)" : "Barang Masuk Hari Ini")
+const activeHistoryRange = computed<HistoryRange>(() => isAdmin.value ? historyRange.value : "today")
+const activeHistoryDate = computed(() => {
+  if (activeHistoryRange.value === "yesterday") return yesterdayIsoDate()
+  if (activeHistoryRange.value === "custom") return historyDate.value || todayIsoDate()
+  return todayIsoDate()
+})
+const historyTitle = computed(() => {
+  if (activeHistoryRange.value === "yesterday") return "Sales Kemarin"
+  if (activeHistoryRange.value === "custom") return `Sales ${formatDate(activeHistoryDate.value)}`
+  if (activeHistoryRange.value === "last_3_months") return "Sales 3 Bulan Terakhir"
+  if (activeHistoryRange.value === "all") return "Semua Riwayat Sales"
+  return "Sales Hari Ini"
+})
+const historyRangeHint = computed(() => {
+  if (activeHistoryRange.value === "yesterday") return formatDate(activeHistoryDate.value)
+  if (activeHistoryRange.value === "custom") return `Transaksi tanggal ${formatDate(activeHistoryDate.value)}`
+  if (activeHistoryRange.value === "last_3_months") return "3 bulan sampai hari ini"
+  if (activeHistoryRange.value === "all") return "Semua tanggal • maksimal 50 data terbaru"
+  return "Transaksi hari ini"
+})
+const stockReceiptSummaryTitle = computed(() => {
+  if (activeHistoryRange.value === "yesterday") return "Barang Masuk Kemarin"
+  if (activeHistoryRange.value === "custom") return `Barang Masuk (${formatDate(activeHistoryDate.value)})`
+  if (activeHistoryRange.value === "last_3_months") return "Barang Masuk (3 Bulan)"
+  if (activeHistoryRange.value === "all") return "Barang Masuk (Semua)"
+  return "Barang Masuk Hari Ini"
+})
+const emptyHistoryLabel = computed(() => {
+  if (activeHistoryRange.value === "yesterday") return "Belum ada transaksi kemarin"
+  if (activeHistoryRange.value === "custom") return `Belum ada transaksi pada ${formatDate(activeHistoryDate.value)}`
+  if (activeHistoryRange.value === "last_3_months") return "Belum ada transaksi dalam 3 bulan terakhir"
+  if (activeHistoryRange.value === "all") return "Belum ada riwayat transaksi"
+  return "Belum ada transaksi hari ini"
+})
+
+function selectHistoryRange(range: HistoryRange) {
+  historyRange.value = range
+  void loadSales()
+}
+
+function selectHistoryDate() {
+  historyRange.value = "custom"
+  void loadSales()
+}
+
+function openHistoryDatePicker(event: MouseEvent) {
+  if (historyRange.value !== "custom") {
+    historyRange.value = "custom"
+    void loadSales()
+  }
+
+  const picker = event.currentTarget
+  if (!(picker instanceof HTMLInputElement)) return
+  try {
+    picker.showPicker?.()
+  } catch {
+    picker.focus()
+  }
+}
 
 async function runSearch() {
   searchLoading.value = true
@@ -556,8 +632,10 @@ async function loadSales() {
       limit: "50",
       q: lastHistoryQuery.value || undefined,
     }
-    if (isAdmin.value && showLastThreeMonths.value) {
-      query.history_range = "last_3_months"
+    if (activeHistoryRange.value === "last_3_months" || activeHistoryRange.value === "all") {
+      query.history_range = activeHistoryRange.value
+    } else if (activeHistoryRange.value === "yesterday" || activeHistoryRange.value === "custom") {
+      query.date = activeHistoryDate.value
     }
     const [salesRes, stockReceiptRes] = await Promise.all([
       $fetch<{ items: SaleRow[]; qty_summary: SalesQtySummary; daily_summary?: SalesDailySummary }>("/api/sales", {
@@ -1674,15 +1752,11 @@ const detailExpenseTotal = computed(() => {
 
     <div class="tabContent" :class="{ hidden: activeTab !== 'history' }">
       <div class="historyHeader">
-        <div class="historyHeading">
-          <span class="historyTitle">{{ showLastThreeMonths && isAdmin ? 'Sales 3 Bulan Terakhir' : 'Sales Hari Ini' }}</span>
-          <span class="historyRangeHint">{{ showLastThreeMonths && isAdmin ? 'Maksimal sampai hari ini' : 'Transaksi hari ini' }}</span>
-        </div>
-        <div class="historyHeaderActions">
-          <label v-if="isAdmin" class="historyRangeToggle">
-            <input v-model="showLastThreeMonths" type="checkbox" @change="loadSales()" />
-            <span>3 bulan terakhir</span>
-          </label>
+        <div class="historyHeadingRow">
+          <div class="historyHeading">
+            <span class="historyTitle">{{ historyTitle }}</span>
+            <span class="historyRangeHint">{{ historyRangeHint }}</span>
+          </div>
           <button
             class="refreshBtn"
             :disabled="salesLoading"
@@ -1699,6 +1773,44 @@ const detailExpenseTotal = computed(() => {
               <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
           </button>
+        </div>
+
+        <div v-if="isAdmin" class="historyRangeControls">
+          <div class="historyRangePresets" role="group" aria-label="Rentang riwayat">
+            <template v-for="option in historyRangeOptions" :key="option.value">
+              <label
+                v-if="option.value === 'custom'"
+                class="historyRangeChip historyDateChip"
+                :class="{ active: historyRange === 'custom' }"
+                :title="historyRange === 'custom' ? 'Ganti tanggal' : 'Pilih tanggal'"
+              >
+                <svg class="historyRangeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="5" width="18" height="16" rx="2" />
+                  <path d="M16 3v4M8 3v4M3 10h18" />
+                </svg>
+                <span>{{ historyRange === 'custom' ? formatDate(activeHistoryDate) : option.label }}</span>
+                <input
+                  v-model="historyDate"
+                  class="historyDatePicker"
+                  type="date"
+                  :max="todayIsoDate()"
+                  aria-label="Pilih atau ganti tanggal riwayat"
+                  @click="openHistoryDatePicker"
+                  @change="selectHistoryDate()"
+                />
+              </label>
+              <button
+                v-else
+                type="button"
+                class="historyRangeChip"
+                :class="{ active: historyRange === option.value }"
+                :aria-pressed="historyRange === option.value"
+                @click="selectHistoryRange(option.value)"
+              >
+                {{ option.label }}
+              </button>
+            </template>
+          </div>
         </div>
       </div>
 
@@ -1934,7 +2046,7 @@ const detailExpenseTotal = computed(() => {
           <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
         </svg>
         <span v-if="historyQuery.trim()">Tidak ada transaksi yang cocok</span>
-        <span v-else>{{ showLastThreeMonths && isAdmin ? 'Belum ada transaksi dalam 3 bulan terakhir' : 'Belum ada transaksi hari ini' }}</span>
+        <span v-else>{{ emptyHistoryLabel }}</span>
       </div>
     </div>
 
@@ -3416,12 +3528,16 @@ const detailExpenseTotal = computed(() => {
 }
 
 .historyHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
+  display: grid;
   gap: 12px;
   margin-bottom: 12px;
+}
+
+.historyHeadingRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .historyHeading {
@@ -4066,15 +4182,6 @@ const detailExpenseTotal = computed(() => {
 }
 
 @media (max-width: 720px) {
-  .historyHeader {
-    align-items: flex-start;
-  }
-
-  .historyHeaderActions {
-    width: 100%;
-    justify-content: space-between;
-  }
-
   .historySearchWrap {
     height: 46px;
   }
@@ -4822,38 +4929,77 @@ const detailExpenseTotal = computed(() => {
   flex: 1;
 }
 
-.historyHeaderActions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+.historyRangeControls {
+  width: 100%;
 }
 
-.historyRangeToggle {
-  display: inline-flex;
-  align-items: center;
+.historyRangePresets {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 8px;
-  min-height: 38px;
-  padding: 0 12px;
+  width: 100%;
+}
+
+.historyRangeChip {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  padding: 6px 8px;
   border: 1px solid var(--mb-border2);
-  border-radius: 999px;
+  border-radius: 12px;
   background: var(--mb-surface);
   font-size: 12px;
   color: var(--mb-text);
   font-weight: 700;
   cursor: pointer;
   white-space: nowrap;
+  line-height: 1.2;
 }
 
-.historyRangeToggle:has(input:checked) {
-  border-color: rgba(52, 199, 89, 0.45);
-  background: rgba(52, 199, 89, 0.1);
+.historyRangeChip.active {
+  border-color: rgba(52, 199, 89, 0.65);
+  background: rgba(52, 199, 89, 0.14);
+  color: var(--mb-accent);
 }
 
-.historyRangeToggle input {
-  width: 15px;
-  height: 15px;
+.historyRangeIcon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+
+.historyDateChip span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.historyDatePicker {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   margin: 0;
-  accent-color: var(--mb-accent);
+  opacity: 0;
+  cursor: pointer;
+  color-scheme: dark;
+}
+
+@media (max-width: 720px) {
+  .historyRangePresets {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .historyRangeChip {
+    min-height: 42px;
+    padding: 6px;
+    font-size: 11px;
+  }
 }
 
 .saleDateBadge {

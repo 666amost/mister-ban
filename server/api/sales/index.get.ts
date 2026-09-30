@@ -32,6 +32,7 @@ export default defineEventHandler(async (event) => {
 
   const lastThreeMonths =
     (query.history_range === "last_3_months" || query.all_dates === "true") && isAdmin;
+  const allHistory = query.history_range === "all" && isAdmin;
   const dateVal = query.date ?? todayIsoDate();
   const db = getPool();
 
@@ -41,6 +42,7 @@ export default defineEventHandler(async (event) => {
       storeId,
       date: dateVal,
       lastThreeMonths,
+      allHistory,
       hideExpenseOnly: !isAdmin,
       q: query.q,
       limit: query.limit ?? 50,
@@ -51,12 +53,14 @@ export default defineEventHandler(async (event) => {
       storeId,
       date: dateVal,
       lastThreeMonths,
+      allHistory,
     }),
     getSalesDailySummary({
       db,
       storeId,
       date: dateVal,
       lastThreeMonths,
+      allHistory,
     }),
   ]);
 
@@ -65,7 +69,7 @@ export default defineEventHandler(async (event) => {
     qty_summary,
     daily_summary,
     date: dateVal,
-    history_range: lastThreeMonths ? "last_3_months" : "today",
+    history_range: allHistory ? "all" : lastThreeMonths ? "last_3_months" : query.date ? "date" : "today",
     can_expense_only: true,
     limit: query.limit ?? 50,
     offset: query.offset ?? 0,

@@ -21,7 +21,7 @@ export const createStockReceiptBodySchema = z.object({
 
 export const stockReceiptsListQuerySchema = z.object({
   date: dateSchema.optional(),
-  history_range: z.enum(["last_3_months"]).optional(),
+  history_range: z.enum(["last_3_months", "all"]).optional(),
   // Kept for older clients. The API treats this as the bounded 3-month range.
   all_dates: z.enum(["true", "false"]).optional(),
   limit: z.coerce.number().int().min(1).max(200).optional(),

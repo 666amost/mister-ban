@@ -127,6 +127,7 @@ export async function listStockReceipts({
   storeId,
   date,
   lastThreeMonths,
+  allHistory,
   q,
   limit,
   offset,
@@ -134,10 +135,34 @@ export async function listStockReceipts({
   storeId: string;
   date: string;
   lastThreeMonths: boolean;
+  allHistory: boolean;
   q?: string;
   limit: number;
   offset: number;
 }) {
+  const params: Array<string | number | null> = [storeId];
+  let nextParam = 2;
+  let dateFilter = "";
+  if (!allHistory) {
+    const dateParam = nextParam;
+    params.push(date);
+    nextParam += 1;
+    dateFilter = lastThreeMonths
+      ? `AND sr.receipt_date BETWEEN ($${dateParam}::date - INTERVAL '3 months')::date AND $${dateParam}::date`
+      : `AND sr.receipt_date = $${dateParam}::date`;
+  }
+
+  const searchParam = nextParam;
+  params.push(q ?? null);
+  nextParam += 1;
+
+  const limitParam = nextParam;
+  params.push(limit);
+  nextParam += 1;
+
+  const offsetParam = nextParam;
+  params.push(offset);
+
   const { rows } = await getPool().query<StockReceiptRow>(
     `
       SELECT
@@ -160,25 +185,22 @@ export async function listStockReceipts({
       FROM stock_receipts sr
       LEFT JOIN stock_receipt_items sri ON sri.stock_receipt_id = sr.id
       WHERE sr.store_id = $1
+        ${dateFilter}
         AND (
-          ($2::boolean AND sr.receipt_date BETWEEN ($3::date - INTERVAL '3 months')::date AND $3::date)
-          OR (NOT $2::boolean AND sr.receipt_date = $3::date)
-        )
-        AND (
-          $4::text IS NULL
+          $${searchParam}::text IS NULL
           OR EXISTS (
             SELECT 1
             FROM stock_receipt_items sri2
             WHERE sri2.stock_receipt_id = sr.id
-              AND LOWER(sri2.item_name) LIKE '%' || LOWER($4) || '%'
+              AND LOWER(sri2.item_name) LIKE '%' || LOWER($${searchParam}) || '%'
           )
         )
       GROUP BY sr.id
       ORDER BY sr.receipt_date DESC, sr.created_at DESC
-      LIMIT $5
-      OFFSET $6
+      LIMIT $${limitParam}
+      OFFSET $${offsetParam}
     `,
-    [storeId, lastThreeMonths, date, q ?? null, limit, offset],
+    params,
   );
 
   return rows;
