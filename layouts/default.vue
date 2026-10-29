@@ -1,5 +1,9 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted } from "vue"
+import { useHead } from "#imports"
+import "~/assets/css/dashboard-motion.css"
+
+useHead({ htmlAttrs: { "data-erp-site": "true" } })
 
 const me = useMe()
 const storeContext = useStoreContext()
@@ -8,8 +12,6 @@ const route = useRoute()
 const role = computed(() => me.user.value?.role ?? null)
 const storeName = computed(() => storeContext.store.value?.name ?? null)
 
-const sidebarOpen = ref(false)
-const isNavigating = ref(false)
 const moreMenuOpen = ref(false)
 
 type IconName =
@@ -210,6 +212,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  if (navCollapseTimer) clearTimeout(navCollapseTimer)
   if (colorSchemeMedia && colorSchemeHandler) {
     colorSchemeMedia.removeEventListener("change", colorSchemeHandler)
   }
@@ -245,11 +248,6 @@ watch(themeMode, (mode) => {
 watch(
   () => route.path,
   () => {
-    isNavigating.value = true
-    setTimeout(() => {
-      isNavigating.value = false
-    }, 200)
-    sidebarOpen.value = false
     moreMenuOpen.value = false
   },
 )
@@ -282,9 +280,12 @@ const filteredNavGroups = computed(() => {
     .filter((g) => g.items.length > 0)
 })
 
+const activeNavItem = computed(() => navGroups.value.flatMap(group => group.items)
+  .filter(item => route.path === item.to || route.path.startsWith(`${item.to}/`))
+  .sort((a, b) => b.to.length - a.to.length)[0])
+
 function isActive(path: string) {
-  if (path === "/dashboard") return route.path === "/dashboard"
-  return route.path === path || route.path.startsWith(`${path}/`)
+  return route.path === path || activeNavItem.value?.to === path
 }
 
 function isBottomItemActive(item: BottomItem) {
@@ -303,14 +304,7 @@ function closeMoreMenu() {
   moreMenuOpen.value = false
 }
 
-const pageTitle = computed(() => {
-  const allItems = navGroups.value.flatMap((g) => g.items)
-  const exact = allItems.find((i) => i.to === route.path)
-  if (exact) return exact.label
-
-  const prefix = allItems.find((i) => i.to !== "/" && route.path.startsWith(`${i.to}/`))
-  return prefix?.label ?? "Mister Ban ERP"
-})
+const pageTitle = computed(() => activeNavItem.value?.label ?? "Mister Ban ERP")
 
 async function logout() {
   try {
@@ -326,6 +320,7 @@ async function logout() {
 
 <template>
   <div class="mb-shell">
+    <NuxtLoadingIndicator :height="2" :throttle="180" :hide-delay="180" color="rgb(var(--mb-accent-rgb))" error-color="var(--mb-danger)" />
     <aside class="mb-sidebar">
       <div class="mb-sideBrand">
         <img class="mb-sideLogo" src="/brand/logo.png" alt="Mister Ban" />
@@ -364,8 +359,10 @@ async function logout() {
               :key="i.to"
               class="mb-navItem"
               :class="{ active: isActive(i.to) }"
+              :aria-current="isActive(i.to) ? 'page' : undefined"
               :to="i.to"
             >
+              <span v-if="isActive(i.to)" class="mb-navMarker" aria-hidden="true" />
               <MbIcon class="mb-navIcon" :name="i.icon" />
               <span class="mb-navLabel">{{ i.label }}</span>
             </NuxtLink>
@@ -409,12 +406,8 @@ async function logout() {
         </div>
       </header>
 
-      <main class="mb-content" :class="{ 'is-navigating': isNavigating }">
-        <Transition name="page-fade" mode="out-in">
-          <div :key="route.fullPath">
-            <slot />
-          </div>
-        </Transition>
+      <main id="dashboard-content" class="mb-content" tabindex="-1" :aria-label="pageTitle">
+        <slot />
       </main>
 
       <nav class="mb-bottomnav" aria-label="Bottom navigation">
@@ -426,8 +419,10 @@ async function logout() {
             v-if="i.kind === 'link' && i.to"
             class="mb-bottomItem"
             :class="{ active: isBottomItemActive(i) }"
+            :aria-current="isBottomItemActive(i) ? 'page' : undefined"
             :to="i.to"
           >
+            <span v-if="isBottomItemActive(i)" class="mb-navMarker" aria-hidden="true" />
             <MbIcon class="mb-bottomIcon" :name="i.icon" :active="isBottomItemActive(i)" />
             <span class="mb-bottomLabel">{{ i.label }}</span>
           </NuxtLink>
@@ -441,6 +436,7 @@ async function logout() {
             aria-label="Menu lainnya"
             @click="toggleMoreMenu"
           >
+            <span v-if="isBottomItemActive(i)" class="mb-navMarker" aria-hidden="true" />
             <MbIcon class="mb-bottomIcon" :name="i.icon" :active="isBottomItemActive(i)" />
             <span class="mb-bottomLabel">{{ i.label }}</span>
           </button>

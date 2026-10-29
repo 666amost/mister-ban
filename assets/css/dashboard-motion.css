@@ -1,0 +1,53 @@
+﻿/* Keep the workspace steady; animate only the content and current-menu marker. */
+html[data-erp-site] { scroll-behavior: auto; }
+.mb-shell .mb-sidebar { view-transition-name: erp-sidebar; }
+.mb-shell .mb-topbar { view-transition-name: erp-topbar; }
+.mb-shell .mb-topH { view-transition-name: erp-title; }
+.mb-shell .mb-content { view-transition-name: erp-content; outline: none; }
+.mb-shell .mb-bottomnav { view-transition-name: erp-bottomnav; }
+.mb-shell .nuxt-loading-indicator { view-transition-name: erp-loading; }
+
+.mb-shell .mb-navItem.active,
+.mb-shell .mb-bottomItem.active { background: transparent; border-color: transparent; box-shadow: none; }
+.mb-shell .mb-navItem:hover { transform: none; }
+.mb-shell .mb-bottomItem { position: relative; isolation: isolate; }
+.mb-navMarker {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  border: 1px solid var(--mb-accent-hover-border);
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgba(var(--mb-accent-rgb), .26), rgba(var(--mb-accent-rgb), .14));
+}
+.mb-nav .mb-navMarker { view-transition-name: erp-nav-marker; }
+.mb-bottomnav .mb-navMarker { view-transition-name: erp-bottom-marker; }
+
+html[data-erp-site]::view-transition-group(*) { animation-duration: 260ms; animation-timing-function: cubic-bezier(.22, 1, .36, 1); }
+html[data-erp-site]::view-transition-old(root), html[data-erp-site]::view-transition-new(root),
+html[data-erp-site]::view-transition-old(erp-sidebar), html[data-erp-site]::view-transition-new(erp-sidebar),
+html[data-erp-site]::view-transition-old(erp-topbar), html[data-erp-site]::view-transition-new(erp-topbar),
+html[data-erp-site]::view-transition-old(erp-bottomnav), html[data-erp-site]::view-transition-new(erp-bottomnav),
+html[data-erp-site]::view-transition-old(erp-nav-marker), html[data-erp-site]::view-transition-new(erp-nav-marker),
+html[data-erp-site]::view-transition-old(erp-bottom-marker), html[data-erp-site]::view-transition-new(erp-bottom-marker),
+html[data-erp-site]::view-transition-old(erp-loading), html[data-erp-site]::view-transition-new(erp-loading) { animation: none; }
+html[data-erp-site]::view-transition-old(erp-content), html[data-erp-site]::view-transition-old(erp-title) { animation: erp-content-out 100ms ease both; }
+html[data-erp-site]::view-transition-new(erp-content) { animation: erp-content-in 260ms cubic-bezier(.22, 1, .36, 1) both; }
+html[data-erp-site]::view-transition-new(erp-title) { animation: erp-title-in 180ms ease both; }
+html[data-erp-site]::view-transition-image-pair(erp-content) { isolation: auto; }
+
+@keyframes erp-content-out { to { opacity: 0; } }
+@keyframes erp-content-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes erp-title-in { from { opacity: 0; } to { opacity: 1; } }
+
+/* One Vue fallback for browsers without native View Transitions. */
+.erp-page-enter-active { transition: opacity 180ms ease, transform 220ms cubic-bezier(.22, 1, .36, 1); }
+.erp-page-leave-active { transition: opacity 90ms ease; }
+.erp-page-enter-from { opacity: 0; transform: translateY(8px); }
+.erp-page-leave-to { opacity: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-erp-site]::view-transition-group(*), html[data-erp-site]::view-transition-old(*), html[data-erp-site]::view-transition-new(*) { animation: none !important; }
+  .erp-page-enter-active, .erp-page-leave-active { transition: none !important; }
+  .erp-page-enter-from, .erp-page-leave-to { transform: none; }
+}

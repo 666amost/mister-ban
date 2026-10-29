@@ -2,7 +2,7 @@
 import { createError, useFetch, useHead, useRequestURL, useSeoMeta } from "#imports"
 import type { PublicBranch, PublicBranchesResponse } from "~/types/public"
 
-definePageMeta({ layout: "auth" })
+definePageMeta({ layout: "public", pageTransition: { name: "public-view", mode: "out-in" }, layoutTransition: false, viewTransition: true })
 
 const route = useRoute()
 const requestUrl = useRequestURL()
@@ -73,13 +73,12 @@ function buildContactUrl(item: PublicBranch): string {
 </script>
 
 <template>
-  <main class="public-page public-branch-page">
-    <PubTopbar />
+  <div class="public-branch-page">
 
     <section class="public-branch-hero">
       <div class="public-shell">
         <nav class="public-breadcrumb" aria-label="Breadcrumb">
-          <NuxtLink to="/">Beranda</NuxtLink><span aria-hidden="true">/</span><span>Cabang</span>
+          <NuxtLink to="/">Beranda</NuxtLink><span aria-hidden="true">/</span><NuxtLink to="/cabang">Cabang</NuxtLink><span aria-hidden="true">/</span><span>{{ branch.name }}</span>
         </nav>
 
         <div class="public-branch-hero__grid">
@@ -88,8 +87,9 @@ function buildContactUrl(item: PublicBranch): string {
             <h1>{{ branch.name }}</h1>
             <p class="public-branch-address">{{ branch.address }}</p>
             <div class="public-branch-actions">
+              <NuxtLink :to="{ path: '/cek-ban', query: { cabang: branch.code } }" class="public-button">Cek ban di cabang ini</NuxtLink>
               <a :href="branch.mapsUrl" target="_blank" rel="noreferrer" class="public-button">Petunjuk arah</a>
-              <a :href="contactUrl" target="_blank" rel="noreferrer" class="public-button is-secondary">{{ contactLabel }}</a>
+              <a v-if="branch.whatsapp || branch.instagram" :href="contactUrl" target="_blank" rel="noreferrer" class="public-button is-secondary">{{ contactLabel }}</a>
             </div>
           </div>
 
@@ -105,17 +105,5 @@ function buildContactUrl(item: PublicBranch): string {
       </div>
     </section>
 
-    <section class="public-branch-finder-section">
-      <div class="public-shell">
-        <PubSizeFinder :branches="data?.branches ?? []" :preferred-branch-code="branch.code" />
-      </div>
-    </section>
-
-    <PubFooter :current-year="new Date().getFullYear()" />
-
-    <nav class="public-mobile-actions" aria-label="Aksi cepat">
-      <a href="#cek-ban">Cek Ban</a>
-      <a :href="branch.mapsUrl" target="_blank" rel="noreferrer">Petunjuk Arah</a>
-    </nav>
-  </main>
+  </div>
 </template>

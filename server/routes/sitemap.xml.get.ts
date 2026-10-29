@@ -26,6 +26,9 @@ export default defineCachedEventHandler(
     )
     const locations = [
       `${origin}/`,
+      `${origin}/cek-ban`,
+      `${origin}/merek`,
+      `${origin}/cabang`,
       ...rows.map((store) => `${origin}/cabang/${publicBranchSlug(store.name)}`),
     ]
     const body = [

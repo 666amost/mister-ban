@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, ref } from "vue"
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue"
+import { useState } from "#imports"
 import { motorCategoryLabels, motorFitments } from "~/data/motorFitmentData"
 import type {
   MotorFitment,
@@ -21,15 +22,15 @@ const props = withDefaults(
 type UserLocation = { latitude: number; longitude: number }
 type PositionFilter = "front" | "rear"
 
-const searchQuery = ref("")
-const selectedMotor = ref<MotorFitment | null>(null)
-const recommendation = ref<PublicRecommendationResponse | null>(null)
+const selectedMotor = useState<MotorFitment | null>("finder-motor", () => null)
+const searchQuery = ref(selectedMotor.value?.name ?? "")
+const recommendation = useState<PublicRecommendationResponse | null>("finder-recommendation", () => null)
 const showSuggestions = ref(false)
 const isLoading = ref(false)
 const errorMessage = ref("")
-const activePosition = ref<PositionFilter>("front")
-const selectedFrontProductKey = ref("")
-const selectedRearProductKey = ref("")
+const activePosition = useState<PositionFilter>("finder-position", () => "front")
+const selectedFrontProductKey = useState("finder-front", () => "")
+const selectedRearProductKey = useState("finder-rear", () => "")
 const selectedCity = ref("all")
 const userLocation = ref<UserLocation | null>(null)
 const locationMessage = ref("")
@@ -37,6 +38,67 @@ const locating = ref(false)
 const showAllProducts = ref(false)
 const showAllBranches = ref(false)
 let requestSequence = 0
+let requestController: AbortController | undefined
+let suggestionTimer: ReturnType<typeof setTimeout> | undefined
+const step = useState("finder-step", () => 1)
+const direction = ref("forward")
+const panelHost = ref<HTMLElement | null>(null)
+const suggestionIndex = ref(-1)
+const announcement = ref("")
+const steps = ["Motor", "Posisi", "Tipe ban", "Cabang"]
+const activeProduct = computed(() => activePosition.value === "front" ? selectedFrontProduct.value : selectedRearProduct.value)
+const activeSize = computed(() => activePosition.value === "front" ? selectedMotor.value?.front : selectedMotor.value?.rear)
+const otherPosition = computed<PositionFilter>(() => activePosition.value === "front" ? "rear" : "front")
+const otherSelected = computed(() => activePosition.value === "front" ? selectedRearProduct.value : selectedFrontProduct.value)
+function canVisitStep(target: number): boolean {
+  return target === 1 || (target === 2 && !!selectedMotor.value) || (target === 3 && !!selectedMotor.value && step.value >= 3) || (target === 4 && selectedProducts.value.length > 0)
+}
+function goToStep(target: number): void {
+  if (target === step.value) return
+  direction.value = target < step.value ? "back" : "forward"
+  step.value = target
+  showSuggestions.value = false
+}
+function choosePosition(position: PositionFilter): void {
+  direction.value = "forward"
+  activePosition.value = position
+  showAllProducts.value = false
+  goToStep(3)
+  announcement.value = `Ban ${position === "front" ? "depan" : "belakang"} dipilih. Pilih tipe ban yang Anda inginkan.`
+}
+function lockPanelHeight(): void {
+  if (panelHost.value) panelHost.value.style.height = `${panelHost.value.offsetHeight}px`
+}
+function sizePanel(element: Element): void {
+  if (panelHost.value) panelHost.value.style.height = `${(element as HTMLElement).offsetHeight}px`
+}
+async function finishStep(): Promise<void> {
+  if (panelHost.value) panelHost.value.style.height = ""
+  await nextTick()
+  panelHost.value?.querySelector<HTMLElement>("h2")?.focus({ preventScroll: true })
+}
+function suggestionKey(event: KeyboardEvent): void {
+  if (event.key === "Escape") { showSuggestions.value = false; return }
+  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    event.preventDefault()
+    showSuggestions.value = true
+    const count = filteredMotors.value.length
+    if (count) suggestionIndex.value = (suggestionIndex.value + (event.key === "ArrowDown" ? 1 : count - 1) + count) % count
+  }
+  if (event.key === "Enter" && showSuggestions.value) {
+    const motor = filteredMotors.value[Math.max(0, suggestionIndex.value)]
+    if (motor) { event.preventDefault(); void selectMotor(motor) }
+  }
+}
+onMounted(() => {
+  if (selectedMotor.value && !recommendation.value) void loadRecommendations(selectedMotor.value)
+})
+onBeforeUnmount(() => {
+  requestSequence++
+  requestController?.abort()
+  clearTimeout(suggestionTimer)
+})
+
 
 const popularMotorIds = ["beat", "vario-125", "nmax", "aerox", "scoopy"]
 const popularMotors = motorFitments.filter((motor) => popularMotorIds.includes(motor.id))
@@ -134,50 +196,56 @@ const productCountForPosition = computed(() =>
 
 const fallbackContact = computed(() => {
   const branch = rankedBranches.value[0]?.branch ?? props.branches[0]
-  return branch ? contactLink(branch) : "#cabang"
+  return branch ? contactLink(branch) : "/cabang"
 })
 
-async function selectMotor(motor: MotorFitment): Promise<void> {
+async function loadRecommendations(motor: MotorFitment): Promise<void> {
   const sequence = ++requestSequence
-  selectedMotor.value = motor
-  searchQuery.value = motor.name
-  showSuggestions.value = false
-  recommendation.value = null
+  requestController?.abort()
+  requestController = new AbortController()
   errorMessage.value = ""
-  activePosition.value = "front"
-  selectedFrontProductKey.value = ""
-  selectedRearProductKey.value = ""
-  showAllProducts.value = false
-  showAllBranches.value = false
   isLoading.value = true
-
   try {
     const response = await $fetch<PublicRecommendationResponse>("/api/public/recommendations", {
-      query: { motorId: motor.id },
+      query: { motorId: motor.id }, signal: requestController.signal,
     })
     if (sequence === requestSequence) recommendation.value = response
   } catch {
-    if (sequence === requestSequence) {
-      errorMessage.value = "Data stok belum dapat dimuat. Anda tetap dapat menghubungi cabang untuk konfirmasi."
-    }
+    if (sequence === requestSequence) errorMessage.value = "Stok belum dapat dimuat. Coba lagi atau tanyakan langsung ke cabang."
   } finally {
     if (sequence === requestSequence) isLoading.value = false
   }
 }
-
+async function selectMotor(motor: MotorFitment): Promise<void> {
+  selectedMotor.value = motor
+  searchQuery.value = motor.name
+  showSuggestions.value = false
+  recommendation.value = null
+  selectedFrontProductKey.value = ""
+  selectedRearProductKey.value = ""
+  activePosition.value = "front"
+  selectedCity.value = "all"
+  showAllProducts.value = false
+  showAllBranches.value = false
+  announcement.value = `${motor.name} dipilih. Sekarang tentukan ban depan atau belakang.`
+  goToStep(2)
+  await loadRecommendations(motor)
+}
 function handleInput(): void {
+  requestSequence++
+  requestController?.abort()
+  isLoading.value = false
   selectedMotor.value = null
   recommendation.value = null
   selectedFrontProductKey.value = ""
   selectedRearProductKey.value = ""
   errorMessage.value = ""
+  suggestionIndex.value = -1
   showSuggestions.value = true
 }
-
 function closeSuggestions(): void {
-  window.setTimeout(() => {
-    showSuggestions.value = false
-  }, 120)
+  clearTimeout(suggestionTimer)
+  suggestionTimer = setTimeout(() => { showSuggestions.value = false }, 160)
 }
 
 function useMyLocation(): void {
@@ -272,12 +340,14 @@ function selectProduct(product: PublicRecommendedProduct): void {
     selectedRearProductKey.value = selectedRearProductKey.value === product.key ? "" : product.key
   }
   showAllBranches.value = false
+  announcement.value = isProductSelected(product) ? `${product.brand} ${product.type} dipilih. Lanjutkan untuk melihat cabang.` : "Pilihan ban dihapus."
 }
 
 function clearProductSelection(position: PositionFilter): void {
   if (position === "front") selectedFrontProductKey.value = ""
   else selectedRearProductKey.value = ""
   showAllBranches.value = false
+  if (!selectedProducts.value.length && step.value === 4) goToStep(3)
 }
 
 function instagramUrl(handle: string): string {
@@ -327,165 +397,131 @@ function formatUpdatedAt(value: string): string {
 </script>
 
 <template>
-  <div id="cek-ban" class="finder-card">
-    <div class="finder-card__heading">
-      <span class="finder-step">1</span>
-      <div>
-        <p class="public-kicker">Pilih motor</p>
-        <h2>Motor apa yang Anda pakai?</h2>
-      </div>
+  <div id="cek-ban" class="finder-card journey" :class="`journey--${direction}`">
+    <nav class="journey-progress" aria-label="Langkah mencari ban">
+      <div class="journey-progress__track" aria-hidden="true"><span :style="{ transform: `scaleX(${(step - 1) / 3})` }" /></div>
+      <ol>
+        <li v-for="(label, index) in steps" :key="label" :class="{ 'is-current': step === index + 1, 'is-done': step > index + 1 }">
+          <button type="button" :disabled="!canVisitStep(index + 1)" :aria-current="step === index + 1 ? 'step' : undefined" @click="goToStep(index + 1)">
+            <span class="journey-progress__number"><svg v-if="step > index + 1" viewBox="0 0 20 20" aria-hidden="true"><path d="m5 10 3 3 7-7" /></svg><span v-else>{{ index + 1 }}</span></span>
+            <span>{{ label }}</span>
+          </button>
+        </li>
+      </ol>
+    </nav>
+    <p class="journey-sr" role="status" aria-live="polite">{{ announcement }}</p>
+    <div v-if="selectedMotor && step > 1" class="journey-motor">
+      <span class="journey-check" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="m5 10 3 3 7-7" /></svg></span>
+      <div><span>Motor Anda</span><strong>{{ selectedMotor.name }}</strong></div>
+      <button type="button" @click="goToStep(1)">Ganti motor</button>
     </div>
-
-    <label class="finder-label" for="motor-search">Nama atau tipe motor</label>
-    <div class="finder-search">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.35-4.35m2.35-5.65a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z" /></svg>
-      <input
-        id="motor-search"
-        v-model="searchQuery"
-        type="search"
-        placeholder="Contoh: Beat, NMAX, Vario"
-        autocomplete="off"
-        aria-autocomplete="list"
-        :aria-expanded="showSuggestions"
-        aria-controls="motor-suggestions"
-        @input="handleInput"
-        @focus="showSuggestions = true"
-        @blur="closeSuggestions"
-      />
-      <span v-if="isLoading" class="finder-spinner" aria-label="Memuat" />
-
-      <div v-if="showSuggestions" id="motor-suggestions" class="finder-suggestions" role="listbox">
-        <button
-          v-for="motor in filteredMotors"
-          :key="motor.id"
-          type="button"
-          role="option"
-          @mousedown.prevent="selectMotor(motor)"
-        >
-          <span><strong>{{ motor.name }}</strong><small>{{ motorCategoryLabels[motor.category] }}</small></span>
-          <span aria-hidden="true">Pilih</span>
-        </button>
-        <div v-if="searchQuery.trim().length >= 2 && filteredMotors.length === 0" class="finder-not-found">
-          <strong>Motor belum ada di daftar.</strong>
-          <span>Tim cabang dapat membantu mengecek ukuran secara langsung.</span>
-          <a :href="fallbackContact" target="_blank" rel="noreferrer">Konsultasi dengan cabang</a>
-        </div>
-      </div>
-    </div>
-
-    <div v-if="!selectedMotor" class="finder-popular">
-      <span>Sering dicari:</span>
-      <button v-for="motor in popularMotors" :key="motor.id" type="button" @click="selectMotor(motor)">
-        {{ motor.name.replace(/^(Honda|Yamaha)\s/, "") }}
-      </button>
-    </div>
-
-    <p v-if="errorMessage" class="finder-alert" role="alert">{{ errorMessage }}</p>
-
-    <div v-if="selectedMotor" class="finder-result" aria-live="polite">
-      <div class="finder-result__title">
-        <div><small>Hasil untuk</small><h3>{{ selectedMotor.name }}</h3></div>
-        <span>{{ motorCategoryLabels[selectedMotor.category] }}</span>
-      </div>
-
-      <div class="finder-sizes">
-        <article><span>Ban depan</span><strong>{{ selectedMotor.front }}</strong></article>
-        <article><span>Ban belakang</span><strong>{{ selectedMotor.rear }}</strong></article>
-      </div>
-      <p class="finder-note">Ukuran dapat berbeda menurut tahun atau varian. Cocokkan kembali dengan tulisan pada ban atau buku kendaraan.</p>
-
-      <template v-if="recommendation">
-        <div class="finder-divider" />
-        <div class="finder-subheading">
-          <div>
-            <span class="finder-step">2</span>
-            <div><p class="public-kicker">Pilih ban</p><h3>Klik ban yang Anda inginkan</h3></div>
-          </div>
-          <small>Diperbarui {{ formatUpdatedAt(recommendation.updatedAt) }}</small>
-        </div>
-
-        <div class="finder-tabs" role="tablist" aria-label="Posisi ban">
-          <button type="button" :class="{ 'is-active': activePosition === 'front' }" @click="activePosition = 'front'; showAllProducts = false">
-            Depan · {{ selectedMotor.front }}{{ selectedFrontProductKey ? " · ✓" : "" }}
-          </button>
-          <button type="button" :class="{ 'is-active': activePosition === 'rear' }" @click="activePosition = 'rear'; showAllProducts = false">
-            Belakang · {{ selectedMotor.rear }}{{ selectedRearProductKey ? " · ✓" : "" }}
-          </button>
-        </div>
-
-        <div v-if="productsForPosition.length" class="finder-products">
-          <button
-            v-for="product in productsForPosition"
-            :key="product.key"
-            type="button"
-            class="finder-product"
-            :class="{ 'is-selected': isProductSelected(product) }"
-            :aria-pressed="isProductSelected(product)"
-            @click="selectProduct(product)"
-          >
-            <div><span>{{ product.brand }}</span><strong>{{ product.type }}</strong></div>
-            <div class="finder-product__meta">
-              <b>{{ product.size }}</b>
-              <small>{{ isProductSelected(product) ? "Dipilih" : `Ada di ${productBranchCount(product)} cabang` }}</small>
+    <div ref="panelHost" class="journey-panel-host">
+      <Transition name="journey-panel" mode="out-in" @before-leave="lockPanelHeight" @enter="sizePanel" @after-enter="finishStep">
+        <section :key="`${step}-${step === 3 ? activePosition : ''}`" class="journey-panel" :aria-labelledby="`journey-heading-${step}`">
+          <template v-if="step === 1">
+            <p class="public-kicker">01 / Kenali motor Anda</p>
+            <h2 id="journey-heading-1" tabindex="-1">Motor apa yang Anda pakai?</h2>
+            <p class="journey-description">Mulai dengan nama motor. Kami bantu menemukan ukuran bannya.</p>
+            <label class="finder-label" for="motor-search">Nama atau tipe motor</label>
+            <div class="finder-search">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.35-4.35m2.35-5.65a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z" /></svg>
+              <input id="motor-search" v-model="searchQuery" type="search" role="combobox" placeholder="Contoh: Beat, NMAX, Vario" autocomplete="off" aria-autocomplete="list" :aria-expanded="showSuggestions" aria-controls="motor-suggestions" :aria-activedescendant="showSuggestions && suggestionIndex >= 0 ? `motor-option-${suggestionIndex}` : undefined" @input="handleInput" @focus="showSuggestions = true" @blur="closeSuggestions" @keydown="suggestionKey" />
+              <div v-if="showSuggestions" id="motor-suggestions" class="finder-suggestions" role="listbox" aria-label="Pilihan motor">
+                <button v-for="(motor, index) in filteredMotors" :id="`motor-option-${index}`" :key="motor.id" type="button" role="option" :aria-selected="suggestionIndex === index" tabindex="-1" @pointerdown.prevent @click="selectMotor(motor)">
+                  <span><strong>{{ motor.name }}</strong><small>{{ motorCategoryLabels[motor.category] }}</small></span><span aria-hidden="true">Pilih &#8594;</span>
+                </button>
+                <div v-if="filteredMotors.length === 0" class="finder-not-found"><strong>Motor belum ada di daftar.</strong><span>Tim cabang dapat membantu mengecek ukuran secara langsung.</span><a :href="fallbackContact" target="_blank" rel="noreferrer">Konsultasi dengan cabang &#8599;</a></div>
+              </div>
             </div>
-          </button>
-        </div>
-        <p v-else class="finder-empty">Belum ada stok untuk ukuran ini. Hubungi cabang untuk pilihan lain.</p>
-        <button v-if="productCountForPosition > 8" type="button" class="finder-more" @click="showAllProducts = !showAllProducts">
-          {{ showAllProducts ? "Tampilkan lebih sedikit" : `Lihat semua ${productCountForPosition} pilihan` }}
-        </button>
+            <div class="finder-popular"><span>Sering dicari:</span><button v-for="motor in popularMotors" :key="motor.id" type="button" @click="selectMotor(motor)">{{ motor.name.replace(/^(Honda|Yamaha)\s/, "") }}</button></div>
+            <div class="journey-reassurance"><span aria-hidden="true">&#8594;</span><p>Dari ukuran yang pas sampai cabang tujuan.<br /><strong>Semua bisa Anda cek di sini.</strong></p></div>
+            <button v-if="selectedMotor" type="button" class="journey-next" @click="goToStep(2)">Lanjut dengan {{ selectedMotor.name }} <span aria-hidden="true">&#8594;</span></button>
+          </template>
 
-        <div class="finder-divider" />
-        <div class="finder-subheading finder-subheading--branches">
-          <div>
-            <span class="finder-step">3</span>
-            <div><p class="public-kicker">Pilih toko</p><h3>{{ branchHeading }}</h3></div>
-          </div>
-          <button v-if="hasCoordinateData" type="button" class="finder-location" :disabled="locating" @click="useMyLocation">
-            {{ locating ? "Mencari lokasi…" : "Gunakan lokasi saya" }}
-          </button>
-        </div>
-
-        <div v-if="selectedProducts.length" class="finder-selected-products" aria-label="Ban yang dipilih">
-          <button v-if="selectedFrontProduct" type="button" @click="clearProductSelection('front')">
-            Depan: {{ selectedFrontProduct.brand }} {{ selectedFrontProduct.type }} <span aria-hidden="true">×</span>
-          </button>
-          <button v-if="selectedRearProduct" type="button" @click="clearProductSelection('rear')">
-            Belakang: {{ selectedRearProduct.brand }} {{ selectedRearProduct.type }} <span aria-hidden="true">×</span>
-          </button>
-        </div>
-
-        <div class="finder-area-filter">
-          <label for="branch-city">Area</label>
-          <select id="branch-city" v-model="selectedCity">
-            <option value="all">Semua area</option>
-            <option v-for="city in cities" :key="city" :value="city">{{ city }}</option>
-          </select>
-          <span v-if="locationMessage">{{ locationMessage }}</span>
-        </div>
-
-        <div class="finder-branches">
-          <article v-for="item in visibleBranches" :key="item.branch.code" class="finder-branch">
-            <div class="finder-branch__top">
-              <div><strong>{{ item.branch.name }}</strong><span>{{ item.branch.city }}</span></div>
-              <span class="stock-badge" :class="`is-${item.displayStatus}`">{{ statusLabel(item.displayStatus) }}</span>
+          <template v-else-if="step === 2 && selectedMotor">
+            <p class="public-kicker">02 / Tentukan posisi</p>
+            <h2 id="journey-heading-2" tabindex="-1">Ban mana yang ingin diganti?</h2>
+            <p class="journey-description">Pilih satu dulu. Anda bisa menambahkan ban lainnya setelah ini.</p>
+            <div class="journey-positions">
+              <button v-for="position in (['front', 'rear'] as const)" :key="position" type="button" class="journey-position" :data-position="position" @click="choosePosition(position)">
+                <svg class="journey-motor-diagram" viewBox="0 0 220 120" aria-hidden="true">
+                  <g class="scooter-wheels">
+                    <circle cx="50" cy="94" r="21" :class="{ 'is-wheel': position === 'rear' }" />
+                    <circle cx="178" cy="94" r="21" :class="{ 'is-wheel': position === 'front' }" />
+                    <circle cx="50" cy="94" r="12" /><circle cx="178" cy="94" r="12" />
+                    <path d="m50 82 0 24m-12-12h24m116-12v24m-12-12h24" />
+                    <circle cx="50" cy="94" r="4" :class="{ 'wheel-center': position === 'rear' }" />
+                    <circle cx="178" cy="94" r="4" :class="{ 'wheel-center': position === 'front' }" />
+                  </g>
+                  <path class="scooter-fork" d="m163 61 15 33" />
+                  <path class="scooter-body" d="m20 47 34 6 39 7 17 20h20l17-35-5-12 12-8 17 16 8 19-18 21-13 9H95L76 73 37 66 20 59Z" />
+                  <path class="scooter-panel" d="m25 54 56 12 15 18-24-15-30-5Zm127-17 15 9 6 14-19 16 7-22Z" />
+                  <path class="scooter-seat" d="m27 42 31 3 32 8 9 6-10 1-33-7-29-5Z" />
+                  <path d="m22 44-8-5m12 23-13 14-5-1m93 11h40m-39 8 6 7m58-22c8-6 19-6 28 0M139 26l13-4 11 8m-17-7-6-12m17 15 8-12" />
+                  <path class="scooter-light" d="m164 44 10 14-9 3-6-12ZM21 49l10 3-5 6-8-4Z" />
+                  <path class="scooter-mirror" d="m131 7 9 1 3 5-10-1Zm33 3 9-3 3 4-10 3Z" />
+                  <path class="scooter-engine" d="M49 87h34l9 7-8 7H49a7 7 0 0 1 0-14Z" />
+                  <path d="M56 93h23m-37-27-7 12m7-10-7 12m33-11 12 3m-16-6 11 3" />
+                </svg>
+                <span>Ban {{ position === 'front' ? 'depan' : 'belakang' }}</span><strong>{{ position === 'front' ? selectedMotor.front : selectedMotor.rear }}</strong><small>Pilih posisi <span aria-hidden="true">&#8594;</span></small>
+              </button>
             </div>
-            <p>{{ item.branch.address }}</p>
-            <small v-if="item.distance !== null">Sekitar {{ item.distance.toFixed(1) }} km dari Anda</small>
-            <div class="finder-branch__actions">
-              <a :href="item.branch.mapsUrl" target="_blank" rel="noreferrer">Petunjuk arah</a>
-              <a :href="contactLink(item.branch)" target="_blank" rel="noreferrer" class="is-primary">{{ contactLabel(item.branch) }}</a>
+            <p class="finder-note">Ukuran dapat berbeda menurut tahun atau varian. Cocokkan dengan tulisan pada ban atau buku kendaraan.</p>
+            <button type="button" class="journey-back" @click="goToStep(1)"><span aria-hidden="true">&#8592;</span> Pilih motor lain</button>
+          </template>
+
+          <template v-else-if="step === 3">
+            <p class="public-kicker">03 / Pilih tipe ban</p>
+            <h2 id="journey-heading-3" tabindex="-1">Pilihan untuk ban {{ activePosition === 'front' ? 'depan' : 'belakang' }}.</h2>
+            <div class="journey-position-summary"><strong>{{ activeSize }}</strong><button type="button" @click="goToStep(2)">Ganti posisi</button></div>
+            <div v-if="isLoading" class="journey-loading" role="status"><p><span class="journey-loading-dot" />Mencari pilihan yang sesuai...</p><div class="journey-skeletons" aria-hidden="true"><span v-for="n in 4" :key="n" /></div></div>
+            <div v-else-if="errorMessage" class="journey-error" role="alert"><p>{{ errorMessage }}</p><button type="button" class="journey-next" @click="selectedMotor && loadRecommendations(selectedMotor)">Coba lagi <span aria-hidden="true">&#8594;</span></button><a :href="fallbackContact" target="_blank" rel="noreferrer">Tanya cabang &#8599;</a></div>
+            <template v-else-if="recommendation">
+              <p class="journey-description">{{ productCountForPosition }} pilihan sesuai ukuran. Pilih satu untuk melihat stok cabang.</p>
+              <div v-if="productsForPosition.length" class="finder-products">
+                <button v-for="product in productsForPosition" :key="product.key" type="button" class="finder-product" :class="{ 'is-selected': isProductSelected(product) }" :aria-pressed="isProductSelected(product)" @click="selectProduct(product)">
+                  <div><span>{{ product.brand }}</span><strong>{{ product.type }}</strong><small>{{ product.size }}</small></div>
+                  <div class="finder-product__meta"><span class="journey-choice-check" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="m5 10 3 3 7-7" /></svg></span><small>{{ isProductSelected(product) ? 'Dipilih' : `${productBranchCount(product)} cabang` }}</small></div>
+                </button>
+              </div>
+              <div v-else class="finder-empty"><p>Belum ada stok untuk ukuran ini.</p><a :href="fallbackContact" target="_blank" rel="noreferrer">Tanya cabang untuk pilihan lain &#8599;</a></div>
+              <button v-if="productCountForPosition > 8" type="button" class="finder-more" @click="showAllProducts = !showAllProducts">{{ showAllProducts ? 'Tampilkan lebih sedikit' : `Lihat semua ${productCountForPosition} pilihan` }}</button>
+              <div class="journey-continue">
+                <Transition name="journey-feedback" mode="out-in"><p :key="activeProduct?.key ?? 'empty'" class="journey-selection-note">{{ activeProduct ? `${activeProduct.brand} ${activeProduct.type} dipilih.` : 'Pilih tipe ban untuk melanjutkan.' }}</p></Transition>
+                <button type="button" class="journey-next" :disabled="!activeProduct" @click="goToStep(4)">Cek cabang <span v-if="activeProduct" class="journey-count">{{ rankedBranches.length }}</span><span aria-hidden="true">&#8594;</span></button>
+                <button v-if="activeProduct && !otherSelected" type="button" class="journey-add" @click="choosePosition(otherPosition)">+ Tambah ban {{ otherPosition === 'front' ? 'depan' : 'belakang' }}</button>
+                <p v-if="otherSelected" class="journey-added">Ban {{ otherPosition === 'front' ? 'depan' : 'belakang' }} juga dipilih: {{ otherSelected.brand }} {{ otherSelected.type }}</p>
+              </div>
+              <small class="journey-updated">Stok diperbarui {{ formatUpdatedAt(recommendation.updatedAt) }}</small>
+            </template>
+          </template>
+
+          <template v-else-if="step === 4">
+            <p class="public-kicker">04 / Siap ke toko</p>
+            <h2 id="journey-heading-4" tabindex="-1">Temukan cabang tujuan Anda.</h2>
+            <p class="journey-description">{{ branchHeading }}. Konfirmasi ketersediaan sebelum berangkat.</p>
+            <div class="journey-order" aria-label="Ringkasan pilihan ban">
+              <div v-for="position in (['front', 'rear'] as const)" :key="position">
+                <template v-if="position === 'front' ? selectedFrontProduct : selectedRearProduct"><span>{{ position === 'front' ? 'Depan' : 'Belakang' }}</span><strong>{{ (position === 'front' ? selectedFrontProduct : selectedRearProduct)?.brand }} {{ (position === 'front' ? selectedFrontProduct : selectedRearProduct)?.type }}<small>{{ (position === 'front' ? selectedFrontProduct : selectedRearProduct)?.size }}</small></strong><button type="button" :aria-label="`Hapus pilihan ban ${position === 'front' ? 'depan' : 'belakang'}`" @click="clearProductSelection(position)">&#215;</button></template>
+              </div>
+              <button type="button" class="journey-add" @click="goToStep(3)">Ubah pilihan ban</button>
             </div>
-          </article>
-        </div>
-        <div v-if="rankedBranches.length === 0" class="finder-empty finder-empty--branches">
-          <strong>Tidak ada cabang untuk pilihan ini.</strong>
-          <span>Hapus salah satu pilihan ban atau pilih area lain.</span>
-        </div>
-        <button v-if="rankedBranches.length > 4" type="button" class="finder-more" @click="showAllBranches = !showAllBranches">
-          {{ showAllBranches ? "Tampilkan lebih sedikit" : `Lihat semua ${rankedBranches.length} cabang` }}
-        </button>
-      </template>
+            <div class="finder-area-filter"><label for="branch-city">Area</label><select id="branch-city" v-model="selectedCity"><option value="all">Semua area</option><option v-for="city in cities" :key="city" :value="city">{{ city }}</option></select><button v-if="hasCoordinateData" type="button" class="finder-location" :disabled="locating" @click="useMyLocation">{{ locating ? 'Mencari lokasi...' : 'Gunakan lokasi saya' }}</button></div>
+            <p v-if="locationMessage" class="finder-note" role="status">{{ locationMessage }}</p>
+            <p class="journey-branch-count" role="status">{{ rankedBranches.length }} cabang untuk pilihan Anda</p>
+            <div class="finder-branches">
+              <article v-for="(item, index) in visibleBranches" :key="item.branch.code" class="finder-branch" :style="{ '--branch-order': Math.min(index, 3) }">
+                <div class="finder-branch__top"><div><strong>{{ item.branch.name }}</strong><span>{{ item.branch.city }}</span></div><span class="stock-badge" :class="`is-${item.displayStatus}`">{{ statusLabel(item.displayStatus) }}</span></div>
+                <p>{{ item.branch.address }}</p><small v-if="item.distance !== null">Sekitar {{ item.distance.toFixed(1) }} km dari Anda</small>
+                <div class="finder-branch__actions"><a :href="item.branch.mapsUrl" target="_blank" rel="noreferrer">Petunjuk arah <span aria-hidden="true">&#8599;</span></a><a v-if="item.branch.whatsapp || item.branch.instagram" :href="contactLink(item.branch)" target="_blank" rel="noreferrer" class="is-primary">{{ contactLabel(item.branch) }} <span aria-hidden="true">&#8599;</span></a><NuxtLink v-else :to="`/cabang/${item.branch.slug}`" class="is-primary">Detail cabang <span aria-hidden="true">&#8594;</span></NuxtLink></div>
+              </article>
+            </div>
+            <div v-if="rankedBranches.length === 0" class="finder-empty finder-empty--branches"><strong>Belum ada cabang yang cocok.</strong><span>Coba area lain atau ubah pilihan ban Anda.</span><button type="button" class="journey-back" @click="goToStep(3)">Ubah pilihan ban</button></div>
+            <button v-if="rankedBranches.length > 4" type="button" class="finder-more" @click="showAllBranches = !showAllBranches">{{ showAllBranches ? 'Tampilkan lebih sedikit' : `Lihat semua ${rankedBranches.length} cabang` }}</button>
+            <p class="journey-external-note">Petunjuk arah dan kontak toko dibuka di tab baru. Pilihan Anda tetap tersimpan di sini.</p>
+          </template>
+        </section>
+      </Transition>
     </div>
   </div>
 </template>

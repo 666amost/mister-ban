@@ -1,20 +1,18 @@
 <script setup lang="ts">
 import { computed } from "vue"
 import { useFetch, useHead, useRequestURL, useSeoMeta } from "#imports"
-import { brandCatalog } from "~/data/pubHomeData"
 import type { PublicBranchesResponse } from "~/types/public"
 
-definePageMeta({ layout: "auth" })
+definePageMeta({ layout: "public", pageTransition: { name: "public-view", mode: "out-in" }, layoutTransition: false, viewTransition: true })
 
 const requestUrl = useRequestURL()
 const canonicalUrl = `${requestUrl.origin}/`
-const { data: branchData, error: branchError } = await useFetch<PublicBranchesResponse>("/api/public/branches", {
+const { data: branchData } = await useFetch<PublicBranchesResponse>("/api/public/branches", {
   key: "public-branches",
   default: () => ({ branches: [], updatedAt: "" }),
 })
 
 const branches = computed(() => branchData.value?.branches ?? [])
-const currentYear = new Date().getFullYear()
 
 useSeoMeta({
   title: "Cek Ban Motor Sesuai Kendaraan | Mister Ban",
@@ -55,33 +53,9 @@ useHead(() => ({
 </script>
 
 <template>
-  <main class="public-page">
-    <PubTopbar />
-
-    <div v-if="branchError" class="public-system-note" role="status">
-      Data cabang sedang diperbarui. Simulator ukuran tetap dapat digunakan.
-    </div>
-
+  <div class="public-home">
+    <!-- Keep old fragment targets valid until the layout redirects their bookmarks. -->
+    <span v-for="anchor in ['cek-ban', 'merek', 'cabang']" :id="anchor" :key="anchor" class="public-legacy-anchor" aria-hidden="true" />
     <PubHero :branches="branches" />
-
-    <section class="public-trust-strip" aria-label="Ringkasan layanan">
-      <div class="public-shell">
-        <span>Pilihan ban untuk motor matic, bebek, dan sport</span>
-        <span aria-hidden="true">•</span>
-        <span>Pengecekan akhir oleh tim toko</span>
-        <span aria-hidden="true">•</span>
-        <span>Cabang Jakarta dan Tangerang</span>
-      </div>
-    </section>
-
-    <PubServices />
-    <PubProducts :brand-catalog="brandCatalog" />
-    <PubBranches :branches="branches" />
-    <PubFooter :current-year="currentYear" />
-
-    <nav class="public-mobile-actions" aria-label="Aksi cepat">
-      <a href="#cek-ban">Cek Ban</a>
-      <a href="#cabang">Cabang Terdekat</a>
-    </nav>
-  </main>
+  </div>
 </template>

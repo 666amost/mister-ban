@@ -30,13 +30,14 @@ function contactLabel(branch: PublicBranch): string {
       <div class="public-section-heading public-section-heading--split">
         <div>
           <p class="public-kicker">Lokasi toko</p>
-          <h2>Cabang Mister Ban.</h2>
-          <p>Lihat alamat, jam buka, dan petunjuk arah.</p>
+          <h1>Cabang Mister Ban.</h1>
+          <p>Jakarta &amp; Tangerang. Cek jam buka, hubungi tim toko, lalu tentukan rute Anda.</p>
         </div>
-        <a href="#cek-ban" class="public-text-link">Cek stok berdasarkan motor <span aria-hidden="true">→</span></a>
+        <NuxtLink to="/cek-ban" class="public-text-link">Cek stok berdasarkan motor <span aria-hidden="true">→</span></NuxtLink>
       </div>
 
-      <div class="public-branch-grid">
+      <p v-if="!branches.length" class="public-branches-empty" role="status">Informasi cabang belum tersedia. Silakan muat ulang halaman beberapa saat lagi.</p>
+      <div v-else class="public-branch-grid">
         <article v-for="branch in branches" :key="branch.code" class="public-branch-card">
           <div class="public-branch-card__top">
             <span>{{ branch.city }}</span>
@@ -50,7 +51,7 @@ function contactLabel(branch: PublicBranch): string {
           </div>
           <div class="public-branch-card__actions">
             <a :href="branch.mapsUrl" target="_blank" rel="noreferrer">Petunjuk arah</a>
-            <a :href="contactLink(branch)" target="_blank" rel="noreferrer">{{ contactLabel(branch) }}</a>
+            <a v-if="branch.whatsapp || branch.instagram" :href="contactLink(branch)" target="_blank" rel="noreferrer">{{ contactLabel(branch) }}</a>
           </div>
         </article>
       </div>

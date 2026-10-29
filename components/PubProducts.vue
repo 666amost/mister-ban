@@ -47,8 +47,8 @@ function sizeCount(types: BrandTypeRow[]): number {
     <div class="public-shell">
       <div class="public-section-heading public-section-heading--split">
         <div>
-          <p class="public-kicker">Daftar merek</p>
-          <h2>Merek dan ukuran ban.</h2>
+          <p class="public-kicker">Katalog ban</p>
+          <h1>Pilihan merek &amp; ukuran.</h1>
           <p>Buka merek untuk melihat tipe dan ukuran.</p>
         </div>
         <div class="public-filter-pills" aria-label="Filter kategori motor">
@@ -57,6 +57,7 @@ function sizeCount(types: BrandTypeRow[]): number {
             :key="filter.id"
             type="button"
             :class="{ 'is-active': activeFilter === filter.id }"
+            :aria-pressed="activeFilter === filter.id"
             @click="activeFilter = filter.id"
           >
             {{ filter.label }}
@@ -86,8 +87,8 @@ function sizeCount(types: BrandTypeRow[]): number {
       </div>
 
       <div class="public-inline-cta">
-        <p><strong>Cari ban untuk motor Anda.</strong></p>
-        <a href="#cek-ban" class="public-button">Pilih motor</a>
+        <p><strong>Belum tahu ukuran ban Anda?</strong> Mulai dari nama motor saja.</p>
+        <NuxtLink to="/cek-ban" class="public-button">Pilih motor</NuxtLink>
       </div>
     </div>
   </section>

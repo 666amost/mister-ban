@@ -1441,17 +1441,16 @@ onMounted(async () => {
       </div>
       <p v-if="removeError" class="error">{{ removeError }}</p>
     </section>
+    <Teleport to="body">
+      <div class="toastStack">
+        <TransitionGroup name="toast">
+          <div v-for="t in toasts" :key="t.id" class="toast" :class="t.type === 'error' ? 'toastError' : 'toastSuccess'">
+            {{ t.message }}
+          </div>
+        </TransitionGroup>
+      </div>
+    </Teleport>
   </div>
-
-  <Teleport to="body">
-    <div class="toastStack">
-      <TransitionGroup name="toast">
-        <div v-for="t in toasts" :key="t.id" class="toast" :class="t.type === 'error' ? 'toastError' : 'toastSuccess'">
-          {{ t.message }}
-        </div>
-      </TransitionGroup>
-    </div>
-  </Teleport>
 </template>
 
 <style scoped>

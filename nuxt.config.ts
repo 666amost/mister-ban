@@ -10,6 +10,8 @@ const appManifestAliasPath = (() => {
 export default defineNuxtConfig({
   compatibilityDate: '2026-01-31',
   devtools: { enabled: true },
+  // A single dual-stack listener serves localhost and 127.0.0.1.
+  devServer: { host: '::', port: 3000 },
   typescript: { strict: true },
   css: ["~/assets/css/theme.css", "~/assets/css/public.css"],
   
