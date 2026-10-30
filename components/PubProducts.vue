@@ -71,13 +71,14 @@ function sizeCount(types: BrandTypeRow[]): number {
             type="button"
             class="public-brand-card__head"
             :aria-expanded="expandedBrand === brand.id"
+            :aria-controls="`brand-types-${brand.id}`"
             @click="expandedBrand = expandedBrand === brand.id ? null : brand.id"
           >
             <span class="public-brand-monogram">{{ brand.name.slice(0, 2).toUpperCase() }}</span>
             <span><strong>{{ brand.name }}</strong><small>{{ brand.filteredTypes.length }} tipe · {{ sizeCount(brand.filteredTypes) }} ukuran</small></span>
             <span aria-hidden="true">{{ expandedBrand === brand.id ? "−" : "+" }}</span>
           </button>
-          <div v-if="expandedBrand === brand.id" class="public-brand-card__body">
+          <div v-show="expandedBrand === brand.id" :id="`brand-types-${brand.id}`" class="public-brand-card__body">
             <div v-for="type in brand.filteredTypes" :key="type.type">
               <strong>{{ type.type }}</strong>
               <span>{{ type.sizes.join(" · ") }}</span>

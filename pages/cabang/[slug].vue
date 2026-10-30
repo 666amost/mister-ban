@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { createError, useFetch, useHead, useRequestURL, useSeoMeta } from "#imports"
+import { createError, useFetch, useHead } from "#imports"
+import { usePublicSeo } from "~/composables/usePublicSeo"
+import { serializeJsonLd } from "~/utils/public-seo"
 import type { PublicBranch, PublicBranchesResponse } from "~/types/public"
 
 definePageMeta({ layout: "public", pageTransition: { name: "public-view", mode: "out-in" }, layoutTransition: false, viewTransition: true })
 
 const route = useRoute()
-const requestUrl = useRequestURL()
 const { data, error } = await useFetch<PublicBranchesResponse>("/api/public/branches", {
   key: "public-branches",
   default: () => ({ branches: [], updatedAt: "" }),
@@ -20,46 +21,45 @@ if (!branch) {
   throw createError({ statusCode: 404, statusMessage: "Cabang tidak ditemukan" })
 }
 
-const canonicalUrl = `${requestUrl.origin}/cabang/${branch.slug}`
+const { siteUrl, canonicalUrl } = usePublicSeo({
+  title: `${branch.name} | Toko Ban Motor di ${branch.city || "Jakarta & Tangerang"}`,
+  description: `Cek ukuran dan stok ban motor di ${branch.name}${branch.city ? `, ${branch.city}` : ""}. Lihat alamat, jam operasional, kontak toko, dan petunjuk arah sebelum datang.`,
+  path: `/cabang/${branch.slug}`,
+  breadcrumbs: [
+    { name: "Beranda", path: "/" },
+    { name: "Cabang", path: "/cabang" },
+    { name: branch.name, path: `/cabang/${branch.slug}` },
+  ],
+})
 const contactUrl = buildContactUrl(branch)
 const contactLabel = branch.whatsapp ? "Tanya via WhatsApp" : branch.instagram ? "Tanya via Instagram" : "Lihat Maps"
 
-useSeoMeta({
-  title: `${branch.name} | Toko Ban Motor Mister Ban`,
-  description: `Cek ban sesuai motor, alamat, jam operasional, dan petunjuk arah ke ${branch.name}, ${branch.city}.`,
-  ogTitle: `${branch.name} | Mister Ban`,
-  ogDescription: `Cek pilihan ban sebelum datang ke ${branch.name}.`,
-  ogType: "website",
-  ogUrl: canonicalUrl,
-  ogImage: `${requestUrl.origin}/brand/logo-512.png`,
-  twitterCard: "summary",
-  robots: "index, follow",
-})
-
 useHead({
-  link: [{ rel: "canonical", href: canonicalUrl }],
-  script: [
-    {
-      type: "application/ld+json",
-      innerHTML: JSON.stringify({
-        "@context": "https://schema.org",
-        "@type": "AutomotiveBusiness",
-        name: branch.name,
-        url: canonicalUrl,
-        image: `${requestUrl.origin}/brand/logo-512.png`,
-        address: {
-          "@type": "PostalAddress",
-          streetAddress: branch.address,
-          addressLocality: branch.city,
-          addressCountry: "ID",
-        },
-        hasMap: branch.mapsUrl,
-        sameAs: branch.instagram
-          ? [`https://instagram.com/${branch.instagram.replace(/^@/, "")}`]
-          : undefined,
-      }),
-    },
-  ],
+  script: [{
+    key: "public-branch",
+    type: "application/ld+json",
+    innerHTML: serializeJsonLd({
+      "@context": "https://schema.org",
+      "@type": "AutomotiveBusiness",
+      "@id": `${canonicalUrl}#store`,
+      name: branch.name,
+      url: canonicalUrl,
+      image: `${siteUrl}/brand/logo-512.png`,
+      address: {
+        "@type": "PostalAddress",
+        streetAddress: branch.address,
+        addressLocality: branch.city || undefined,
+        addressCountry: "ID",
+      },
+      telephone: branch.whatsapp ? `+${branch.whatsapp}` : undefined,
+      geo: branch.latitude !== null && branch.longitude !== null
+        ? { "@type": "GeoCoordinates", latitude: branch.latitude, longitude: branch.longitude }
+        : undefined,
+      hasMap: branch.mapsUrl,
+      parentOrganization: { "@type": "Organization", "@id": `${siteUrl}/#organization`, name: "Mister Ban", url: `${siteUrl}/` },
+      sameAs: branch.instagram ? [`https://instagram.com/${branch.instagram.replace(/^@/, "")}`] : undefined,
+    }),
+  }],
 })
 
 function buildContactUrl(item: PublicBranch): string {

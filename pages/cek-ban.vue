@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { useFetch, useHead, useRequestURL, useSeoMeta } from "#imports"
+import { useFetch } from "#imports"
+import { usePublicSeo } from "~/composables/usePublicSeo"
 import type { PublicBranchesResponse } from "~/types/public"
 definePageMeta({ layout: "public", pageTransition: { name: "public-view", mode: "out-in" }, layoutTransition: false, viewTransition: true })
 const route = useRoute()
@@ -7,9 +8,12 @@ const { data, error } = await useFetch<PublicBranchesResponse>("/api/public/bran
   key: "public-branches", default: () => ({ branches: [], updatedAt: "" }),
 })
 const preferredBranch = computed(() => data.value?.branches.find(branch => branch.code === route.query.cabang))
-const canonical = new URL("/cek-ban", useRequestURL().origin).href
-useSeoMeta({ title: "Cek Ukuran & Stok Ban Motor | Mister Ban", description: "Cari ban berdasarkan model motor atau ukuran ban. Lihat pilihan merek dan stok di cabang Mister Ban.", ogUrl: canonical })
-useHead({ link: [{ rel: "canonical", href: canonical }] })
+usePublicSeo({
+  title: "Cek Ukuran & Stok Ban Motor | Mister Ban",
+  description: "Cari ukuran ban depan dan belakang sesuai model motor matic, bebek, atau sport. Cek pilihan merek dan stok ban di cabang Mister Ban Jakarta dan Tangerang.",
+  path: "/cek-ban",
+  breadcrumbs: [{ name: "Beranda", path: "/" }, { name: "Cek Ban", path: "/cek-ban" }],
+})
 </script>
 
 <template>

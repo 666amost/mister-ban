@@ -9,6 +9,7 @@ const appManifestAliasPath = (() => {
 
 export default defineNuxtConfig({
   compatibilityDate: '2026-01-31',
+  ssr: true,
   devtools: { enabled: true },
   // A single dual-stack listener serves localhost and 127.0.0.1.
   devServer: { host: '::', port: 3000 },
@@ -16,6 +17,14 @@ export default defineNuxtConfig({
   css: ["~/assets/css/theme.css", "~/assets/css/public.css"],
   
   app: {
+    head: {
+      htmlAttrs: { lang: 'id' },
+      link: [
+        { rel: 'icon', type: 'image/x-icon', href: '/favicon.ico', sizes: '16x16 32x32 48x48 64x64 128x128 256x256' },
+        { rel: 'icon', type: 'image/png', href: '/favicon-48.png', sizes: '48x48' },
+        { rel: 'apple-touch-icon', href: '/apple-touch-icon.png', sizes: '180x180' },
+      ],
+    },
     pageTransition: { name: 'page', mode: 'in-out' },
     layoutTransition: { name: 'layout', mode: 'in-out' },
   },
@@ -65,5 +74,9 @@ export default defineNuxtConfig({
   
   runtimeConfig: {
     databaseUrl: "",
+    public: {
+      siteUrl: "https://www.misterban.com",
+      siteIndexable: process.env.VERCEL_ENV !== "preview",
+    },
   },
 });

@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import { useHead, useRequestURL, useSeoMeta } from "#imports"
+import { usePublicSeo } from "~/composables/usePublicSeo"
 import { brandCatalog } from "~/data/pubHomeData"
+
 definePageMeta({ layout: "public", pageTransition: { name: "public-view", mode: "out-in" }, layoutTransition: false, viewTransition: true })
-const canonical = new URL("/merek", useRequestURL().origin).href
-useSeoMeta({ title: "Pilihan Merek & Ukuran Ban Motor | Mister Ban", description: "Lihat merek, tipe, dan ukuran ban motor di katalog Mister Ban. Cek stok sesuai motor sebelum mengunjungi cabang.", ogUrl: canonical })
-useHead({ link: [{ rel: "canonical", href: canonical }] })
+usePublicSeo({
+  title: "Pilihan Merek & Ukuran Ban Motor | Mister Ban",
+  description: "Lihat katalog ban motor IRC, Maxxis, Kingland, Zeneos, FDR, Pirelli, dan merek lainnya di Mister Ban. Pilih tipe dan ukuran, lalu cek stok cabang terdekat.",
+  path: "/merek",
+  breadcrumbs: [{ name: "Beranda", path: "/" }, { name: "Pilihan Merek", path: "/merek" }],
+})
 </script>
 
 <template>

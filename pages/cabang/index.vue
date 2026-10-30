@@ -1,13 +1,36 @@
 <script setup lang="ts">
-import { useFetch, useHead, useRequestURL, useSeoMeta } from "#imports"
+import { useFetch, useHead } from "#imports"
+import { usePublicSeo } from "~/composables/usePublicSeo"
+import { serializeJsonLd } from "~/utils/public-seo"
 import type { PublicBranchesResponse } from "~/types/public"
+
 definePageMeta({ layout: "public", pageTransition: { name: "public-view", mode: "out-in" }, layoutTransition: false, viewTransition: true })
+const { siteUrl } = usePublicSeo({
+  title: "Cabang Toko Ban Motor Jakarta & Tangerang | Mister Ban",
+  description: "Temukan cabang Mister Ban di Jakarta Barat dan Tangerang. Lihat alamat toko ban motor, jam operasional, kontak cabang, dan petunjuk arah Google Maps.",
+  path: "/cabang",
+  breadcrumbs: [{ name: "Beranda", path: "/" }, { name: "Cabang", path: "/cabang" }],
+})
 const { data, error } = await useFetch<PublicBranchesResponse>("/api/public/branches", {
   key: "public-branches", default: () => ({ branches: [], updatedAt: "" }),
 })
-const canonical = new URL("/cabang", useRequestURL().origin).href
-useSeoMeta({ title: "Cabang & Lokasi Toko Ban | Mister Ban", description: "Temukan cabang Mister Ban di Jakarta dan Tangerang. Lihat alamat, jam operasional, kontak toko, dan petunjuk arah.", ogUrl: canonical })
-useHead({ link: [{ rel: "canonical", href: canonical }] })
+useHead(() => ({
+  script: [{
+    key: "public-branches",
+    type: "application/ld+json",
+    innerHTML: serializeJsonLd({
+      "@context": "https://schema.org",
+      "@type": "ItemList",
+      name: "Cabang Mister Ban",
+      itemListElement: (data.value?.branches ?? []).map((branch, index) => ({
+        "@type": "ListItem",
+        position: index + 1,
+        name: branch.name,
+        url: `${siteUrl}/cabang/${branch.slug}`,
+      })),
+    }),
+  }],
+}))
 </script>
 
 <template>

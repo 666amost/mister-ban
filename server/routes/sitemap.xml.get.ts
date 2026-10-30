@@ -1,7 +1,9 @@
-import { getRequestURL, setResponseHeader } from "h3"
+import { setResponseHeader } from "h3"
 import { defineCachedEventHandler } from "nitropack/runtime/internal/cache"
 import { getPool } from "~/server/db/pool"
 import { publicBranchSlug } from "~/server/utils/public-branches"
+import { getPublicSiteOrigin } from "~/server/utils/public-seo"
+import { PUBLIC_PAGE_PATHS } from "~/utils/public-seo"
 
 type SitemapStoreRow = { name: string }
 
@@ -20,17 +22,14 @@ function escapeXml(value: string): string {
 
 export default defineCachedEventHandler(
   async (event) => {
-    const origin = getRequestURL(event).origin
+    const origin = getPublicSiteOrigin(event)
     const { rows } = await getPool().query<SitemapStoreRow>(
       `SELECT name FROM stores WHERE status = 'active' ORDER BY name`,
     )
-    const locations = [
-      `${origin}/`,
-      `${origin}/cek-ban`,
-      `${origin}/merek`,
-      `${origin}/cabang`,
+    const locations = [...new Set([
+      ...PUBLIC_PAGE_PATHS.map((path) => `${origin}${path}`),
       ...rows.map((store) => `${origin}/cabang/${publicBranchSlug(store.name)}`),
-    ]
+    ])]
     const body = [
       `<?xml version="1.0" encoding="UTF-8"?>`,
       `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">`,
@@ -42,5 +41,5 @@ export default defineCachedEventHandler(
     setResponseHeader(event, "cache-control", "public, max-age=3600, s-maxage=86400, stale-while-revalidate=86400")
     return body
   },
-  { maxAge: 60 * 60 * 24, swr: true, name: "public-sitemap" },
+  { maxAge: 60 * 60 * 24, swr: true, name: "public-sitemap", varies: ["host", "x-forwarded-host", "x-forwarded-proto"] },
 )
