@@ -2,7 +2,7 @@ import { setResponseHeader } from "h3"
 import { getPublicSiteOrigin } from "~/server/utils/public-seo"
 
 const searchCrawlers = ["Googlebot", "Googlebot-Image", "Google-InspectionTool", "bingbot", "DuckDuckBot", "Applebot"]
-const allowedPaths = ["/$", "/?", "/cek-ban", "/merek", "/cabang", "/_nuxt/", "/brand/", "/api/public/", "/sitemap.xml$", "/favicon", "/apple-touch-icon.png$"]
+const allowedPaths = ["/$", "/?", "/cek-ban", "/merek", "/cabang", "/login", "/_nuxt/", "/brand/", "/api/public/", "/sitemap.xml$", "/favicon", "/apple-touch-icon.png$"]
 
 export default defineEventHandler((event) => {
   const origin = getPublicSiteOrigin(event)

@@ -1,5 +1,12 @@
 <script setup lang="ts">
+import { useSeoMeta } from "#imports"
+import { NOINDEX_ROBOTS } from "~/utils/public-seo"
 definePageMeta({ layout: "auth" })
+useSeoMeta({
+  title: "Masuk Tim | Mister Ban",
+  description: "Halaman masuk khusus tim toko Mister Ban.",
+  robots: NOINDEX_ROBOTS,
+})
 
 const email = ref("");
 const password = ref("");

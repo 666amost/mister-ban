@@ -8,6 +8,7 @@ import {
   normalizeWhatsapp,
   publicBranchMeta,
   publicBranchSlug,
+  publicOperatingHours,
   resolveInstagram,
   type PublicStoreRow,
 } from "~/server/utils/public-branches"
@@ -46,10 +47,7 @@ export default defineCachedEventHandler(
         name: store.name,
         address,
         city: store.city?.trim() ?? "",
-        operatingHours: (store.operating_hours ?? "")
-          .split(/\r?\n/)
-          .map((value) => value.trim())
-          .filter(Boolean),
+        operatingHours: publicOperatingHours(store.operating_hours),
         instagram: resolveInstagram(store),
         whatsapp: normalizeWhatsapp(meta.whatsapp),
         latitude: meta.latitude ?? null,
@@ -63,6 +61,6 @@ export default defineCachedEventHandler(
   {
     maxAge: 60 * 60 * 6,
     swr: true,
-    name: "public-branches",
+    name: "public-branches-hours-2100",
   },
 )

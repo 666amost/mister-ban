@@ -22,8 +22,8 @@ if (!branch) {
 }
 
 const { siteUrl, canonicalUrl } = usePublicSeo({
-  title: `${branch.name} | Toko Ban Motor di ${branch.city || "Jakarta & Tangerang"}`,
-  description: `Cek ukuran dan stok ban motor di ${branch.name}${branch.city ? `, ${branch.city}` : ""}. Lihat alamat, jam operasional, kontak toko, dan petunjuk arah sebelum datang.`,
+  title: `${branch.name} | Bengkel Ban Motor ${branch.city || "Jakarta & Tangerang"}`,
+  description: `Cari bengkel ban motor di ${branch.city || "Jakarta Barat dan Tangerang"}? Kunjungi ${branch.name} untuk ganti dan pasang ban. Cek stok, alamat, jam buka, serta rute toko.`,
   path: `/cabang/${branch.slug}`,
   breadcrumbs: [
     { name: "Beranda", path: "/" },
@@ -43,6 +43,7 @@ useHead({
       "@type": "AutomotiveBusiness",
       "@id": `${canonicalUrl}#store`,
       name: branch.name,
+      description: `Bengkel dan toko ban motor ${branch.name} untuk ganti serta pasang ban.`,
       url: canonicalUrl,
       image: `${siteUrl}/brand/logo-512.png`,
       address: {

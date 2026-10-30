@@ -8,8 +8,8 @@ import type { PublicBranchesResponse } from "~/types/public"
 definePageMeta({ layout: "public", pageTransition: { name: "public-view", mode: "out-in" }, layoutTransition: false, viewTransition: true })
 
 const { siteUrl, canonicalUrl } = usePublicSeo({
-  title: "Toko Ban Motor di Jakarta & Tangerang | Mister Ban",
-  description: "Mister Ban, spesialis ban motor di Jakarta Barat dan Tangerang. Cek ukuran ban sesuai motor, pilihan merek, stok, serta alamat dan jam buka cabang terdekat.",
+  title: "Mister Ban | Bengkel Ban Motor & Toko Ban Terdekat",
+  description: "Cari bengkel ban motor atau toko ban terdekat di Jakarta Barat dan Tangerang? Mister Ban melayani ganti dan pasang ban. Cek stok, lokasi, dan jam buka cabang.",
   path: "/",
 })
 const { data: branchData } = await useFetch<PublicBranchesResponse>("/api/public/branches", {
@@ -29,6 +29,7 @@ useHead({
           "@type": "Organization",
           "@id": `${siteUrl}/#organization`,
           name: "Mister Ban",
+          description: "Bengkel dan toko ban motor untuk ganti serta pasang ban di Jakarta Barat dan Tangerang.",
           url: canonicalUrl,
           logo: `${siteUrl}/brand/logo-512.png`,
           areaServed: ["Jakarta Barat", "Tangerang"],
@@ -37,6 +38,7 @@ useHead({
           "@type": "WebSite",
           "@id": `${siteUrl}/#website`,
           name: "Mister Ban",
+          description: "Temukan bengkel dan toko ban Mister Ban terdekat, cek stok ban motor, alamat, dan jam buka cabang.",
           url: canonicalUrl,
           inLanguage: "id-ID",
           publisher: { "@id": `${siteUrl}/#organization` },

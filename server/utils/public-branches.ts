@@ -30,6 +30,12 @@ export type PublicStoreRow = {
   receipt_instagram: string | null
 }
 
+export function publicOperatingHours(value: string | null): string[] {
+  const opening = value?.match(/\b([01]?\d|2[0-3])[.:]([0-5]\d)\s*[-\u2013\u2014]/)
+  if (!opening) return ["Tutup pukul 21.00"]
+  return [`${opening[1]!.padStart(2, "0")}.${opening[2]} - 21.00`]
+}
+
 export function normalizeStoreCode(code: string | null): string {
   return (code ?? "").trim().toUpperCase()
 }

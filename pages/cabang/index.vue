@@ -6,8 +6,8 @@ import type { PublicBranchesResponse } from "~/types/public"
 
 definePageMeta({ layout: "public", pageTransition: { name: "public-view", mode: "out-in" }, layoutTransition: false, viewTransition: true })
 const { siteUrl } = usePublicSeo({
-  title: "Cabang Toko Ban Motor Jakarta & Tangerang | Mister Ban",
-  description: "Temukan cabang Mister Ban di Jakarta Barat dan Tangerang. Lihat alamat toko ban motor, jam operasional, kontak cabang, dan petunjuk arah Google Maps.",
+  title: "Bengkel & Toko Ban Terdekat Jakarta Tangerang | Mister Ban",
+  description: "Cari toko ban terdekat atau bengkel ban motor di Jakarta Barat dan Tangerang. Temukan cabang Mister Ban, cek alamat, jam buka, kontak, dan rute Google Maps.",
   path: "/cabang",
   breadcrumbs: [{ name: "Beranda", path: "/" }, { name: "Cabang", path: "/cabang" }],
 })

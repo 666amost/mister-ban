@@ -1,11 +1,30 @@
 import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import type { Plugin } from 'vite'
 
 const appManifestAliasPath = (() => {
   const nuxtGenerated = fileURLToPath(new URL('./.nuxt/manifest/meta/dev.json', import.meta.url))
   if (existsSync(nuxtGenerated)) return nuxtGenerated
   return fileURLToPath(new URL('./app-manifest.dev.json', import.meta.url))
 })()
+
+const assetDirectoryPlugin: Plugin = {
+  name: 'asset-directory-no-content',
+  apply: 'serve',
+  configureServer(server) {
+    const directory = server.config.base.replace(/\/+$/, '')
+    server.middlewares.use((request, response, next) => {
+      const pathname = request.url?.split('?', 1)[0]
+      if (pathname !== directory && pathname !== `${directory}/`) {
+        next()
+        return
+      }
+      response.statusCode = 204
+      response.setHeader('cache-control', 'no-store')
+      response.end()
+    })
+  },
+}
 
 export default defineNuxtConfig({
   compatibilityDate: '2026-01-31',
@@ -47,6 +66,7 @@ export default defineNuxtConfig({
   vite:
     process.env.NODE_ENV !== "production"
       ? {
+          plugins: [assetDirectoryPlugin],
           resolve: {
             alias: {
               '#app-manifest': appManifestAliasPath,
