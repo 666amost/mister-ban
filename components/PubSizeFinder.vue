@@ -9,6 +9,7 @@ import type {
   PublicRecommendationResponse,
   PublicRecommendedProduct,
   PublicStockStatus,
+  PublicTireSizesResponse,
 } from "~/types/public"
 
 const props = withDefaults(
@@ -22,6 +23,14 @@ const props = withDefaults(
 type UserLocation = { latitude: number; longitude: number }
 type PositionFilter = "front" | "rear"
 
+const searchMode = useState<"motor" | "size">("finder-mode", () => "motor")
+const selectedSize = useState("finder-size", () => "")
+const sizeCatalog = useState<PublicTireSizesResponse | null>("finder-size-catalog", () => null)
+const sizeQuery = ref("")
+const isLoadingSizes = ref(false)
+const sizeError = ref("")
+const showAllSizes = ref(false)
+let sizeController: AbortController | undefined
 const selectedMotor = useState<MotorFitment | null>("finder-motor", () => null)
 const searchQuery = ref(selectedMotor.value?.name ?? "")
 const recommendation = useState<PublicRecommendationResponse | null>("finder-recommendation", () => null)
@@ -45,13 +54,21 @@ const direction = ref("forward")
 const panelHost = ref<HTMLElement | null>(null)
 const suggestionIndex = ref(-1)
 const announcement = ref("")
-const steps = ["Motor", "Posisi", "Tipe ban", "Cabang"]
+const steps = computed(() => searchMode.value === "size"
+  ? [{ id: 1, label: "Ukuran" }, { id: 3, label: "Tipe ban" }, { id: 4, label: "Cabang" }]
+  : [{ id: 1, label: "Motor" }, { id: 2, label: "Posisi" }, { id: 3, label: "Tipe ban" }, { id: 4, label: "Cabang" }])
+const stepIndex = computed(() => steps.value.findIndex(item => item.id === step.value))
+const hasSelection = computed(() => searchMode.value === "size" ? !!selectedSize.value : !!selectedMotor.value)
+const cleanSizeQuery = (value: string) => value.replace(/[\s/–—-]/g, "").toLowerCase()
+const filteredSizes = computed(() => (sizeCatalog.value?.sizes ?? []).filter(size => cleanSizeQuery(size).includes(cleanSizeQuery(sizeQuery.value))))
+const visibleSizes = computed(() => showAllSizes.value || sizeQuery.value.trim() ? filteredSizes.value : filteredSizes.value.slice(0, 12))
+function stepNumber(id: number): string { return String(steps.value.findIndex(item => item.id === id) + 1).padStart(2, "0") }
 const activeProduct = computed(() => activePosition.value === "front" ? selectedFrontProduct.value : selectedRearProduct.value)
-const activeSize = computed(() => activePosition.value === "front" ? selectedMotor.value?.front : selectedMotor.value?.rear)
+const activeSize = computed(() => searchMode.value === "size" ? selectedSize.value : activePosition.value === "front" ? selectedMotor.value?.front : selectedMotor.value?.rear)
 const otherPosition = computed<PositionFilter>(() => activePosition.value === "front" ? "rear" : "front")
 const otherSelected = computed(() => activePosition.value === "front" ? selectedRearProduct.value : selectedFrontProduct.value)
 function canVisitStep(target: number): boolean {
-  return target === 1 || (target === 2 && !!selectedMotor.value) || (target === 3 && !!selectedMotor.value && step.value >= 3) || (target === 4 && selectedProducts.value.length > 0)
+  return target === 1 || (target === 2 && searchMode.value === "motor" && !!selectedMotor.value) || (target === 3 && hasSelection.value && step.value >= 3) || (target === 4 && selectedProducts.value.length > 0)
 }
 function goToStep(target: number): void {
   if (target === step.value) return
@@ -91,11 +108,13 @@ function suggestionKey(event: KeyboardEvent): void {
   }
 }
 onMounted(() => {
-  if (selectedMotor.value && !recommendation.value) void loadRecommendations(selectedMotor.value)
+  if (searchMode.value === "size") void loadSizes()
+  if (hasSelection.value && !recommendation.value) void loadRecommendations()
 })
 onBeforeUnmount(() => {
   requestSequence++
   requestController?.abort()
+  sizeController?.abort()
   clearTimeout(suggestionTimer)
 })
 
@@ -183,14 +202,14 @@ const visibleBranches = computed(() =>
 const productsForPosition = computed(() => {
   const products = recommendation.value?.products ?? []
   const matching = products.filter(
-    (product) => product.position === activePosition.value || product.position === "both",
+    (product) => searchMode.value === "size" || product.position === activePosition.value || product.position === "both",
   )
   return showAllProducts.value ? matching : matching.slice(0, 8)
 })
 
 const productCountForPosition = computed(() =>
   (recommendation.value?.products ?? []).filter(
-    (product) => product.position === activePosition.value || product.position === "both",
+    (product) => searchMode.value === "size" || product.position === activePosition.value || product.position === "both",
   ).length,
 )
 
@@ -199,7 +218,59 @@ const fallbackContact = computed(() => {
   return branch ? contactLink(branch) : "/cabang"
 })
 
-async function loadRecommendations(motor: MotorFitment): Promise<void> {
+async function loadSizes(force = false): Promise<void> {
+  if (sizeCatalog.value && !force) return
+  sizeController?.abort()
+  const controller = new AbortController()
+  sizeController = controller
+  isLoadingSizes.value = true
+  sizeError.value = ""
+  try {
+    const response = await $fetch<PublicTireSizesResponse>("/api/public/sizes", { signal: controller.signal })
+    if (!controller.signal.aborted) sizeCatalog.value = response
+  } catch {
+    if (!controller.signal.aborted) sizeError.value = "Daftar ukuran belum dapat dimuat. Silakan coba lagi."
+  } finally {
+    if (!controller.signal.aborted) isLoadingSizes.value = false
+  }
+}
+function resetProducts(): void {
+  requestSequence++
+  requestController?.abort()
+  isLoading.value = false
+  errorMessage.value = ""
+  recommendation.value = null
+  selectedFrontProductKey.value = ""
+  selectedRearProductKey.value = ""
+  activePosition.value = "front"
+  selectedCity.value = "all"
+  showAllProducts.value = false
+  showAllBranches.value = false
+}
+function setSearchMode(mode: "motor" | "size"): void {
+  if (mode === searchMode.value) return
+  resetProducts()
+  searchMode.value = mode
+  selectedMotor.value = null
+  selectedSize.value = ""
+  searchQuery.value = ""
+  sizeQuery.value = ""
+  showAllSizes.value = false
+  showSuggestions.value = false
+  if (mode === "size") void loadSizes()
+}
+async function selectSize(size: string): Promise<void> {
+  if (!sizeCatalog.value?.sizes.includes(size)) return
+  resetProducts()
+  selectedSize.value = size
+  selectedMotor.value = null
+  goToStep(3)
+  announcement.value = `Ukuran ${size} dipilih. Pilih tipe ban yang Anda inginkan.`
+  await loadRecommendations()
+}
+async function loadRecommendations(): Promise<void> {
+  if (!hasSelection.value) return
+  const query = searchMode.value === "size" ? { size: selectedSize.value } : { motorId: selectedMotor.value!.id }
   const sequence = ++requestSequence
   requestController?.abort()
   requestController = new AbortController()
@@ -207,7 +278,7 @@ async function loadRecommendations(motor: MotorFitment): Promise<void> {
   isLoading.value = true
   try {
     const response = await $fetch<PublicRecommendationResponse>("/api/public/recommendations", {
-      query: { motorId: motor.id }, signal: requestController.signal,
+      query, signal: requestController.signal,
     })
     if (sequence === requestSequence) recommendation.value = response
   } catch {
@@ -217,19 +288,14 @@ async function loadRecommendations(motor: MotorFitment): Promise<void> {
   }
 }
 async function selectMotor(motor: MotorFitment): Promise<void> {
+  resetProducts()
   selectedMotor.value = motor
+  selectedSize.value = ""
   searchQuery.value = motor.name
   showSuggestions.value = false
-  recommendation.value = null
-  selectedFrontProductKey.value = ""
-  selectedRearProductKey.value = ""
-  activePosition.value = "front"
-  selectedCity.value = "all"
-  showAllProducts.value = false
-  showAllBranches.value = false
   announcement.value = `${motor.name} dipilih. Sekarang tentukan ban depan atau belakang.`
   goToStep(2)
-  await loadRecommendations(motor)
+  await loadRecommendations()
 }
 function handleInput(): void {
   requestSequence++
@@ -356,15 +422,15 @@ function instagramUrl(handle: string): string {
 
 function whatsappMessage(branch: PublicBranch): string {
   const motor = selectedMotor.value
-  if (!motor) return `Halo ${branch.name}, saya ingin konsultasi ban motor.`
+  if (!hasSelection.value) return `Halo ${branch.name}, saya ingin konsultasi ban motor.`
   const lines = [
     `Halo ${branch.name}, saya cek ban melalui website Mister Ban.`,
-    `Motor: ${motor.name}`,
-    `Ukuran depan: ${motor.front}`,
-    `Ukuran belakang: ${motor.rear}`,
+    ...(searchMode.value === "size" ? [`Ukuran ban: ${selectedSize.value}`] : motor ? [
+      `Motor: ${motor.name}`, `Ukuran depan: ${motor.front}`, `Ukuran belakang: ${motor.rear}`,
+    ] : []),
   ]
   if (selectedFrontProduct.value) {
-    lines.push(`Pilihan depan: ${selectedFrontProduct.value.brand} ${selectedFrontProduct.value.type}`)
+    lines.push(`Pilihan ${searchMode.value === "size" ? "ban" : "depan"}: ${selectedFrontProduct.value.brand} ${selectedFrontProduct.value.type}`)
   }
   if (selectedRearProduct.value) {
     lines.push(`Pilihan belakang: ${selectedRearProduct.value.brand} ${selectedRearProduct.value.type}`)
@@ -398,27 +464,33 @@ function formatUpdatedAt(value: string): string {
 
 <template>
   <div id="cek-ban" class="finder-card journey" :class="`journey--${direction}`">
-    <nav class="journey-progress" aria-label="Langkah mencari ban">
-      <div class="journey-progress__track" aria-hidden="true"><span :style="{ transform: `scaleX(${(step - 1) / 3})` }" /></div>
-      <ol>
-        <li v-for="(label, index) in steps" :key="label" :class="{ 'is-current': step === index + 1, 'is-done': step > index + 1 }">
-          <button type="button" :disabled="!canVisitStep(index + 1)" :aria-current="step === index + 1 ? 'step' : undefined" @click="goToStep(index + 1)">
-            <span class="journey-progress__number"><svg v-if="step > index + 1" viewBox="0 0 20 20" aria-hidden="true"><path d="m5 10 3 3 7-7" /></svg><span v-else>{{ index + 1 }}</span></span>
-            <span>{{ label }}</span>
-          </button>
-        </li>
-      </ol>
+    <nav class="journey-progress" aria-label="Langkah mencari ban" :style="{ '--journey-steps': steps.length }">
+      <div class="journey-progress__inner">
+        <div class="journey-progress__track" aria-hidden="true" :style="{ left: `${50 / steps.length}%`, right: `${50 / steps.length}%` }"><span :style="{ transform: `scaleX(${stepIndex / (steps.length - 1)})` }" /></div>
+        <ol>
+          <li v-for="(item, index) in steps" :key="item.id" :class="{ 'is-current': step === item.id, 'is-done': step > item.id }">
+            <button type="button" :disabled="!canVisitStep(item.id)" :aria-current="step === item.id ? 'step' : undefined" @click="goToStep(item.id)">
+              <span class="journey-progress__number"><svg v-if="step > item.id" viewBox="0 0 20 20" aria-hidden="true"><path d="m5 10 3 3 7-7" /></svg><span v-else>{{ index + 1 }}</span></span>
+              <span>{{ item.label }}</span>
+            </button>
+          </li>
+        </ol>
+      </div>
     </nav>
     <p class="journey-sr" role="status" aria-live="polite">{{ announcement }}</p>
-    <div v-if="selectedMotor && step > 1" class="journey-motor">
+    <div v-if="hasSelection && step > 1" class="journey-motor">
       <span class="journey-check" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="m5 10 3 3 7-7" /></svg></span>
-      <div><span>Motor Anda</span><strong>{{ selectedMotor.name }}</strong></div>
-      <button type="button" @click="goToStep(1)">Ganti motor</button>
+      <div><span>{{ searchMode === "size" ? "Ukuran ban" : "Motor Anda" }}</span><strong>{{ searchMode === "size" ? selectedSize : selectedMotor?.name }}</strong></div>
+      <button type="button" @click="goToStep(1)">{{ searchMode === "size" ? "Ganti ukuran" : "Ganti motor" }}</button>
+    </div>
+    <div v-if="step === 1" class="journey-search-modes" role="group" aria-label="Cara mencari ban">
+      <button type="button" :aria-pressed="searchMode === 'motor'" @click="setSearchMode('motor')">Berdasarkan motor</button>
+      <button type="button" :aria-pressed="searchMode === 'size'" @click="setSearchMode('size')">Berdasarkan ukuran</button>
     </div>
     <div ref="panelHost" class="journey-panel-host">
       <Transition name="journey-panel" mode="out-in" @before-leave="lockPanelHeight" @enter="sizePanel" @after-enter="finishStep">
-        <section :key="`${step}-${step === 3 ? activePosition : ''}`" class="journey-panel" :aria-labelledby="`journey-heading-${step}`">
-          <template v-if="step === 1">
+        <section :key="`${searchMode}-${step}-${step === 3 ? activePosition : ''}`" class="journey-panel" :aria-labelledby="`journey-heading-${step}`">
+          <template v-if="step === 1 && searchMode === 'motor'">
             <p class="public-kicker">01 / Kenali motor Anda</p>
             <h2 id="journey-heading-1" tabindex="-1">Motor apa yang Anda pakai?</h2>
             <p class="journey-description">Mulai dengan nama motor. Kami bantu menemukan ukuran bannya.</p>
@@ -436,6 +508,28 @@ function formatUpdatedAt(value: string): string {
             <div class="finder-popular"><span>Sering dicari:</span><button v-for="motor in popularMotors" :key="motor.id" type="button" @click="selectMotor(motor)">{{ motor.name.replace(/^(Honda|Yamaha)\s/, "") }}</button></div>
             <div class="journey-reassurance"><span aria-hidden="true">&#8594;</span><p>Dari ukuran yang pas sampai cabang tujuan.<br /><strong>Semua bisa Anda cek di sini.</strong></p></div>
             <button v-if="selectedMotor" type="button" class="journey-next" @click="goToStep(2)">Lanjut dengan {{ selectedMotor.name }} <span aria-hidden="true">&#8594;</span></button>
+          </template>
+
+          <template v-else-if="step === 1 && searchMode === 'size'">
+            <p class="public-kicker">01 / Mulai dari ukuran</p>
+            <h2 id="journey-heading-1" tabindex="-1">Sudah tahu ukuran ban Anda?</h2>
+            <p class="journey-description">Pilih ukuran sesuai tulisan pada ban. Kami tampilkan tipe ban dan cabang yang memiliki stok.</p>
+            <label class="finder-label" for="tire-size-search">Cari ukuran ban</label>
+            <div class="finder-search">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.35-4.35m2.35-5.65a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z" /></svg>
+              <input id="tire-size-search" v-model="sizeQuery" type="search" placeholder="Contoh: 80/90-14 atau 90/90" autocomplete="off" aria-describedby="tire-size-hint" />
+            </div>
+            <p id="tire-size-hint" class="finder-note">Ukuran mengikuti katalog ban kami. Cocokkan juga dengan spesifikasi kendaraan Anda.</p>
+            <div v-if="isLoadingSizes" class="journey-loading" role="status"><p><span class="journey-loading-dot" />Memuat pilihan ukuran...</p></div>
+            <div v-else-if="sizeError" class="journey-error" role="alert"><p>{{ sizeError }}</p><button type="button" class="journey-back" @click="loadSizes(true)">Coba lagi <span aria-hidden="true">&#8594;</span></button></div>
+            <template v-else-if="sizeCatalog">
+              <p class="journey-size-count" role="status">{{ filteredSizes.length }} ukuran{{ sizeQuery.trim() ? ' ditemukan' : ' dalam katalog' }}</p>
+              <div v-if="visibleSizes.length" class="journey-sizes" aria-label="Pilihan ukuran ban">
+                <button v-for="size in visibleSizes" :key="size" type="button" :aria-pressed="selectedSize === size" @click="selectSize(size)"><span>{{ size }}</span><span aria-hidden="true">&#8594;</span></button>
+              </div>
+              <div v-else class="finder-empty"><p>{{ sizeCatalog.sizes.length ? 'Ukuran belum ditemukan. Coba kata pencarian lain.' : 'Pilihan ukuran belum tersedia.' }}</p><a :href="fallbackContact" target="_blank" rel="noreferrer">Tanya ukuran ke cabang &#8599;</a></div>
+              <button v-if="!sizeQuery.trim() && filteredSizes.length > 12" type="button" class="finder-more" @click="showAllSizes = !showAllSizes">{{ showAllSizes ? 'Tampilkan lebih sedikit' : `Lihat semua ${filteredSizes.length} ukuran` }}</button>
+            </template>
           </template>
 
           <template v-else-if="step === 2 && selectedMotor">
@@ -471,11 +565,11 @@ function formatUpdatedAt(value: string): string {
           </template>
 
           <template v-else-if="step === 3">
-            <p class="public-kicker">03 / Pilih tipe ban</p>
-            <h2 id="journey-heading-3" tabindex="-1">Pilihan untuk ban {{ activePosition === 'front' ? 'depan' : 'belakang' }}.</h2>
-            <div class="journey-position-summary"><strong>{{ activeSize }}</strong><button type="button" @click="goToStep(2)">Ganti posisi</button></div>
+            <p class="public-kicker">{{ stepNumber(3) }} / Pilih tipe ban</p>
+            <h2 id="journey-heading-3" tabindex="-1">{{ searchMode === 'size' ? 'Pilihan ban ukuran ' + selectedSize + '.' : 'Pilihan untuk ban ' + (activePosition === 'front' ? 'depan' : 'belakang') + '.' }}</h2>
+            <div class="journey-position-summary"><strong>{{ activeSize }}</strong><button type="button" @click="goToStep(searchMode === 'size' ? 1 : 2)">{{ searchMode === "size" ? "Ganti ukuran" : "Ganti posisi" }}</button></div>
             <div v-if="isLoading" class="journey-loading" role="status"><p><span class="journey-loading-dot" />Mencari pilihan yang sesuai...</p><div class="journey-skeletons" aria-hidden="true"><span v-for="n in 4" :key="n" /></div></div>
-            <div v-else-if="errorMessage" class="journey-error" role="alert"><p>{{ errorMessage }}</p><button type="button" class="journey-next" @click="selectedMotor && loadRecommendations(selectedMotor)">Coba lagi <span aria-hidden="true">&#8594;</span></button><a :href="fallbackContact" target="_blank" rel="noreferrer">Tanya cabang &#8599;</a></div>
+            <div v-else-if="errorMessage" class="journey-error" role="alert"><p>{{ errorMessage }}</p><button type="button" class="journey-next" @click="loadRecommendations()">Coba lagi <span aria-hidden="true">&#8594;</span></button><a :href="fallbackContact" target="_blank" rel="noreferrer">Tanya cabang &#8599;</a></div>
             <template v-else-if="recommendation">
               <p class="journey-description">{{ productCountForPosition }} pilihan sesuai ukuran. Pilih satu untuk melihat stok cabang.</p>
               <div v-if="productsForPosition.length" class="finder-products">
@@ -489,20 +583,20 @@ function formatUpdatedAt(value: string): string {
               <div class="journey-continue">
                 <Transition name="journey-feedback" mode="out-in"><p :key="activeProduct?.key ?? 'empty'" class="journey-selection-note">{{ activeProduct ? `${activeProduct.brand} ${activeProduct.type} dipilih.` : 'Pilih tipe ban untuk melanjutkan.' }}</p></Transition>
                 <button type="button" class="journey-next" :disabled="!activeProduct" @click="goToStep(4)">Cek cabang <span v-if="activeProduct" class="journey-count">{{ rankedBranches.length }}</span><span aria-hidden="true">&#8594;</span></button>
-                <button v-if="activeProduct && !otherSelected" type="button" class="journey-add" @click="choosePosition(otherPosition)">+ Tambah ban {{ otherPosition === 'front' ? 'depan' : 'belakang' }}</button>
-                <p v-if="otherSelected" class="journey-added">Ban {{ otherPosition === 'front' ? 'depan' : 'belakang' }} juga dipilih: {{ otherSelected.brand }} {{ otherSelected.type }}</p>
+                <button v-if="searchMode === 'motor' && activeProduct && !otherSelected" type="button" class="journey-add" @click="choosePosition(otherPosition)">+ Tambah ban {{ otherPosition === 'front' ? 'depan' : 'belakang' }}</button>
+                <p v-if="searchMode === 'motor' && otherSelected" class="journey-added">Ban {{ otherPosition === 'front' ? 'depan' : 'belakang' }} juga dipilih: {{ otherSelected.brand }} {{ otherSelected.type }}</p>
               </div>
               <small class="journey-updated">Stok diperbarui {{ formatUpdatedAt(recommendation.updatedAt) }}</small>
             </template>
           </template>
 
           <template v-else-if="step === 4">
-            <p class="public-kicker">04 / Siap ke toko</p>
+            <p class="public-kicker">{{ stepNumber(4) }} / Siap ke toko</p>
             <h2 id="journey-heading-4" tabindex="-1">Temukan cabang tujuan Anda.</h2>
             <p class="journey-description">{{ branchHeading }}. Konfirmasi ketersediaan sebelum berangkat.</p>
             <div class="journey-order" aria-label="Ringkasan pilihan ban">
               <div v-for="position in (['front', 'rear'] as const)" :key="position">
-                <template v-if="position === 'front' ? selectedFrontProduct : selectedRearProduct"><span>{{ position === 'front' ? 'Depan' : 'Belakang' }}</span><strong>{{ (position === 'front' ? selectedFrontProduct : selectedRearProduct)?.brand }} {{ (position === 'front' ? selectedFrontProduct : selectedRearProduct)?.type }}<small>{{ (position === 'front' ? selectedFrontProduct : selectedRearProduct)?.size }}</small></strong><button type="button" :aria-label="`Hapus pilihan ban ${position === 'front' ? 'depan' : 'belakang'}`" @click="clearProductSelection(position)">&#215;</button></template>
+                <template v-if="position === 'front' ? selectedFrontProduct : selectedRearProduct"><span>{{ searchMode === 'size' ? 'Ban pilihan' : position === 'front' ? 'Depan' : 'Belakang' }}</span><strong>{{ (position === 'front' ? selectedFrontProduct : selectedRearProduct)?.brand }} {{ (position === 'front' ? selectedFrontProduct : selectedRearProduct)?.type }}<small>{{ (position === 'front' ? selectedFrontProduct : selectedRearProduct)?.size }}</small></strong><button type="button" :aria-label="searchMode === 'size' ? 'Hapus pilihan ban' : `Hapus pilihan ban ${position === 'front' ? 'depan' : 'belakang'}`" @click="clearProductSelection(position)">&#215;</button></template>
               </div>
               <button type="button" class="journey-add" @click="goToStep(3)">Ubah pilihan ban</button>
             </div>

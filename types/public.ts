@@ -107,7 +107,7 @@ export type PublicRecommendedProduct = {
   brand: string
   type: string
   size: string
-  position: "front" | "rear" | "both"
+  position: "front" | "rear" | "both" | "unspecified"
   availableBranchCount: number
   availability: Array<[branchCode: string, status: Exclude<PublicStockStatus, "contact">]>
 }
@@ -120,8 +120,13 @@ export type PublicBranchRecommendation = {
 }
 
 export type PublicRecommendationResponse = {
-  motor: MotorFitment
+  motor: MotorFitment | null
+  size?: string
   products: PublicRecommendedProduct[]
   branches: PublicBranchRecommendation[]
   updatedAt: string
+}
+
+export type PublicTireSizesResponse = {
+  sizes: string[]
 }

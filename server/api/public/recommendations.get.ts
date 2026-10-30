@@ -8,7 +8,7 @@ import type {
   PublicStockStatus,
 } from "~/types/public"
 import { getPool } from "~/server/db/pool"
-import { buildProductCategoryCaseSql } from "~/server/utils/product-category-sql"
+import { publicTireFilterSql } from "~/server/utils/public-tires"
 
 type AvailabilityRow = {
   branch_code: string
@@ -18,12 +18,6 @@ type AvailabilityRow = {
   stock_status: "available" | "limited"
   stock_updated_at: string | null
 }
-
-const publicProductCategorySql = buildProductCategoryCaseSql({
-  brandExpr: "b.name",
-  productNameExpr: "p.name",
-  productTypeExpr: "p.product_type",
-})
 
 const statusRank: Record<PublicStockStatus, number> = {
   contact: 0,
@@ -50,12 +44,16 @@ export default defineCachedEventHandler(
 
     const query = getQuery(event)
     const motorId = typeof query.motorId === "string" ? query.motorId.trim() : ""
-    const motor = motorFitments.find((item) => item.id === motorId)
-    if (!motor) {
+    const size = typeof query.size === "string" ? query.size.trim() : ""
+    if ((!!motorId === !!size) || size.length > 40 || Array.from(size).some(char => char.charCodeAt(0) < 32)) {
+      throw createError({ statusCode: 400, statusMessage: "Pilih model motor atau satu ukuran ban" })
+    }
+    const motor = motorFitments.find((item) => item.id === motorId) ?? null
+    if (motorId && !motor) {
       throw createError({ statusCode: 400, statusMessage: "Model motor tidak dikenali" })
     }
 
-    const sizes = [...new Set([motor.front, motor.rear])]
+    const sizes = motor ? [...new Set([motor.front, motor.rear])] : [size]
     const { rows } = await getPool().query<AvailabilityRow>(
       `
         SELECT
@@ -75,15 +73,8 @@ export default defineCachedEventHandler(
         LEFT JOIN inventory_balances ib
           ON ib.store_id = sp.store_id
          AND ib.product_id = sp.product_id
-        WHERE s.status = 'active'
-          AND sp.status = 'active'
-          AND p.status = 'active'
-          AND sp.sell_price > 0
-          AND p.size = ANY($1::text[])
-          AND (${publicProductCategorySql}) = 'BAN'
-          AND LOWER(p.name) NOT LIKE '%contoh%'
-          AND LOWER(p.product_type) NOT LIKE '%contoh%'
-          AND LOWER(p.sku) NOT LIKE '%test%'
+        WHERE ${publicTireFilterSql}
+          AND TRIM(p.size) = ANY($1::text[])
         GROUP BY s.id, s.code, b.name, p.product_type, p.name, p.size
         HAVING MAX(COALESCE(ib.qty_on_hand, 0)) > 0
         ORDER BY LOWER(TRIM(b.name)), LOWER(TRIM(p.product_type)), TRIM(p.size), branch_code
@@ -98,12 +89,13 @@ export default defineCachedEventHandler(
         branchStatuses: Map<string, "available" | "limited">
       }
     >()
-    const branchMap = new Map<string, { front: PublicStockStatus; rear: PublicStockStatus }>()
+    const branchMap = new Map<string, { front: PublicStockStatus; rear: PublicStockStatus; any: PublicStockStatus }>()
     let updatedAt = ""
 
     for (const row of rows) {
-      const position =
-        motor.front === motor.rear
+      const position = !motor
+        ? "unspecified"
+        : motor.front === motor.rear
           ? "both"
           : row.size === motor.front
             ? "front"
@@ -129,13 +121,14 @@ export default defineCachedEventHandler(
         })
       }
 
-      const branch = branchMap.get(branchCode) ?? { front: "contact", rear: "contact" }
+      const branch = branchMap.get(branchCode) ?? { front: "contact", rear: "contact", any: "contact" }
       if (position === "front" || position === "both") {
         branch.front = bestStatus(branch.front, row.stock_status)
       }
       if (position === "rear" || position === "both") {
         branch.rear = bestStatus(branch.rear, row.stock_status)
       }
+      branch.any = bestStatus(branch.any, row.stock_status)
       branchMap.set(branchCode, branch)
 
       if (row.stock_updated_at && row.stock_updated_at > updatedAt) updatedAt = row.stock_updated_at
@@ -146,12 +139,13 @@ export default defineCachedEventHandler(
         branchCode,
         frontStatus: status.front,
         rearStatus: status.rear,
-        setStatus: setStatus(status.front, status.rear),
+        setStatus: motor ? setStatus(status.front, status.rear) : status.any,
       }),
     )
 
     return {
       motor,
+      ...(size ? { size } : {}),
       products: [...productMap.values()].slice(0, 64).map(({ product, branchStatuses }) => ({
         ...product,
         availableBranchCount: branchStatuses.size,
@@ -164,10 +158,10 @@ export default defineCachedEventHandler(
   {
     maxAge: 60 * 5,
     swr: true,
-    name: "public-recommendations-v2",
+    name: "public-recommendations-v3",
     getKey: (event) => {
       const query = getQuery(event)
-      return typeof query.motorId === "string" ? query.motorId : "invalid"
+      return JSON.stringify([query.motorId ?? null, query.size ?? null])
     },
   },
 )

@@ -8,7 +8,7 @@ const { data, error } = await useFetch<PublicBranchesResponse>("/api/public/bran
 })
 const preferredBranch = computed(() => data.value?.branches.find(branch => branch.code === route.query.cabang))
 const canonical = new URL("/cek-ban", useRequestURL().origin).href
-useSeoMeta({ title: "Cek Ukuran & Stok Ban Motor | Mister Ban", description: "Pilih motor Anda untuk melihat ukuran ban depan dan belakang, pilihan ban, dan stok di cabang Mister Ban.", ogUrl: canonical })
+useSeoMeta({ title: "Cek Ukuran & Stok Ban Motor | Mister Ban", description: "Cari ban berdasarkan model motor atau ukuran ban. Lihat pilihan merek dan stok di cabang Mister Ban.", ogUrl: canonical })
 useHead({ link: [{ rel: "canonical", href: canonical }] })
 </script>
 
@@ -19,10 +19,10 @@ useHead({ link: [{ rel: "canonical", href: canonical }] })
       <div class="public-finder-layout">
         <div class="public-page-intro">
           <p class="public-kicker">Cek ban</p>
-          <h1>Mulai dari<br /> motor Anda.</h1>
-          <p>Lihat ukuran ban depan dan belakang, pilih ban, lalu cek cabang yang memiliki stok.</p>
+          <h1>Temukan ban<br /> yang pas.</h1>
+          <p>Mulai dari model motor atau ukuran ban. Pilih bannya, lalu temukan cabang yang memiliki stok.</p>
           <p v-if="preferredBranch" class="public-preferred-branch">Pilihan cabang: <strong>{{ preferredBranch.name }}</strong></p>
-          <ol class="public-finder-guide"><li>Pilih model motor.</li><li>Tentukan depan atau belakang.</li><li>Pilih tipe ban yang sesuai.</li><li>Temukan cabang tujuan Anda.</li></ol>
+          <ol class="public-finder-guide"><li>Cari lewat motor atau ukuran ban.</li><li>Pilih tipe ban yang Anda inginkan.</li><li>Cek stok dan temukan cabang.</li></ol>
           <NuxtLink to="/cabang" class="public-text-link">Lihat semua cabang <span aria-hidden="true">&#8594;</span></NuxtLink>
         </div>
         <div>
